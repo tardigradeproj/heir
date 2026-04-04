@@ -1,0 +1,4 @@
+## Append samples of your project ##
+resources:
+- controlplane_v1alpha1_runtime.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples

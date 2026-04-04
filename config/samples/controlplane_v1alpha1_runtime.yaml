@@ -1,0 +1,9 @@
+apiVersion: controlplane.tardigrade.runtime.io/v1alpha1
+kind: Runtime
+metadata:
+  labels:
+    app.kubernetes.io/name: samaritano
+    app.kubernetes.io/managed-by: kustomize
+  name: runtime-sample
+spec:
+  # TODO(user): Add fields here

@@ -1,53 +1,41 @@
-FROM ubuntu:24.04
+ARG BASE_IMAGE=debian:bookworm-slim
+FROM $BASE_IMAGE AS base
 
-ENV container docker
+# copy in static files (if you still have custom systemd services to inject)
+COPY --chmod=0755 files/etc/systemd/system/ /etc/systemd/system/
+COPY --chmod=0755 files/usr/local/bin/* /usr/local/bin/
+# Install core dependencies for systemd
+RUN echo "Installing Packages ..." \
+    && DEBIAN_FRONTEND=noninteractive clean-install \
+      systemd \
+      iproute2 util-linux mount kmod \
+      bash ca-certificates curl jq procps \
+    && find /lib/systemd/system/sysinit.target.wants/ -name "systemd-tmpfiles-setup.service" -delete \
+    && rm -f /lib/systemd/system/multi-user.target.wants/* \
+    && rm -f /etc/systemd/system/*.wants/* \
+    && rm -f /lib/systemd/system/local-fs.target.wants/* \
+    && rm -f /lib/systemd/system/sockets.target.wants/*udev* \
+    && rm -f /lib/systemd/system/sockets.target.wants/*initctl* \
+    && rm -f /lib/systemd/system/basic.target.wants/* \
+    && echo "ReadKMsg=no" >> /etc/systemd/journald.conf \
+    && ln -s "$(which systemd)" /sbin/init
 
-COPY --chmod=0644 files/etc/systemd/* /etc/systemd/system/
+# NOTE: systemd-binfmt.service will register things into binfmt_misc which is kernel-global
+RUN echo "Enabling / Disabling services ... " \
+    && systemctl mask systemd-binfmt.service
 
-# Don't start any optional services except for the few we need.
-RUN find /etc/systemd/system \
-    /lib/systemd/system \
-    -path '*.wants/*' \
-    -not -name '*journald*' \
-    -not -name '*systemd-tmpfiles*' \
-    -not -name '*systemd-user-sessions*' \
-    -exec rm \{} \;
+# squash down to one compressed layer, without any lingering whiteout files etc
+FROM scratch
+COPY --from=base / /
 
-RUN apt-get update && \
-    apt-get install -y \
-    dbus systemd openssh-server net-tools iproute2 iputils-ping curl wget vim-tiny sudo && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+# add metadata, must be done after the squashing
+# first tell systemd that it is in docker (it will check for the container env)
+# https://systemd.io/CONTAINER_INTERFACE/
+ENV container=docker
 
-RUN >/etc/machine-id
-RUN >/var/lib/dbus/machine-id
-
-EXPOSE 22
-
-RUN systemctl set-default multi-user.target
-RUN systemctl mask \
-      dev-hugepages.mount \
-      sys-fs-fuse-connections.mount \
-      systemd-update-utmp.service \
-      systemd-tmpfiles-setup.service \
-      console-getty.service
-RUN systemctl disable \
-      networkd-dispatcher.service
-
-# This container image doesn't have locales installed. Disable forwarding the
-# user locale env variables or we get warnings such as:
-#  bash: warning: setlocale: LC_ALL: cannot change locale
-RUN sed -i -e 's/^AcceptEnv LANG LC_\*$/#AcceptEnv LANG LC_*/' /etc/ssh/sshd_config
-
-COPY files/etc/systemd/system/ /etc/systemd/system/
-
-RUN systemctl enable \
-      kine.service \
-      kube-apiserver.service \
-      kube-controller-manager.service \
-      kube-scheduler.service
-
-# https://www.freedesktop.org/wiki/Software/systemd/ContainerInterface/
+# systemd exits on SIGRTMIN+3, not SIGTERM (which re-executes it)
+# https://bugzilla.redhat.com/show_bug.cgi?id=1201657
 STOPSIGNAL SIGRTMIN+3
 
-CMD ["/sbin/init"]
+# NOTE: this is *only* for documentation, the entrypoint is overridden later
+ENTRYPOINT ["/sbin/init" ]

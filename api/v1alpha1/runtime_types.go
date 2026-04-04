@@ -1,0 +1,161 @@
+/*
+Copyright 2026.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package v1alpha1
+
+import (
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
+)
+
+// RuntimeSpec defines the desired state of Runtime
+type RuntimeSpec struct {
+	ControlPlane ControlPlaneSpec `json:"controlPlane,omitempty"`
+}
+
+// ControlPlaneSpec defines how control plane must be created in the Admin Cluster,
+// such as the number of Pod replicas, the Service resource, or the Ingress.
+type ControlPlaneSpec struct {
+	// Samaritano provides details about the distribution to install
+	// +required
+	Samaritano SamaritanoSpec `json:"samaritano,omitempty"`
+	// Defining the options for Deployment resource.
+	Deployment DeploymentSpec `json:"deployment,omitempty"`
+	// Defining the options for an Optional Ingress which will expose API Server of the Tenant Control Plane
+	Ingress *IngressSpec `json:"ingress,omitempty"`
+}
+type SamaritanoSpec struct {
+	Version string `json:"version"`
+}
+type IngressSpec struct {
+	AdditionalMetadata AdditionalMetadata `json:"additionalMetadata,omitempty"`
+	IngressClassName   string             `json:"ingressClassName,omitempty"`
+	// Hostname is an optional field which will be used as Ingress's Host. If it is not defined,
+	// Ingress's host will be "<tenant>.<namespace>.<domain>", where domain is specified under NetworkProfileSpec
+	Hostname string `json:"hostname,omitempty"`
+}
+type ServiceSpec struct {
+	AdditionalMetadata AdditionalMetadata `json:"additionalMetadata,omitempty"`
+	// AdditionalPorts allows adding additional ports to the Service generated
+	// which targets the Tenant Control Plane pods.
+	AdditionalPorts []AdditionalPort `json:"additionalPorts,omitempty"`
+	// ServiceType allows specifying how to expose the Control Plane.
+	ServiceType corev1.ServiceType `json:"serviceType"`
+}
+type AdditionalPort struct {
+	// The name of this port within the Service created by tardigrade.
+	Name string `json:"name"`
+	// The IP protocol for this port. Supports "TCP", "UDP", and "SCTP".
+	//+kubebuilder:validation:Enum=TCP;UDP;SCTP
+	//+kubebuilder:default=TCP
+	Protocol corev1.Protocol `json:"protocol,omitempty"`
+	// The application protocol for this port.
+	// This is used as a hint for implementations to offer richer behavior for protocols that they understand.
+	// This field follows standard Kubernetes label syntax.
+	// Valid values are either:
+	//
+	// * Un-prefixed protocol names - reserved for IANA standard service names (as per
+	// RFC-6335 and https://www.iana.org/assignments/service-names).
+	AppProtocol *string `json:"appProtocol,omitempty"`
+	// The port that will be exposed by this service.
+	Port int32 `json:"port"`
+	// Number or name of the port to access on the pods of the Tenant Control Plane.
+	// Number must be in the range 1 to 65535. Name must be an IANA_SVC_NAME.
+	// If this is a string, it will be looked up as a named port in the
+	// target Pod's container ports. If this is not specified, the value
+	// of the 'port' field is used (an identity map).
+	TargetPort intstr.IntOrString `json:"targetPort"`
+}
+type AdditionalMetadata struct {
+	Labels      map[string]string `json:"labels,omitempty"`
+	Annotations map[string]string `json:"annotations,omitempty"`
+}
+type DeploymentSpec struct {
+	//+kubebuilder:default=2
+	// +kubebuilder:validation:Minimum=1
+	Replicas *int32 `json:"replicas,omitempty"`
+	// RuntimeClassName refers to a RuntimeClass object in the node.k8s.io group, which should be used
+	// to run the Tenant Control Plane pod. If no RuntimeClass resource matches the named class, the pod will not be run.
+	// If unset or empty, the "legacy" RuntimeClass will be used, which is an implicit class with an
+	// empty definition that uses the default runtime handler.
+	RuntimeClassName string `json:"runtimeClassName,omitempty"`
+	// If specified, the Tenant Control Plane pod's tolerations.
+	// More info: https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/
+	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
+	// If specified, the Tenant Control Plane pod's scheduling constraints.
+	// More info: https://kubernetes.io/docs/tasks/configure-pod-container/assign-pods-nodes-using-node-affinity/
+	Affinity *corev1.Affinity `json:"affinity,omitempty"`
+	//+kubebuilder:default="default"
+	// ServiceAccountName allows to specify the service account to be mounted to the pods of the Control plane deployment
+	ServiceAccountName string `json:"serviceAccountName,omitempty"`
+}
+
+// RuntimeStatus defines the observed state of Runtime.
+type RuntimeStatus struct {
+	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
+	// Important: Run "make" to regenerate code after modifying this file
+
+	// For Kubernetes API conventions, see:
+	// https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md#typical-status-properties
+
+	// conditions represent the current state of the Runtime resource.
+	// Each condition has a unique type and reflects the status of a specific aspect of the resource.
+	//
+	// Standard condition types include:
+	// - "Available": the resource is fully functional
+	// - "Progressing": the resource is being created or updated
+	// - "Degraded": the resource failed to reach or maintain its desired state
+	//
+	// The status of each condition is one of True, False, or Unknown.
+	// +listType=map
+	// +listMapKey=type
+	// +optional
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+
+// Runtime is the Schema for the runtimes API
+type Runtime struct {
+	metav1.TypeMeta `json:",inline"`
+
+	// metadata is a standard object metadata
+	// +optional
+	metav1.ObjectMeta `json:"metadata,omitzero"`
+
+	// spec defines the desired state of Runtime
+	// +required
+	Spec RuntimeSpec `json:"spec"`
+
+	// status defines the observed state of Runtime
+	// +optional
+	Status RuntimeStatus `json:"status,omitzero"`
+}
+
+// +kubebuilder:object:root=true
+
+// RuntimeList contains a list of Runtime
+type RuntimeList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitzero"`
+	Items           []Runtime `json:"items"`
+}
+
+func init() {
+	SchemeBuilder.Register(&Runtime{}, &RuntimeList{})
+}

@@ -46,7 +46,7 @@ func (b *directoryBuilder) Build() (Bits, error) {
 	sourceVersionRaw := strings.TrimSpace(string(contents))
 	return &bits{
 		binaryPaths: []string{
-			filepath.Join(binDir, "kubeadm"),
+			filepath.Join(binDir, "kine"),
 			filepath.Join(binDir, "kubectl"),
 			filepath.Join(binDir, "kube-apiserver"),
 			filepath.Join(binDir, "kube-controller-manager"),

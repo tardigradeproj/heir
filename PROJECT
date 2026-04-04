@@ -8,4 +8,14 @@ layout:
 - go.kubebuilder.io/v4
 projectName: samaritano
 repo: github.com/tardigrade-runtime/samaritano
+resources:
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: tardigrade.runtime.io
+  group: controlplane
+  kind: Runtime
+  path: github.com/tardigrade-runtime/samaritano/api/v1alpha1
+  version: v1alpha1
 version: "3"
