@@ -115,7 +115,7 @@ build: manifests generate fmt vet ## Build manager binary.
 
 .PHONY: run-distro
 run-distro:
-	go run cmd/distro.go build control-plane-image --base-image ghcr.io/tardigrade/samaritano-base:latest --image=$(IMAGE_NAME):$(IMAGE_TAG) --type=file $$(pwd)/artifacts/kubernetes-server-linux-arm64.tar.gz
+	go run cmd/distro.go build control-plane-image --base-image ghcr.io/tardigrade/samaritano-base:latest --image=$(IMAGE_NAME):v1 --type=file $$(pwd)/artifacts/kubernetes-server-linux-arm64.tar.gz
 
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
@@ -283,7 +283,7 @@ run-controlplane-image: ## Run the base container image with the privileges requ
 
 ##@ Artifacts
 
-KUBE_VERSION   ?= v1.32.0
+KUBE_VERSION   ?= v1.34.0
 KINE_VERSION   ?= v0.13.9
 ARTIFACTS_DIR  ?= $(shell pwd)/artifacts
 
