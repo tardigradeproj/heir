@@ -1,0 +1,6 @@
+[Service]
+ExecStart=
+ExecStart=/usr/local/bin/kube-scheduler \
+   --leader-elect=true \
+   --kubeconfig=/etc/kubernetes/kube-scheduler.conf \
+   --bind-address=127.0.0.1
