@@ -1,41 +1,153 @@
-ARG BASE_IMAGE=debian:bookworm-slim
-FROM $BASE_IMAGE AS base
+FROM ubuntu:22.04
+ARG S6_OVERLAY_VERSION=3.2.2.0
 
-# copy in static files (if you still have custom systemd services to inject)
-COPY --chmod=0755 files/etc/systemd/system/ /etc/systemd/system/
-COPY --chmod=0755 files/usr/local/bin/* /usr/local/bin/
-# Install core dependencies for systemd
-RUN echo "Installing Packages ..." \
-    && DEBIAN_FRONTEND=noninteractive clean-install \
-      systemd \
-      iproute2 util-linux mount kmod \
-      bash ca-certificates curl jq procps \
-    && find /lib/systemd/system/sysinit.target.wants/ -name "systemd-tmpfiles-setup.service" -delete \
-    && rm -f /lib/systemd/system/multi-user.target.wants/* \
-    && rm -f /etc/systemd/system/*.wants/* \
-    && rm -f /lib/systemd/system/local-fs.target.wants/* \
-    && rm -f /lib/systemd/system/sockets.target.wants/*udev* \
-    && rm -f /lib/systemd/system/sockets.target.wants/*initctl* \
-    && rm -f /lib/systemd/system/basic.target.wants/* \
-    && echo "ReadKMsg=no" >> /etc/systemd/journald.conf \
-    && ln -s "$(which systemd)" /sbin/init
+RUN apt-get update && apt-get install -y --no-install-recommends curl xz-utils ca-certificates \
+    && S6_ARCH=$(uname -m) \
+    && curl -sL "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-noarch.tar.xz" | tar -C / -Jxpf - \
+    && curl -sL "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-${S6_ARCH}.tar.xz" | tar -C / -Jxpf - \
+    && apt-get remove -y curl xz-utils \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
 
-# NOTE: systemd-binfmt.service will register things into binfmt_misc which is kernel-global
-RUN echo "Enabling / Disabling services ... " \
-    && systemctl mask systemd-binfmt.service
+# Create service AND log-service directories
+RUN mkdir -p \
+    /etc/s6-overlay/s6-rc.d/kine/dependencies.d \
+    /etc/s6-overlay/s6-rc.d/kine-log \
+    /etc/s6-overlay/s6-rc.d/kube-apiserver/dependencies.d \
+    /etc/s6-overlay/s6-rc.d/kube-apiserver-log \
+    /etc/s6-overlay/s6-rc.d/kube-controller-manager/dependencies.d \
+    /etc/s6-overlay/s6-rc.d/kube-controller-manager-log \
+    /etc/s6-overlay/s6-rc.d/kube-scheduler/dependencies.d \
+    /etc/s6-overlay/s6-rc.d/kube-scheduler-log \
+    /etc/s6-overlay/s6-rc.d/user/contents.d
 
-# squash down to one compressed layer, without any lingering whiteout files etc
-FROM scratch
-COPY --from=base / /
+# ==========================================
+# Service & Pipeline: kine
+# ==========================================
+COPY <<EOF /etc/s6-overlay/s6-rc.d/kine/type
+longrun
+EOF
+COPY <<EOF /etc/s6-overlay/s6-rc.d/kine/producer-for
+kine-log
+EOF
+COPY --chmod=700 <<EOF /etc/s6-overlay/s6-rc.d/kine/run
+#!/command/execlineb -P
+fdmove -c 2 1
+/usr/local/bin/kine
+EOF
 
-# add metadata, must be done after the squashing
-# first tell systemd that it is in docker (it will check for the container env)
-# https://systemd.io/CONTAINER_INTERFACE/
-ENV container=docker
+COPY <<EOF /etc/s6-overlay/s6-rc.d/kine-log/type
+longrun
+EOF
+COPY <<EOF /etc/s6-overlay/s6-rc.d/kine-log/consumer-for
+kine
+EOF
+COPY <<EOF /etc/s6-overlay/s6-rc.d/kine-log/pipeline-name
+kine-pipeline
+EOF
+COPY --chmod=700 <<EOF /etc/s6-overlay/s6-rc.d/kine-log/run
+#!/command/execlineb -P
+foreground { s6-mkdir -p /var/log/kine }
+s6-log n3 s5000000 /var/log/kine
+EOF
 
-# systemd exits on SIGRTMIN+3, not SIGTERM (which re-executes it)
-# https://bugzilla.redhat.com/show_bug.cgi?id=1201657
-STOPSIGNAL SIGRTMIN+3
+# ==========================================
+# Service & Pipeline: kube-apiserver
+# ==========================================
+COPY <<EOF /etc/s6-overlay/s6-rc.d/kube-apiserver/type
+longrun
+EOF
+COPY <<EOF /etc/s6-overlay/s6-rc.d/kube-apiserver/producer-for
+kube-apiserver-log
+EOF
+RUN touch /etc/s6-overlay/s6-rc.d/kube-apiserver/dependencies.d/kine
+COPY --chmod=700 <<EOF /etc/s6-overlay/s6-rc.d/kube-apiserver/run
+#!/command/execlineb -P
+fdmove -c 2 1
+/usr/local/bin/kube-apiserver
+EOF
 
-# NOTE: this is *only* for documentation, the entrypoint is overridden later
-ENTRYPOINT [ "/usr/local/bin/entrypoint", "/sbin/init" ]
+COPY <<EOF /etc/s6-overlay/s6-rc.d/kube-apiserver-log/type
+longrun
+EOF
+COPY <<EOF /etc/s6-overlay/s6-rc.d/kube-apiserver-log/consumer-for
+kube-apiserver
+EOF
+COPY <<EOF /etc/s6-overlay/s6-rc.d/kube-apiserver-log/pipeline-name
+kube-apiserver-pipeline
+EOF
+COPY --chmod=700 <<EOF /etc/s6-overlay/s6-rc.d/kube-apiserver-log/run
+#!/command/execlineb -P
+foreground { s6-mkdir -p /var/log/kube-apiserver }
+s6-log n3 s5000000 /var/log/kube-apiserver
+EOF
+
+# ==========================================
+# Service & Pipeline: kube-controller-manager
+# ==========================================
+COPY <<EOF /etc/s6-overlay/s6-rc.d/kube-controller-manager/type
+longrun
+EOF
+COPY <<EOF /etc/s6-overlay/s6-rc.d/kube-controller-manager/producer-for
+kube-controller-manager-log
+EOF
+RUN touch /etc/s6-overlay/s6-rc.d/kube-controller-manager/dependencies.d/kube-apiserver
+COPY --chmod=700 <<EOF /etc/s6-overlay/s6-rc.d/kube-controller-manager/run
+#!/command/execlineb -P
+fdmove -c 2 1
+/usr/local/bin/kube-controller-manager
+EOF
+
+COPY <<EOF /etc/s6-overlay/s6-rc.d/kube-controller-manager-log/type
+longrun
+EOF
+COPY <<EOF /etc/s6-overlay/s6-rc.d/kube-controller-manager-log/consumer-for
+kube-controller-manager
+EOF
+COPY <<EOF /etc/s6-overlay/s6-rc.d/kube-controller-manager-log/pipeline-name
+kube-controller-manager-pipeline
+EOF
+COPY --chmod=700 <<EOF /etc/s6-overlay/s6-rc.d/kube-controller-manager-log/run
+#!/command/execlineb -P
+foreground { s6-mkdir -p /var/log/kube-controller-manager }
+s6-log n3 s5000000 /var/log/kube-controller-manager
+EOF
+
+# ==========================================
+# Service & Pipeline: kube-scheduler
+# ==========================================
+COPY <<EOF /etc/s6-overlay/s6-rc.d/kube-scheduler/type
+longrun
+EOF
+COPY <<EOF /etc/s6-overlay/s6-rc.d/kube-scheduler/producer-for
+kube-scheduler-log
+EOF
+RUN touch /etc/s6-overlay/s6-rc.d/kube-scheduler/dependencies.d/kube-apiserver
+COPY --chmod=700 <<EOF /etc/s6-overlay/s6-rc.d/kube-scheduler/run
+#!/command/execlineb -P
+fdmove -c 2 1
+/usr/local/bin/kube-scheduler
+EOF
+
+COPY <<EOF /etc/s6-overlay/s6-rc.d/kube-scheduler-log/type
+longrun
+EOF
+COPY <<EOF /etc/s6-overlay/s6-rc.d/kube-scheduler-log/consumer-for
+kube-scheduler
+EOF
+COPY <<EOF /etc/s6-overlay/s6-rc.d/kube-scheduler-log/pipeline-name
+kube-scheduler-pipeline
+EOF
+COPY --chmod=700 <<EOF /etc/s6-overlay/s6-rc.d/kube-scheduler-log/run
+#!/command/execlineb -P
+foreground { s6-mkdir -p /var/log/kube-scheduler }
+s6-log n3 s5000000 /var/log/kube-scheduler
+EOF
+
+# ==========================================
+# Final Registration
+# ==========================================
+RUN touch /etc/s6-overlay/s6-rc.d/user/contents.d/kube-controller-manager \
+    && touch /etc/s6-overlay/s6-rc.d/user/contents.d/kube-scheduler
+
+ENTRYPOINT ["/init"]

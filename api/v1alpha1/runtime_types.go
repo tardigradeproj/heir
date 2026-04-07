@@ -22,9 +22,60 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
+// ClusterSpec defines how Cluster components are configured
+type ClusterSpec struct {
+	APIServer         APIServerSpec         `json:"apiServer,omitempty"`
+	ControllerManager ControllerManagerSpec `json:"controllerManager,omitempty"`
+	Scheduler         SchedulerSpec         `json:"scheduler,omitempty"`
+	Network           NetworkSpec           `json:"network,omitempty"`
+	Storage           StorageSpec           `json:"storage,omitempty"`
+}
+
+// APIServerSpec defines api-server configurations
+type APIServerSpec struct {
+	// If Samaritano controllers are running behind a loadbalancer provide the loadbalancer address here. This will configure all cluster
+	// components to connect to this address and also configures this address to be used when joining new nodes into the cluster.
+	ExternalAddress string `json:"externalAddress,omitempty"`
+	// sans defines a List of additional addresses to push to API servers serving certificate
+	Sans []string `json:"sans,omitempty"`
+	// extraArgs defines a Map of key-values (strings) for any extra arguments you wish to pass down to Kubernetes api-server process
+	ExtraArgs map[string]string `json:"extraArgs,omitempty"`
+}
+type ControllerManagerSpec struct {
+	// extraArgs defines a Map of key-values (strings) for any extra arguments you wish to pass down to Kubernetes controller manager process
+	ExtraArgs map[string]string `json:"extraArgs,omitempty"`
+}
+type SchedulerSpec struct {
+	// extraArgs defines a Map of key-values (strings) for any extra arguments you wish to pass down to Kubernetes scheduler process
+	ExtraArgs map[string]string `json:"extraArgs,omitempty"`
+}
+type NetworkSpec struct {
+	// CIDR for Kubernetes Pods: if empty, defaulted to 10.244.0.0/16.
+	//+kubebuilder:default="10.244.0.0/16"
+	//+kubebuilder:validation:Optional
+	PodCIDR string `json:"podCIDR,omitempty"`
+	// CIDR for Kubernetes Services: if empty, defaulted to 10.96.0.0/16.
+	//+kubebuilder:default="10.96.0.0/16"
+	//+kubebuilder:validation:Optional
+	ServiceCIDR string `json:"serviceCIDR,omitempty"`
+}
+type StorageSpec struct {
+	// Type holds the type of storage to be used by APIServer
+	// +kubebuilder:validation:Enum=kine
+	//+kubebuilder:default="kine"
+	Type string `json:"type,omitempty"`
+	// Kine holds kine configuration
+	Kine KineSpec `json:"kine,omitempty"`
+}
+type KineSpec struct {
+	// DataSource holds the URL of the data source. Refer to: https://github.com/rancher/kine/
+	DataSource string `json:"dataSource,omitempty"`
+}
+
 // RuntimeSpec defines the desired state of Runtime
 type RuntimeSpec struct {
 	ControlPlane ControlPlaneSpec `json:"controlPlane,omitempty"`
+	Cluster      ClusterSpec      `json:"cluster,omitempty"`
 }
 
 // ControlPlaneSpec defines how control plane must be created in the Admin Cluster,

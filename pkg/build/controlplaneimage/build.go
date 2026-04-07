@@ -193,7 +193,7 @@ func (c *buildContext) buildImage(bits kube.Bits) error {
 	if err = exec.Command(
 		"docker", "commit",
 		// we need to put this back after changing it when running the image
-		"--change", `ENTRYPOINT [ "/usr/local/bin/entrypoint", "/sbin/init" ]`,
+		"--change", `ENTRYPOINT ["/init"]`,
 		// remove proxy settings since they're for the building process
 		// and should not be carried with the built image
 		"--change", `ENV HTTP_PROXY="" HTTPS_PROXY="" NO_PROXY=""`,

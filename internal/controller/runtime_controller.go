@@ -48,7 +48,8 @@ type RuntimeReconciler struct {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.23.1/pkg/reconcile
 func (r *RuntimeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	_ = logf.FromContext(ctx)
-
+	// check if the request exists, if it does not exists create secret with certs and configmap with systemd configurations
+	// check if things exists progressively,
 	// TODO(user): your logic here
 
 	return ctrl.Result{}, nil

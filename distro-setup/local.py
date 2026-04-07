@@ -60,12 +60,15 @@ def start_local_container() -> str:
         print(f"Container '{container_name}' already exists. Removing it...")
         run_command(f"docker rm -f {container_name}")
 
+    services_dir = os.path.abspath("../")
     cmd = [
         "docker", "run", "-d",
-        "--privileged",
-        "--cgroupns=host",
-        "-v", "/sys/fs/cgroup:/sys/fs/cgroup:rw",
         "--name", container_name,
+        "-v", f"{services_dir}/kine.service:/etc/s6-overlay/s6-rc.d/kine/run",
+        "-v", f"{services_dir}/kube-apiserver.service:/etc/s6-overlay/s6-rc.d/kube-apiserver/run",
+        "-v", f"{services_dir}/kube-controller-manager.service:/etc/s6-overlay/s6-rc.d/kube-controller-manager/run",
+        "-v", f"{services_dir}/kube-scheduler.service:/etc/s6-overlay/s6-rc.d/kube-scheduler/run",
+        "-v", f"{services_dir}/kube-scheduler.yaml:/etc/kubernetes/kube-scheduler.yaml",
         image,
     ]
     print(f"Running: {' '.join(cmd)}")
@@ -100,28 +103,7 @@ def copy_to_container(container_id: str, out_dir: str = "./"):
 
         run_command(f"docker cp {src} {dest}")
 
-    run_command(f"docker cp ../kube-scheduler.yaml {container_id}:/etc/kubernetes/kube-scheduler.yaml")
     run_command(f"docker exec {container_id} chown -R root:root {k8s_dir}")
-
-def copy_services_to_container(container_id: str, services_dir: str = "../"):
-    """Copy *.service files from services_dir into the container as systemd drop-ins.
-
-    Each service file is placed at:
-      /etc/systemd/system/<name>.service.d/override.conf
-    """
-    for filename in os.listdir(services_dir):
-        if not filename.endswith(".service"):
-            continue
-
-        src = os.path.join(services_dir, filename)
-        if not os.path.isfile(src):
-            continue
-
-        drop_in_dir = f"/etc/systemd/system/{filename}.d"
-        run_command(f"docker exec {container_id} mkdir -p {drop_in_dir}")
-        run_command(f"docker cp {src} {container_id}:{drop_in_dir}/override.conf")
-        run_command(f"docker exec {container_id} chown root:root {drop_in_dir}/override.conf")
-
 
 
 def run_command(command):
@@ -148,5 +130,3 @@ if __name__ == '__main__':
     setup_authentication()
     container_id = start_local_container()
     copy_to_container(container_id, "./")
-    copy_services_to_container(container_id)
-    run_command(f"docker exec {container_id} systemctl daemon-reload")
