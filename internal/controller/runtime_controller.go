@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/tardigrade-runtime/samaritano/pkg/pki"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -177,11 +178,15 @@ func (r *RuntimeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		log.Error(err, "Failed to reconcile auth configuration")
 		return ctrl.Result{}, err
 	}
-	if configHash, err := r.setupControlPlaneConfiguration(ctx, controlPlaneRuntime); err != nil {
+	configHash, err := r.setupControlPlaneConfiguration(ctx, controlPlaneRuntime)
+	if err != nil {
 		log.Error(err, "Failed to reconcile control plane configuration")
 		return ctrl.Result{}, err
 	}
-
+	if err := r.setupDeployment(ctx, controlPlaneRuntime, configHash); err != nil {
+		log.Error(err, "Failed to reconcile deployment")
+		return ctrl.Result{}, err
+	}
 	return ctrl.Result{}, nil
 }
 
@@ -191,6 +196,172 @@ func (r *RuntimeReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&controlplanev1alpha1.Runtime{}).
 		Named("runtime").
 		Complete(r)
+}
+
+// setupDeployment reconciles the Deployment that runs the control-plane container.
+// It creates the Deployment when absent and updates it whenever the desired state diverges
+// from the live state. configHash is written to the pod annotation so that a config change
+// rolls out the pods automatically.
+func (r *RuntimeReconciler) setupDeployment(
+	ctx context.Context,
+	controlPlaneRuntime *controlplanev1alpha1.Runtime,
+	configHash string,
+) error {
+	deploySpec := controlPlaneRuntime.Spec.ControlPlane.Deployment
+	samaritano := controlPlaneRuntime.Spec.ControlPlane.Samaritano
+	labels := map[string]string{
+		"app.kubernetes.io/name":       controlPlaneRuntime.Name,
+		"app.kubernetes.io/managed-by": "samaritano",
+	}
+
+	// Merge any extra labels/annotations requested by the user.
+	podLabels := mergeMaps(labels, deploySpec.AdditionalMetadata.Labels)
+	podAnnotations := mergeMaps(
+		map[string]string{"samaritano.tardigrade.runtime.io/s6-overlay-config-hash": configHash},
+		deploySpec.AdditionalMetadata.Annotations,
+	)
+
+	containerPorts := setupDeploymentPorts(controlPlaneRuntime.Spec.ControlPlane.Service.AdditionalPorts)
+
+	// s6-overlay run-scripts need to be executable; 0755 is applied to the whole volume.
+	scriptMode := int32(0755)
+
+	volumes := []corev1.Volume{
+		{
+			Name: "pki",
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: fmt.Sprintf("%s-pki", controlPlaneRuntime.Name),
+				},
+			},
+		},
+		{
+			Name: "auth",
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: fmt.Sprintf("%s-auth", controlPlaneRuntime.Name),
+				},
+			},
+		},
+		{
+			Name: "config",
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: fmt.Sprintf("%s-config", controlPlaneRuntime.Name),
+					},
+					DefaultMode: &scriptMode,
+				},
+			},
+		},
+	}
+
+	volumeMounts := []corev1.VolumeMount{
+		// PKI: mount the whole secret directory — all certs/keys land at /etc/kubernetes/pki/<file>.
+		{Name: "pki", MountPath: "/etc/kubernetes/pki", ReadOnly: true},
+		// Auth: one subPath mount per kubeconfig so the rest of /etc/kubernetes is unaffected.
+		{Name: "auth", MountPath: layout.Auth.AdminConf.MountPath, SubPath: layout.Auth.AdminConf.SecretKey, ReadOnly: true},
+		{Name: "auth", MountPath: layout.Auth.ControllerManagerConf.MountPath, SubPath: layout.Auth.ControllerManagerConf.SecretKey, ReadOnly: true},
+		{Name: "auth", MountPath: layout.Auth.SchedulerConf.MountPath, SubPath: layout.Auth.SchedulerConf.SecretKey, ReadOnly: true},
+		// Config: one subPath mount per s6 run-script.
+		{Name: "config", MountPath: layout.Config.APIServer.MountPath, SubPath: layout.Config.APIServer.SecretKey, ReadOnly: true},
+		{Name: "config", MountPath: layout.Config.ControllerManager.MountPath, SubPath: layout.Config.ControllerManager.SecretKey, ReadOnly: true},
+		{Name: "config", MountPath: layout.Config.Scheduler.MountPath, SubPath: layout.Config.Scheduler.SecretKey, ReadOnly: true},
+		{Name: "config", MountPath: layout.Config.Kine.MountPath, SubPath: layout.Config.Kine.SecretKey, ReadOnly: true},
+	}
+
+	var runtimeClassName *string
+	if deploySpec.RuntimeClassName != "" {
+		runtimeClassName = &deploySpec.RuntimeClassName
+	}
+
+	desired := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      controlPlaneRuntime.Name,
+			Namespace: controlPlaneRuntime.Namespace,
+		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: deploySpec.Replicas,
+			Selector: &metav1.LabelSelector{MatchLabels: labels},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels:      podLabels,
+					Annotations: podAnnotations,
+				},
+				Spec: corev1.PodSpec{
+					ServiceAccountName: deploySpec.ServiceAccountName,
+					RuntimeClassName:   runtimeClassName,
+					Tolerations:        deploySpec.Tolerations,
+					Affinity:           deploySpec.Affinity,
+					Containers: []corev1.Container{
+						{
+							Name:         "samaritano",
+							Image:        buildImage(deploySpec.RegistrySettings, samaritano.Version),
+							Ports:        containerPorts,
+							VolumeMounts: volumeMounts,
+						},
+					},
+					Volumes: volumes,
+				},
+			},
+		},
+	}
+	if err := ctrl.SetControllerReference(controlPlaneRuntime, desired, r.Scheme); err != nil {
+		return err
+	}
+
+	existing := &appsv1.Deployment{}
+	err := r.Get(ctx, types.NamespacedName{Name: desired.Name, Namespace: desired.Namespace}, existing)
+	if err != nil && apierrors.IsNotFound(err) {
+		return r.Create(ctx, desired)
+	}
+	if err != nil {
+		return err
+	}
+	existing.Spec = desired.Spec
+	existing.Labels = desired.Labels
+	return r.Update(ctx, existing)
+}
+
+// buildImage composes the container image reference from RegistrySettings and the version tag.
+// Falls back to "tardigrade/samaritano" when no image override is provided.
+func buildImage(settings controlplanev1alpha1.RegistrySettings, version string) string {
+	image := settings.Image
+	if image == "" {
+		image = "tardigrade/samaritano"
+	}
+	if settings.Registry != "" {
+		return fmt.Sprintf("%s/%s:%s", settings.Registry, image, version)
+	}
+	return fmt.Sprintf("%s:%s", image, version)
+}
+
+// setupDeploymentPorts converts AdditionalPort entries from the spec into
+// corev1.ContainerPort values that can be attached to the control-plane container.
+// and adds default ports
+func setupDeploymentPorts(ports []controlplanev1alpha1.AdditionalPort) []corev1.ContainerPort {
+	out := make([]corev1.ContainerPort, 0, len(ports))
+	for _, p := range ports {
+		out = append(out, corev1.ContainerPort{
+			Name:          p.Name,
+			ContainerPort: p.Port,
+			Protocol:      p.Protocol,
+		})
+	}
+	out = append(out, corev1.ContainerPort{Name: "apiserver", ContainerPort: 6443, Protocol: corev1.ProtocolTCP})
+	return out
+}
+
+// mergeMaps returns a new map containing all keys from base overridden by extra.
+func mergeMaps(base, extra map[string]string) map[string]string {
+	out := make(map[string]string, len(base)+len(extra))
+	for k, v := range base {
+		out[k] = v
+	}
+	for k, v := range extra {
+		out[k] = v
+	}
+	return out
 }
 
 // setupControlPlaneConfiguration reconciles the <resourceName>-config ConfigMap that holds the
@@ -203,7 +374,7 @@ func (r *RuntimeReconciler) setupControlPlaneConfiguration(
 	controlPlaneRuntime *controlplanev1alpha1.Runtime,
 ) (string, error) {
 	log := logf.FromContext(ctx)
-	net := controlPlaneRuntime.Spec.Cluster.Network
+	net := controlPlaneRuntime.Spec.UpstreamCluster.Network
 	apiserverScript := renderRunScript("/usr/local/bin/kube-apiserver",
 		mergeArgs(map[string]string{
 			"allow-privileged":                 "true",
@@ -225,7 +396,7 @@ func (r *RuntimeReconciler) setupControlPlaneConfiguration(
 			"tls-cert-file":                    layout.PKI.APIServerCert.MountPath,
 			"tls-private-key-file":             layout.PKI.APIServerKey.MountPath,
 			"v":                                "2",
-		}, controlPlaneRuntime.Spec.Cluster.APIServer.ExtraArgs),
+		}, controlPlaneRuntime.Spec.UpstreamCluster.APIServer.ExtraArgs),
 	)
 
 	controllerManagerScript := renderRunScript("/usr/local/bin/kube-controller-manager",
@@ -242,7 +413,7 @@ func (r *RuntimeReconciler) setupControlPlaneConfiguration(
 			"service-cluster-ip-range":         net.ServiceCIDR,
 			"use-service-account-credentials":  "true",
 			"v":                                "2",
-		}, controlPlaneRuntime.Spec.Cluster.ControllerManager.ExtraArgs),
+		}, controlPlaneRuntime.Spec.UpstreamCluster.ControllerManager.ExtraArgs),
 	)
 
 	schedulerScript := renderRunScript("/usr/local/bin/kube-scheduler",
@@ -252,12 +423,12 @@ func (r *RuntimeReconciler) setupControlPlaneConfiguration(
 			"bind-address":              "127.0.0.1",
 			"kubeconfig":                layout.Auth.SchedulerConf.MountPath,
 			"leader-elect":              "true",
-		}, controlPlaneRuntime.Spec.Cluster.Scheduler.ExtraArgs),
+		}, controlPlaneRuntime.Spec.UpstreamCluster.Scheduler.ExtraArgs),
 	)
 
 	kineArgs := map[string]string{}
-	if controlPlaneRuntime.Spec.Cluster.Storage.Kine.DataSource != "" {
-		kineArgs["endpoint"] = controlPlaneRuntime.Spec.Cluster.Storage.Kine.DataSource
+	if controlPlaneRuntime.Spec.UpstreamCluster.Storage.Kine.DataSource != "" {
+		kineArgs["endpoint"] = controlPlaneRuntime.Spec.UpstreamCluster.Storage.Kine.DataSource
 	}
 	kineScript := renderRunScript("/usr/local/bin/kine", kineArgs)
 
@@ -383,7 +554,7 @@ func (r *RuntimeReconciler) setupPKIConfiguration(
 		Name:      "kubernetes",
 		O:         "kubernetes",
 		CN:        "kube-apiserver",
-		Hostnames: setupKubeApiServerAltNames(controlPlaneRuntime.Spec.Cluster.APIServer),
+		Hostnames: setupKubeApiServerAltNames(controlPlaneRuntime.Spec.UpstreamCluster.APIServer),
 	}, certificateDurationInHour)
 	if err != nil {
 		return err

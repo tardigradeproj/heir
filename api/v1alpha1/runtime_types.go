@@ -22,8 +22,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
-// ClusterSpec defines how Cluster components are configured
-type ClusterSpec struct {
+// UpstreamCluster defines how UpstreamCluster components are configured
+type UpstreamCluster struct {
 	APIServer         APIServerSpec         `json:"apiServer,omitempty"`
 	ControllerManager ControllerManagerSpec `json:"controllerManager,omitempty"`
 	Scheduler         SchedulerSpec         `json:"scheduler,omitempty"`
@@ -74,11 +74,11 @@ type KineSpec struct {
 
 // RuntimeSpec defines the desired state of Runtime
 type RuntimeSpec struct {
-	ControlPlane ControlPlaneSpec `json:"controlPlane,omitempty"`
-	Cluster      ClusterSpec      `json:"cluster,omitempty"`
+	ControlPlane    ControlPlaneSpec `json:"controlPlane,omitempty"`
+	UpstreamCluster UpstreamCluster  `json:"upstreamCluster,omitempty"`
 }
 
-// ControlPlaneSpec defines how control plane must be created in the Admin Cluster,
+// ControlPlaneSpec defines how control plane must be created in the Admin UpstreamCluster,
 // such as the number of Pod replicas, the Service resource, or the Ingress.
 type ControlPlaneSpec struct {
 	// Samaritano provides details about the distribution to install
@@ -88,6 +88,7 @@ type ControlPlaneSpec struct {
 	Deployment DeploymentSpec `json:"deployment,omitempty"`
 	// Defining the options for an Optional Ingress which will expose API Server of the Tenant Control Plane
 	Ingress *IngressSpec `json:"ingress,omitempty"`
+	Service ServiceSpec  `json:"service,omitempty"`
 }
 type SamaritanoSpec struct {
 	Version string `json:"version"`
