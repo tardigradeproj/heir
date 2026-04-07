@@ -789,6 +789,6 @@ func setupKubeApiServerAltNames(apiserver controlplanev1alpha1.APIServerSpec) []
 		"server.kubernetes.local",
 		"api-server.kubernetes.local",
 	)
-
+	slices.Sort(sans)
 	return slices.Compact(sans)
 }
