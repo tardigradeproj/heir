@@ -1,53 +1,153 @@
-FROM ubuntu:24.04
+FROM ubuntu:22.04
+ARG S6_OVERLAY_VERSION=3.2.2.0
 
-ENV container docker
+RUN apt-get update && apt-get install -y --no-install-recommends curl xz-utils ca-certificates \
+    && S6_ARCH=$(uname -m) \
+    && curl -sL "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-noarch.tar.xz" | tar -C / -Jxpf - \
+    && curl -sL "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-${S6_ARCH}.tar.xz" | tar -C / -Jxpf - \
+    && apt-get remove -y curl xz-utils \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
 
-COPY --chmod=0644 files/etc/systemd/* /etc/systemd/system/
+# Create service AND log-service directories
+RUN mkdir -p \
+    /etc/s6-overlay/s6-rc.d/kine/dependencies.d \
+    /etc/s6-overlay/s6-rc.d/kine-log \
+    /etc/s6-overlay/s6-rc.d/kube-apiserver/dependencies.d \
+    /etc/s6-overlay/s6-rc.d/kube-apiserver-log \
+    /etc/s6-overlay/s6-rc.d/kube-controller-manager/dependencies.d \
+    /etc/s6-overlay/s6-rc.d/kube-controller-manager-log \
+    /etc/s6-overlay/s6-rc.d/kube-scheduler/dependencies.d \
+    /etc/s6-overlay/s6-rc.d/kube-scheduler-log \
+    /etc/s6-overlay/s6-rc.d/user/contents.d
 
-# Don't start any optional services except for the few we need.
-RUN find /etc/systemd/system \
-    /lib/systemd/system \
-    -path '*.wants/*' \
-    -not -name '*journald*' \
-    -not -name '*systemd-tmpfiles*' \
-    -not -name '*systemd-user-sessions*' \
-    -exec rm \{} \;
+# ==========================================
+# Service & Pipeline: kine
+# ==========================================
+COPY <<EOF /etc/s6-overlay/s6-rc.d/kine/type
+longrun
+EOF
+COPY <<EOF /etc/s6-overlay/s6-rc.d/kine/producer-for
+kine-log
+EOF
+COPY --chmod=700 <<EOF /etc/s6-overlay/s6-rc.d/kine/run
+#!/command/execlineb -P
+fdmove -c 2 1
+/usr/local/bin/kine
+EOF
 
-RUN apt-get update && \
-    apt-get install -y \
-    dbus systemd openssh-server net-tools iproute2 iputils-ping curl wget vim-tiny sudo && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+COPY <<EOF /etc/s6-overlay/s6-rc.d/kine-log/type
+longrun
+EOF
+COPY <<EOF /etc/s6-overlay/s6-rc.d/kine-log/consumer-for
+kine
+EOF
+COPY <<EOF /etc/s6-overlay/s6-rc.d/kine-log/pipeline-name
+kine-pipeline
+EOF
+COPY --chmod=700 <<EOF /etc/s6-overlay/s6-rc.d/kine-log/run
+#!/command/execlineb -P
+foreground { s6-mkdir -p /var/log/kine }
+s6-log n3 s5000000 /var/log/kine
+EOF
 
-RUN >/etc/machine-id
-RUN >/var/lib/dbus/machine-id
+# ==========================================
+# Service & Pipeline: kube-apiserver
+# ==========================================
+COPY <<EOF /etc/s6-overlay/s6-rc.d/kube-apiserver/type
+longrun
+EOF
+COPY <<EOF /etc/s6-overlay/s6-rc.d/kube-apiserver/producer-for
+kube-apiserver-log
+EOF
+RUN touch /etc/s6-overlay/s6-rc.d/kube-apiserver/dependencies.d/kine
+COPY --chmod=700 <<EOF /etc/s6-overlay/s6-rc.d/kube-apiserver/run
+#!/command/execlineb -P
+fdmove -c 2 1
+/usr/local/bin/kube-apiserver
+EOF
 
-EXPOSE 22
+COPY <<EOF /etc/s6-overlay/s6-rc.d/kube-apiserver-log/type
+longrun
+EOF
+COPY <<EOF /etc/s6-overlay/s6-rc.d/kube-apiserver-log/consumer-for
+kube-apiserver
+EOF
+COPY <<EOF /etc/s6-overlay/s6-rc.d/kube-apiserver-log/pipeline-name
+kube-apiserver-pipeline
+EOF
+COPY --chmod=700 <<EOF /etc/s6-overlay/s6-rc.d/kube-apiserver-log/run
+#!/command/execlineb -P
+foreground { s6-mkdir -p /var/log/kube-apiserver }
+s6-log n3 s5000000 /var/log/kube-apiserver
+EOF
 
-RUN systemctl set-default multi-user.target
-RUN systemctl mask \
-      dev-hugepages.mount \
-      sys-fs-fuse-connections.mount \
-      systemd-update-utmp.service \
-      systemd-tmpfiles-setup.service \
-      console-getty.service
-RUN systemctl disable \
-      networkd-dispatcher.service
+# ==========================================
+# Service & Pipeline: kube-controller-manager
+# ==========================================
+COPY <<EOF /etc/s6-overlay/s6-rc.d/kube-controller-manager/type
+longrun
+EOF
+COPY <<EOF /etc/s6-overlay/s6-rc.d/kube-controller-manager/producer-for
+kube-controller-manager-log
+EOF
+RUN touch /etc/s6-overlay/s6-rc.d/kube-controller-manager/dependencies.d/kube-apiserver
+COPY --chmod=700 <<EOF /etc/s6-overlay/s6-rc.d/kube-controller-manager/run
+#!/command/execlineb -P
+fdmove -c 2 1
+/usr/local/bin/kube-controller-manager
+EOF
 
-# This container image doesn't have locales installed. Disable forwarding the
-# user locale env variables or we get warnings such as:
-#  bash: warning: setlocale: LC_ALL: cannot change locale
-RUN sed -i -e 's/^AcceptEnv LANG LC_\*$/#AcceptEnv LANG LC_*/' /etc/ssh/sshd_config
+COPY <<EOF /etc/s6-overlay/s6-rc.d/kube-controller-manager-log/type
+longrun
+EOF
+COPY <<EOF /etc/s6-overlay/s6-rc.d/kube-controller-manager-log/consumer-for
+kube-controller-manager
+EOF
+COPY <<EOF /etc/s6-overlay/s6-rc.d/kube-controller-manager-log/pipeline-name
+kube-controller-manager-pipeline
+EOF
+COPY --chmod=700 <<EOF /etc/s6-overlay/s6-rc.d/kube-controller-manager-log/run
+#!/command/execlineb -P
+foreground { s6-mkdir -p /var/log/kube-controller-manager }
+s6-log n3 s5000000 /var/log/kube-controller-manager
+EOF
 
-COPY files/etc/systemd/system/ /etc/systemd/system/
+# ==========================================
+# Service & Pipeline: kube-scheduler
+# ==========================================
+COPY <<EOF /etc/s6-overlay/s6-rc.d/kube-scheduler/type
+longrun
+EOF
+COPY <<EOF /etc/s6-overlay/s6-rc.d/kube-scheduler/producer-for
+kube-scheduler-log
+EOF
+RUN touch /etc/s6-overlay/s6-rc.d/kube-scheduler/dependencies.d/kube-apiserver
+COPY --chmod=700 <<EOF /etc/s6-overlay/s6-rc.d/kube-scheduler/run
+#!/command/execlineb -P
+fdmove -c 2 1
+/usr/local/bin/kube-scheduler
+EOF
 
-RUN systemctl enable \
-      kine.service \
-      kube-apiserver.service \
-      kube-controller-manager.service \
-      kube-scheduler.service
+COPY <<EOF /etc/s6-overlay/s6-rc.d/kube-scheduler-log/type
+longrun
+EOF
+COPY <<EOF /etc/s6-overlay/s6-rc.d/kube-scheduler-log/consumer-for
+kube-scheduler
+EOF
+COPY <<EOF /etc/s6-overlay/s6-rc.d/kube-scheduler-log/pipeline-name
+kube-scheduler-pipeline
+EOF
+COPY --chmod=700 <<EOF /etc/s6-overlay/s6-rc.d/kube-scheduler-log/run
+#!/command/execlineb -P
+foreground { s6-mkdir -p /var/log/kube-scheduler }
+s6-log n3 s5000000 /var/log/kube-scheduler
+EOF
 
-# https://www.freedesktop.org/wiki/Software/systemd/ContainerInterface/
-STOPSIGNAL SIGRTMIN+3
+# ==========================================
+# Final Registration
+# ==========================================
+RUN touch /etc/s6-overlay/s6-rc.d/user/contents.d/kube-controller-manager \
+    && touch /etc/s6-overlay/s6-rc.d/user/contents.d/kube-scheduler
 
-CMD ["/sbin/init"]
+ENTRYPOINT ["/init"]

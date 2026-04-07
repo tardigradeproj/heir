@@ -66,10 +66,10 @@ func Build(options ...Option) error {
 		ctx.buildType = detectBuildType(ctx.kubeParam)
 		if ctx.buildType != "" {
 			log.Infof("Detected build type: %q", ctx.buildType)
+		} else {
+			log.Warn("No build type specified")
+			return fmt.Errorf("no build type specified")
 		}
-
-		log.Warn("No build type specified")
-		return fmt.Errorf("no build type specified")
 
 	}
 
@@ -167,9 +167,9 @@ func (c *buildContext) buildImage(bits kube.Bits) error {
 
 	// copy artifacts in
 	for _, binary := range bits.BinaryPaths() {
-		// TODO: probably should be /usr/local/bin, but the existing kubelet
 		// service file expects /usr/bin/kubelet
-		nodePath := "/usr/local/bin" + path.Base(binary)
+		nodePath := "/usr/local/bin/" + path.Base(binary)
+		log.WithFields(log.Fields{"binary": binary, "node.path": nodePath}).Info("copying binary")
 		if err := exec.Command("docker", "cp", binary, containerID+":"+nodePath).Run(); err != nil {
 			return err
 		}
@@ -193,7 +193,7 @@ func (c *buildContext) buildImage(bits kube.Bits) error {
 	if err = exec.Command(
 		"docker", "commit",
 		// we need to put this back after changing it when running the image
-		"--change", `ENTRYPOINT [ "/usr/local/bin/entrypoint", "/sbin/init" ]`,
+		"--change", `ENTRYPOINT ["/init"]`,
 		// remove proxy settings since they're for the building process
 		// and should not be carried with the built image
 		"--change", `ENV HTTP_PROXY="" HTTPS_PROXY="" NO_PROXY=""`,
@@ -214,7 +214,7 @@ func (c *buildContext) createBuildContainer() (id string, err error) {
 	// this should be good enough: a specific prefix, the current unix time,
 	// and a little random bits in case we have multiple builds simultaneously
 	random := rand.New(rand.NewSource(time.Now().UnixNano())).Int31()
-	id = fmt.Sprintf("kind-build-%d-%d", time.Now().UTC().Unix(), random)
+	id = fmt.Sprintf("tardigrade-build-%d-%d", time.Now().UTC().Unix(), random)
 	runArgs := []string{
 		"-d",                 // make the client exit while the container continues to run
 		"--entrypoint=sleep", // the container should hang forever, so we can exec in it
