@@ -34,6 +34,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	clientcmd "k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -187,6 +188,10 @@ func (r *RuntimeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		log.Error(err, "Failed to reconcile deployment")
 		return ctrl.Result{}, err
 	}
+	if err := r.setupService(ctx, controlPlaneRuntime); err != nil {
+		log.Error(err, "Failed to reconcile service")
+		return ctrl.Result{}, err
+	}
 	return ctrl.Result{}, nil
 }
 
@@ -196,6 +201,72 @@ func (r *RuntimeReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&controlplanev1alpha1.Runtime{}).
 		Named("runtime").
 		Complete(r)
+}
+
+// setupService reconciles the Service that exposes the control-plane pod. It always exposes
+// port 6443 for the kube-apiserver and appends any AdditionalPorts defined in ServiceSpec.
+// When the Service already exists only mutable fields (ports, type, labels, annotations) are
+// updated; ClusterIP is preserved to avoid triggering an immutable-field error.
+func (r *RuntimeReconciler) setupService(
+	ctx context.Context,
+	controlPlaneRuntime *controlplanev1alpha1.Runtime,
+) error {
+	svcSpec := controlPlaneRuntime.Spec.ControlPlane.Service
+
+	selectorLabels := map[string]string{
+		"app.kubernetes.io/name":       controlPlaneRuntime.Name,
+		"app.kubernetes.io/managed-by": "samaritano",
+	}
+
+	ports := []corev1.ServicePort{
+		{
+			Name:       "apiserver",
+			Port:       6443,
+			TargetPort: intstr.FromInt32(6443),
+			Protocol:   corev1.ProtocolTCP,
+		},
+	}
+	for _, p := range svcSpec.AdditionalPorts {
+		ports = append(ports, corev1.ServicePort{
+			Name:        p.Name,
+			Port:        p.Port,
+			TargetPort:  p.TargetPort,
+			Protocol:    p.Protocol,
+			AppProtocol: p.AppProtocol,
+		})
+	}
+
+	desired := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        controlPlaneRuntime.Name,
+			Namespace:   controlPlaneRuntime.Namespace,
+			Labels:      mergeMaps(selectorLabels, svcSpec.AdditionalMetadata.Labels),
+			Annotations: svcSpec.AdditionalMetadata.Annotations,
+		},
+		Spec: corev1.ServiceSpec{
+			Type:     svcSpec.ServiceType,
+			Selector: selectorLabels,
+			Ports:    ports,
+		},
+	}
+	if err := ctrl.SetControllerReference(controlPlaneRuntime, desired, r.Scheme); err != nil {
+		return err
+	}
+
+	existing := &corev1.Service{}
+	err := r.Get(ctx, types.NamespacedName{Name: desired.Name, Namespace: desired.Namespace}, existing)
+	if err != nil && apierrors.IsNotFound(err) {
+		return r.Create(ctx, desired)
+	}
+	if err != nil {
+		return err
+	}
+	// Preserve ClusterIP — Kubernetes rejects updates that change it.
+	desired.Spec.ClusterIP = existing.Spec.ClusterIP
+	existing.Spec = desired.Spec
+	existing.Labels = desired.Labels
+	existing.Annotations = desired.Annotations
+	return r.Update(ctx, existing)
 }
 
 // setupDeployment reconciles the Deployment that runs the control-plane container.

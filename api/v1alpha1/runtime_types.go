@@ -122,6 +122,7 @@ type AdditionalPort struct {
 	//
 	// * Un-prefixed protocol names - reserved for IANA standard service names (as per
 	// RFC-6335 and https://www.iana.org/assignments/service-names).
+	// +optional
 	AppProtocol *string `json:"appProtocol,omitempty"`
 	// The port that will be exposed by this service.
 	Port int32 `json:"port"`
@@ -130,6 +131,7 @@ type AdditionalPort struct {
 	// If this is a string, it will be looked up as a named port in the
 	// target Pod's container ports. If this is not specified, the value
 	// of the 'port' field is used (an identity map).
+	// +optional
 	TargetPort intstr.IntOrString `json:"targetPort"`
 }
 type AdditionalMetadata struct {
