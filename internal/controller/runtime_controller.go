@@ -29,6 +29,7 @@ import (
 	"github.com/tardigrade-runtime/samaritano/pkg/pki"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -132,13 +133,6 @@ type RuntimeReconciler struct {
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the Runtime object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.23.1/pkg/reconcile
 func (r *RuntimeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 	controlPlaneRuntime := &controlplanev1alpha1.Runtime{}
@@ -171,28 +165,56 @@ func (r *RuntimeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 	}
 
+	// Run each reconciliation step; on any error mark the resource Degraded and requeue.
 	if err := r.setupPKIConfiguration(ctx, controlPlaneRuntime); err != nil {
-		log.Error(err, "Failed to reconcile PKI configuration")
-		return ctrl.Result{}, err
+		log.Error(err, "failed to reconcile PKI configuration")
+		return r.setDegraded(ctx, controlPlaneRuntime, "PKISetupFailed", err.Error())
 	}
 	if err := r.setupAuthConfiguration(ctx, controlPlaneRuntime); err != nil {
-		log.Error(err, "Failed to reconcile auth configuration")
-		return ctrl.Result{}, err
+		log.Error(err, "failed to reconcile auth configuration")
+		return r.setDegraded(ctx, controlPlaneRuntime, "AuthFailed", err.Error())
 	}
 	configHash, err := r.setupControlPlaneConfiguration(ctx, controlPlaneRuntime)
 	if err != nil {
-		log.Error(err, "Failed to reconcile control plane configuration")
-		return ctrl.Result{}, err
+		log.Error(err, "failed to reconcile control plane configuration")
+		return r.setDegraded(ctx, controlPlaneRuntime, "ControlPlaneConfigFailed", err.Error())
 	}
 	if err := r.setupDeployment(ctx, controlPlaneRuntime, configHash); err != nil {
-		log.Error(err, "Failed to reconcile deployment")
-		return ctrl.Result{}, err
+		log.Error(err, "failed to reconcile deployment")
+		return r.setDegraded(ctx, controlPlaneRuntime, "DeploymentFailed", err.Error())
 	}
 	if err := r.setupService(ctx, controlPlaneRuntime); err != nil {
-		log.Error(err, "Failed to reconcile service")
+		log.Error(err, "failed to reconcile service")
+		return r.setDegraded(ctx, controlPlaneRuntime, "ServiceFailed", err.Error())
+	}
+	meta.SetStatusCondition(&controlPlaneRuntime.Status.Conditions, metav1.Condition{
+		Type:    typeAvailableRuntime,
+		Status:  metav1.ConditionTrue,
+		Reason:  "Reconciled",
+		Message: "All control-plane resources are in sync",
+	})
+	if err := r.Status().Update(ctx, controlPlaneRuntime); err != nil {
+		log.Error(err, "failed to update runtime status to Available")
 		return ctrl.Result{}, err
 	}
 	return ctrl.Result{}, nil
+}
+
+// setDegraded marks the Runtime as Degraded and returns a non-nil error so
+// controller-runtime requeues with backoff. It is a helper to keep Reconcile readable.
+func (r *RuntimeReconciler) setDegraded(
+	ctx context.Context,
+	obj *controlplanev1alpha1.Runtime,
+	reason, message string,
+) (ctrl.Result, error) {
+	meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
+		Type:    typeAvailableRuntime,
+		Status:  metav1.ConditionFalse,
+		Reason:  reason,
+		Message: message,
+	})
+	_ = r.Status().Update(ctx, obj) // best-effort; original error drives the requeue
+	return ctrl.Result{}, fmt.Errorf("%s: %s", reason, message)
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -263,6 +285,15 @@ func (r *RuntimeReconciler) setupService(
 	}
 	// Preserve ClusterIP — Kubernetes rejects updates that change it.
 	desired.Spec.ClusterIP = existing.Spec.ClusterIP
+
+	equality.Semantic.DeepEqual(desired.Spec, existing.Spec)
+	if existing.Spec.Type == desired.Spec.Type &&
+		equality.Semantic.DeepEqual(existing.Spec.Ports, desired.Spec.Ports) &&
+		equality.Semantic.DeepEqual(existing.Labels, desired.Labels) &&
+		equality.Semantic.DeepEqual(existing.Annotations, desired.Annotations) {
+		return nil
+	}
+
 	existing.Spec = desired.Spec
 	existing.Labels = desired.Labels
 	existing.Annotations = desired.Annotations
@@ -388,6 +419,10 @@ func (r *RuntimeReconciler) setupDeployment(
 	}
 	if err != nil {
 		return err
+	}
+	if equality.Semantic.DeepEqual(existing.Spec, desired.Spec) &&
+		equality.Semantic.DeepEqual(existing.Labels, desired.Labels) {
+		return nil
 	}
 	existing.Spec = desired.Spec
 	existing.Labels = desired.Labels
@@ -541,7 +576,7 @@ func (r *RuntimeReconciler) setupControlPlaneConfiguration(
 		return "", err
 	}
 	if existingHash == desiredHash {
-		log.Info("configmap-config got updated configuration data", "configmap", configMap.Name)
+		log.Info("configmap is up to date; skipping update", "configmap", configMap.Name)
 		return existingHash, nil
 	}
 	configMap.Data = desired
