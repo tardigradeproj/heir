@@ -42,6 +42,77 @@ const (
 	typeAvailableRuntime = "Available"
 )
 
+var layout = newControlPlaneLayout()
+
+// mountEntry binds a Secret/ConfigMap key to its absolute mount path inside the control-plane container.
+type mountEntry struct {
+	// SecretKey is the key name used in the Kubernetes Secret or ConfigMap.
+	SecretKey string
+	// MountPath is the absolute path where the file will be projected inside the container.
+	MountPath string
+}
+
+// pkiLayout describes the certificate and key entries stored in the <name>-pki Secret.
+type pkiLayout struct {
+	CACert             mountEntry
+	CAKey              mountEntry
+	APIServerCert      mountEntry
+	APIServerKey       mountEntry
+	ServiceAccountCert mountEntry
+	ServiceAccountKey  mountEntry
+}
+
+// authLayout describes the kubeconfig entries stored in the <name>-auth Secret.
+type authLayout struct {
+	AdminConf             mountEntry
+	ControllerManagerConf mountEntry
+	SchedulerConf         mountEntry
+}
+
+// configLayout describes the s6-overlay run-script entries stored in the <name>-config ConfigMap.
+// Each entry is the run script for one supervised service.
+type configLayout struct {
+	APIServer         mountEntry
+	ControllerManager mountEntry
+	Scheduler         mountEntry
+	Kine              mountEntry
+}
+
+// controlPlaneLayout groups all Secret/ConfigMap keys and their container mount paths for a
+// control-plane instance. Use newControlPlaneLayout to obtain the canonical set of values.
+type controlPlaneLayout struct {
+	PKI    pkiLayout
+	Auth   authLayout
+	Config configLayout
+}
+
+// newControlPlaneLayout returns the fixed layout that describes every file that must be
+// projected into the control-plane container: PKI certificates, kubeconfigs, and s6-overlay
+// service scripts.
+func newControlPlaneLayout() controlPlaneLayout {
+	return controlPlaneLayout{
+		PKI: pkiLayout{
+			CACert:             mountEntry{SecretKey: "ca.crt", MountPath: "/etc/kubernetes/pki/ca.crt"},
+			CAKey:              mountEntry{SecretKey: "ca.key", MountPath: "/etc/kubernetes/pki/ca.key"},
+			APIServerCert:      mountEntry{SecretKey: "apiserver.crt", MountPath: "/etc/kubernetes/pki/kube-apiserver.crt"},
+			APIServerKey:       mountEntry{SecretKey: "apiserver.key", MountPath: "/etc/kubernetes/pki/kube-apiserver.key"},
+			ServiceAccountCert: mountEntry{SecretKey: "sa.crt", MountPath: "/etc/kubernetes/pki/service-accounts.crt"},
+			ServiceAccountKey:  mountEntry{SecretKey: "sa.key", MountPath: "/etc/kubernetes/pki/service-accounts.key"},
+		},
+		Auth: authLayout{
+			AdminConf:             mountEntry{SecretKey: "admin.conf", MountPath: "/etc/kubernetes/admin.conf"},
+			ControllerManagerConf: mountEntry{SecretKey: "controller-manager.conf", MountPath: "/etc/kubernetes/kube-controller-manager.conf"},
+			SchedulerConf:         mountEntry{SecretKey: "scheduler.conf", MountPath: "/etc/kubernetes/kube-scheduler.conf"},
+		},
+		Config: configLayout{
+			APIServer:         mountEntry{SecretKey: "kube-apiserver", MountPath: "/etc/s6-overlay/s6-rc.d/kube-apiserver/run"},
+			ControllerManager: mountEntry{SecretKey: "kube-controller-manager", MountPath: "/etc/s6-overlay/s6-rc.d/kube-controller-manager/run"},
+			Scheduler:         mountEntry{SecretKey: "kube-scheduler", MountPath: "/etc/s6-overlay/s6-rc.d/kube-scheduler/run"},
+			Kine:              mountEntry{SecretKey: "kine", MountPath: "/etc/s6-overlay/s6-rc.d/kine/run"},
+		},
+	}
+}
+
 // RuntimeReconciler reconciles a Runtime object
 type RuntimeReconciler struct {
 	client.Client
@@ -134,12 +205,12 @@ func (r *RuntimeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 		pkiSecret, err := r.createPKISecret(controlPlaneRuntime,
 			map[string][]byte{
-				"ca.crt":        ca.Cert,
-				"ca.key":        ca.Key,
-				"apiserver.crt": apiserverCert.Cert,
-				"apiserver.key": apiserverCert.Key,
-				"sa.crt":        serviceAccountCert.Cert,
-				"sa.key":        serviceAccountCert.Key,
+				layout.PKI.CACert.SecretKey:             ca.Cert,
+				layout.PKI.CAKey.SecretKey:              ca.Key,
+				layout.PKI.APIServerCert.SecretKey:      apiserverCert.Cert,
+				layout.PKI.APIServerKey.SecretKey:       apiserverCert.Key,
+				layout.PKI.ServiceAccountCert.SecretKey: serviceAccountCert.Cert,
+				layout.PKI.ServiceAccountKey.SecretKey:  serviceAccountCert.Key,
 			},
 		)
 		if err != nil {
@@ -199,9 +270,9 @@ func (r *RuntimeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			return ctrl.Result{}, err
 		}
 		authSecret, err := r.createAuthSecret(controlPlaneRuntime, map[string][]byte{
-			"admin.conf":              adminConf,
-			"controller-manager.conf": controllerManagerConf,
-			"scheduler.conf":          schedulerConf,
+			layout.Auth.AdminConf.SecretKey:             adminConf,
+			layout.Auth.ControllerManagerConf.SecretKey: controllerManagerConf,
+			layout.Auth.SchedulerConf.SecretKey:         schedulerConf,
 		})
 		if err != nil {
 			log.Error(err, "Failed to define new secret resource for auth")
