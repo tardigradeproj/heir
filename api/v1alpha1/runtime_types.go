@@ -136,6 +136,11 @@ type AdditionalMetadata struct {
 	Annotations map[string]string `json:"annotations,omitempty"`
 }
 type DeploymentSpec struct {
+	AdditionalMetadata AdditionalMetadata `json:"additionalMetadata,omitempty"`
+	// RegistrySettings allows to override the default images for the given Runtime instance.
+	// It could be used to point to a different container registry rather than the public one.
+	// +optional
+	RegistrySettings RegistrySettings `json:"registrySettings,omitempty"`
 	//+kubebuilder:default=2
 	// +kubebuilder:validation:Minimum=1
 	Replicas *int32 `json:"replicas,omitempty"`
@@ -153,6 +158,11 @@ type DeploymentSpec struct {
 	//+kubebuilder:default="default"
 	// ServiceAccountName allows to specify the service account to be mounted to the pods of the Control plane deployment
 	ServiceAccountName string `json:"serviceAccountName,omitempty"`
+}
+type RegistrySettings struct {
+	Registry string `json:"registry,omitempty"`
+	// +default=tardigrade/samaritano
+	Image string `json:"image,omitempty"`
 }
 
 // RuntimeStatus defines the observed state of Runtime.

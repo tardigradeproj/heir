@@ -18,8 +18,12 @@ package controller
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"slices"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/tardigrade-runtime/samaritano/pkg/pki"
@@ -43,6 +47,7 @@ const (
 )
 
 var layout = newControlPlaneLayout()
+var certificateDurationInHour = time.Duration(8760) * time.Hour
 
 // mountEntry binds a Secret/ConfigMap key to its absolute mount path inside the control-plane container.
 type mountEntry struct {
@@ -164,129 +169,19 @@ func (r *RuntimeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 	}
 
-	// PKI - check if there's secret name <runtime-name>-pki. If not create a single secret for all certificates.
-	// The process starts by creating root CA (private and public keys) and then certificates for kube-apiserver, kube controlle-manager,
-	// kube scheduler and serviceaccount and place all of them under <runtime-name>-pki secret.
-	pkiSecret := &corev1.Secret{}
-	err = r.Get(ctx, types.NamespacedName{Name: fmt.Sprintf("%s-pki", controlPlaneRuntime.Name), Namespace: controlPlaneRuntime.Namespace}, pkiSecret)
-	if err != nil && apierrors.IsNotFound(err) {
-		oneYearInHour := time.Duration(8760) * time.Hour
-		// generate CA
-		ca, err := pki.GenerateSelfSignedCert()
-		if err != nil {
-			log.Error(err, "Failed to generate self-signed ca")
-			return ctrl.Result{}, err
-		}
-		// apiserver
-		apiserverCert, err := pki.SignCSR(*ca,
-			pki.CSR{
-				Name:      "kubernetes",
-				O:         "kubernetes",
-				CN:        "kube-apiserver",
-				Hostnames: setupKubeApiServerAltNames(controlPlaneRuntime.Spec.Cluster.APIServer),
-			},
-			oneYearInHour)
-		if err != nil {
-			log.Error(err, "Failed to generate kube-apiserver certificate")
-			return ctrl.Result{}, err
-		}
-		// --service-account-key-file
-		serviceAccountCert, err := pki.SignCSR(*ca,
-			pki.CSR{
-				Name:      "",
-				O:         "",
-				CN:        "service-accounts",
-				Hostnames: []string{},
-			},
-			oneYearInHour)
-		if err != nil {
-			log.Error(err, "Failed to generate service account certificate")
-			return ctrl.Result{}, err
-		}
-		pkiSecret, err := r.createPKISecret(controlPlaneRuntime,
-			map[string][]byte{
-				layout.PKI.CACert.SecretKey:             ca.Cert,
-				layout.PKI.CAKey.SecretKey:              ca.Key,
-				layout.PKI.APIServerCert.SecretKey:      apiserverCert.Cert,
-				layout.PKI.APIServerKey.SecretKey:       apiserverCert.Key,
-				layout.PKI.ServiceAccountCert.SecretKey: serviceAccountCert.Cert,
-				layout.PKI.ServiceAccountKey.SecretKey:  serviceAccountCert.Key,
-			},
-		)
-		if err != nil {
-			log.Error(err, "failed to define new secret resource for PKI")
-			return ctrl.Result{}, err
-		}
-		if err = r.Create(ctx, pkiSecret); err != nil {
-			log.Error(err, "Failed to create secret resource for PKI")
-			return ctrl.Result{}, err
-		}
-		// Generate kubeconfigs for admin, kube-controller-manager, and kube-scheduler, storing them
-		// in a single Secret named <resourceName>-auth. Each kubeconfig is signed by the CA created above
-		adminCert, err := pki.SignCSR(*ca,
-			pki.CSR{
-				CN:        "kubernetes-admin",
-				O:         "system:masters",
-				Hostnames: []string{},
-			}, oneYearInHour)
-		if err != nil {
-			log.Error(err, "Failed to generate admin certificate")
-			return ctrl.Result{}, err
-		}
-		controllerManagerCert, err := pki.SignCSR(*ca,
-			pki.CSR{
-				CN:        "system:kube-controller-manager",
-				O:         "system:kube-controller-manager",
-				Hostnames: []string{"kube-controller-manager", "127.0.0.1"},
-			}, oneYearInHour)
-		if err != nil {
-			log.Error(err, "Failed to generate controller-manager certificate")
-			return ctrl.Result{}, err
-		}
-		schedulerCert, err := pki.SignCSR(*ca,
-			pki.CSR{
-				CN:        "system:kube-scheduler",
-				O:         "system:system:kube-scheduler",
-				Hostnames: []string{"127.0.0.1", "kube-scheduler"},
-			},
-			oneYearInHour)
-		if err != nil {
-			log.Error(err, "Failed to generate scheduler certificate")
-			return ctrl.Result{}, err
-		}
-		adminConf, err := generateKubeconfig("kubernetes-admin", ca.Cert, adminCert)
-		if err != nil {
-			log.Error(err, "Failed to generate admin kubeconfig")
-			return ctrl.Result{}, err
-		}
-		controllerManagerConf, err := generateKubeconfig("system:kube-controller-manager", ca.Cert, controllerManagerCert)
-		if err != nil {
-			log.Error(err, "Failed to generate controller-manager kubeconfig")
-			return ctrl.Result{}, err
-		}
-		schedulerConf, err := generateKubeconfig("system:kube-scheduler", ca.Cert, schedulerCert)
-		if err != nil {
-			log.Error(err, "Failed to generate scheduler kubeconfig")
-			return ctrl.Result{}, err
-		}
-		authSecret, err := r.createAuthSecret(controlPlaneRuntime, map[string][]byte{
-			layout.Auth.AdminConf.SecretKey:             adminConf,
-			layout.Auth.ControllerManagerConf.SecretKey: controllerManagerConf,
-			layout.Auth.SchedulerConf.SecretKey:         schedulerConf,
-		})
-		if err != nil {
-			log.Error(err, "Failed to define new secret resource for auth")
-			return ctrl.Result{}, err
-		}
-		if err = r.Create(ctx, authSecret); err != nil {
-			log.Error(err, "Failed to create secret resource for auth")
-			return ctrl.Result{}, err
-		}
-	}
-	if err != nil {
-		log.Error(err, "Failed to get PKI secret")
+	if err := r.setupPKIConfiguration(ctx, controlPlaneRuntime); err != nil {
+		log.Error(err, "Failed to reconcile PKI configuration")
 		return ctrl.Result{}, err
 	}
+	if err := r.setupAuthConfiguration(ctx, controlPlaneRuntime); err != nil {
+		log.Error(err, "Failed to reconcile auth configuration")
+		return ctrl.Result{}, err
+	}
+	if configHash, err := r.setupControlPlaneConfiguration(ctx, controlPlaneRuntime); err != nil {
+		log.Error(err, "Failed to reconcile control plane configuration")
+		return ctrl.Result{}, err
+	}
+
 	return ctrl.Result{}, nil
 }
 
@@ -298,14 +193,223 @@ func (r *RuntimeReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-// setupControlPlaneConfiguration is responsible for handling the reconciliation loop of the configmap that contains s6-overlay configurations.
-// ExtraArgs has no priority over CRD provided by users. The configmap name is <resourceName>-config. It should contain configurations for kube-apiserver,
-// kube-scheduler and kube controller manager
+// setupControlPlaneConfiguration reconciles the <resourceName>-config ConfigMap that holds the
+// s6-overlay run scripts for every supervised process. It creates the ConfigMap when absent and
+// updates it only when the SHA-256 hash of the newly generated data differs from the stored one.
+// ExtraArgs values always win over the built-in defaults; no flag is emitted twice.
+// Returns the hex-encoded SHA-256 hash of the current ConfigMap data.
+func (r *RuntimeReconciler) setupControlPlaneConfiguration(
+	ctx context.Context,
+	controlPlaneRuntime *controlplanev1alpha1.Runtime,
+) (string, error) {
+	log := logf.FromContext(ctx)
+	net := controlPlaneRuntime.Spec.Cluster.Network
+	apiserverScript := renderRunScript("/usr/local/bin/kube-apiserver",
+		mergeArgs(map[string]string{
+			"allow-privileged":                 "true",
+			"authorization-mode":               "Node,RBAC",
+			"bind-address":                     "0.0.0.0",
+			"client-ca-file":                   layout.PKI.CACert.MountPath,
+			"enable-admission-plugins":         "NamespaceLifecycle,NodeRestriction,LimitRanger,ServiceAccount,DefaultStorageClass,ResourceQuota",
+			"etcd-servers":                     "http://127.0.0.1:2379",
+			"event-ttl":                        "1h",
+			"kubelet-certificate-authority":    layout.PKI.CACert.MountPath,
+			"kubelet-client-certificate":       layout.PKI.APIServerCert.MountPath,
+			"kubelet-client-key":               layout.PKI.APIServerKey.MountPath,
+			"runtime-config":                   "api/all=true",
+			"service-account-issuer":           "https://kubernetes.default.svc.cluster.local",
+			"service-account-key-file":         layout.PKI.ServiceAccountCert.MountPath,
+			"service-account-signing-key-file": layout.PKI.ServiceAccountKey.MountPath,
+			"service-cluster-ip-range":         net.ServiceCIDR,
+			"service-node-port-range":          "30000-32767",
+			"tls-cert-file":                    layout.PKI.APIServerCert.MountPath,
+			"tls-private-key-file":             layout.PKI.APIServerKey.MountPath,
+			"v":                                "2",
+		}, controlPlaneRuntime.Spec.Cluster.APIServer.ExtraArgs),
+	)
 
-func (r *RuntimeReconciler) setupControlPlaneConfiguration(controlPlaneRuntime *controlplanev1alpha1.Runtime) error {
+	controllerManagerScript := renderRunScript("/usr/local/bin/kube-controller-manager",
+		mergeArgs(map[string]string{
+			"allocate-node-cidrs":              "true",
+			"bind-address":                     "0.0.0.0",
+			"cluster-cidr":                     net.PodCIDR,
+			"cluster-name":                     "tardigrade",
+			"cluster-signing-cert-file":        layout.PKI.CACert.MountPath,
+			"cluster-signing-key-file":         layout.PKI.CAKey.MountPath,
+			"kubeconfig":                       layout.Auth.ControllerManagerConf.MountPath,
+			"root-ca-file":                     layout.PKI.CACert.MountPath,
+			"service-account-private-key-file": layout.PKI.ServiceAccountKey.MountPath,
+			"service-cluster-ip-range":         net.ServiceCIDR,
+			"use-service-account-credentials":  "true",
+			"v":                                "2",
+		}, controlPlaneRuntime.Spec.Cluster.ControllerManager.ExtraArgs),
+	)
 
-	return nil
+	schedulerScript := renderRunScript("/usr/local/bin/kube-scheduler",
+		mergeArgs(map[string]string{
+			"authentication-kubeconfig": layout.Auth.SchedulerConf.MountPath,
+			"authorization-kubeconfig":  layout.Auth.SchedulerConf.MountPath,
+			"bind-address":              "127.0.0.1",
+			"kubeconfig":                layout.Auth.SchedulerConf.MountPath,
+			"leader-elect":              "true",
+		}, controlPlaneRuntime.Spec.Cluster.Scheduler.ExtraArgs),
+	)
+
+	kineArgs := map[string]string{}
+	if controlPlaneRuntime.Spec.Cluster.Storage.Kine.DataSource != "" {
+		kineArgs["endpoint"] = controlPlaneRuntime.Spec.Cluster.Storage.Kine.DataSource
+	}
+	kineScript := renderRunScript("/usr/local/bin/kine", kineArgs)
+
+	desired := map[string]string{
+		layout.Config.APIServer.SecretKey:         apiserverScript,
+		layout.Config.ControllerManager.SecretKey: controllerManagerScript,
+		layout.Config.Scheduler.SecretKey:         schedulerScript,
+		layout.Config.Kine.SecretKey:              kineScript,
+	}
+
+	desiredHash, err := hashConfigData(desired)
+	if err != nil {
+		return "", err
+	}
+
+	configMap := &corev1.ConfigMap{}
+	err = r.Get(ctx, types.NamespacedName{
+		Name:      fmt.Sprintf("%s-config", controlPlaneRuntime.Name),
+		Namespace: controlPlaneRuntime.Namespace,
+	}, configMap)
+	if err != nil && apierrors.IsNotFound(err) {
+		configMap = &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      fmt.Sprintf("%s-config", controlPlaneRuntime.Name),
+				Namespace: controlPlaneRuntime.Namespace,
+			},
+			Data: desired,
+		}
+		if err := ctrl.SetControllerReference(controlPlaneRuntime, configMap, r.Scheme); err != nil {
+			return "", err
+		}
+		return desiredHash, r.Create(ctx, configMap)
+	}
+	if err != nil {
+		return "", err
+	}
+	existingHash, err := hashConfigData(configMap.Data)
+	if err != nil {
+		return "", err
+	}
+	if existingHash == desiredHash {
+		log.Info("configmap-config got updated configuration data", "configmap", configMap.Name)
+		return existingHash, nil
+	}
+	configMap.Data = desired
+	return desiredHash, r.Update(ctx, configMap)
 }
+
+// hashConfigData returns the hex-encoded SHA-256 digest of a ConfigMap data map.
+// encoding/json marshals map keys in sorted order, ensuring a deterministic digest.
+func hashConfigData(data map[string]string) (string, error) {
+	b, err := json.Marshal(data)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(b)
+	return fmt.Sprintf("%x", sum), nil
+}
+
+// mergeArgs returns a new map with all entries from defaults overridden by any matching key in extra.
+func mergeArgs(defaults, extra map[string]string) map[string]string {
+	merged := make(map[string]string, len(defaults)+len(extra))
+	for k, v := range defaults {
+		merged[k] = v
+	}
+	for k, v := range extra {
+		merged[k] = v
+	}
+	return merged
+}
+
+// renderRunScript produces an s6-overlay execlineb run script for the given binary and args.
+// Args are emitted in sorted order for deterministic output.
+func renderRunScript(binary string, args map[string]string) string {
+	var sb strings.Builder
+	sb.WriteString("#!/command/execlineb -P\n")
+	sb.WriteString("fdmove -c 2 1\n")
+	if len(args) == 0 {
+		sb.WriteString(binary)
+		return sb.String()
+	}
+	keys := make([]string, 0, len(args))
+	for k := range args {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	sb.WriteString(binary + " \\\n")
+	for i, k := range keys {
+		if i < len(keys)-1 {
+			fmt.Fprintf(&sb, "  --%s=%s \\\n", k, args[k])
+		} else {
+			fmt.Fprintf(&sb, "  --%s=%s", k, args[k])
+		}
+	}
+	return sb.String()
+}
+
+// setupPKIConfiguration reconciles the <resourceName>-pki Secret that holds the root CA and all
+// component certificates. If the Secret already exists it is left untouched. When absent, a new
+// self-signed CA is generated and used to sign the kube-apiserver and service-account certificates
+// before the Secret is created.
+func (r *RuntimeReconciler) setupPKIConfiguration(
+	ctx context.Context,
+	controlPlaneRuntime *controlplanev1alpha1.Runtime,
+) error {
+	pkiSecret := &corev1.Secret{}
+	err := r.Get(ctx, types.NamespacedName{
+		Name:      fmt.Sprintf("%s-pki", controlPlaneRuntime.Name),
+		Namespace: controlPlaneRuntime.Namespace,
+	}, pkiSecret)
+	if err == nil {
+		return nil
+	}
+	if !apierrors.IsNotFound(err) {
+		return err
+	}
+
+	ca, err := pki.GenerateSelfSignedCert()
+	if err != nil {
+		return err
+	}
+	apiserverCert, err := pki.SignCSR(*ca, pki.CSR{
+		Name:      "kubernetes",
+		O:         "kubernetes",
+		CN:        "kube-apiserver",
+		Hostnames: setupKubeApiServerAltNames(controlPlaneRuntime.Spec.Cluster.APIServer),
+	}, certificateDurationInHour)
+	if err != nil {
+		return err
+	}
+	serviceAccountCert, err := pki.SignCSR(*ca, pki.CSR{
+		CN:        "service-accounts",
+		Hostnames: []string{},
+	}, certificateDurationInHour)
+	if err != nil {
+		return err
+	}
+
+	secret, err := r.createPKISecret(controlPlaneRuntime, map[string][]byte{
+		layout.PKI.CACert.SecretKey:             ca.Cert,
+		layout.PKI.CAKey.SecretKey:              ca.Key,
+		layout.PKI.APIServerCert.SecretKey:      apiserverCert.Cert,
+		layout.PKI.APIServerKey.SecretKey:       apiserverCert.Key,
+		layout.PKI.ServiceAccountCert.SecretKey: serviceAccountCert.Cert,
+		layout.PKI.ServiceAccountKey.SecretKey:  serviceAccountCert.Key,
+	})
+	if err != nil {
+		return err
+	}
+	return r.Create(ctx, secret)
+}
+
 func (r *RuntimeReconciler) createPKISecret(
 	controlPlaneRuntime *controlplanev1alpha1.Runtime,
 	data map[string][]byte,
@@ -321,6 +425,79 @@ func (r *RuntimeReconciler) createPKISecret(
 		return nil, err
 	}
 	return pkiSecret, nil
+}
+
+// setupAuthConfiguration reconciles the <resourceName>-auth Secret that holds kubeconfigs for
+// admin, kube-controller-manager, and kube-scheduler. If the Secret already exists it is left
+// untouched — certificates are long-lived and should not be rotated on every loop. When absent,
+// the CA is read from the <resourceName>-pki Secret and used to sign a fresh certificate for
+// each component before the Secret is created.
+func (r *RuntimeReconciler) setupAuthConfiguration(
+	ctx context.Context,
+	controlPlaneRuntime *controlplanev1alpha1.Runtime,
+) error {
+	log := logf.FromContext(ctx)
+	authSecret := &corev1.Secret{}
+	err := r.Get(ctx, types.NamespacedName{
+		Name:      fmt.Sprintf("%s-auth", controlPlaneRuntime.Name),
+		Namespace: controlPlaneRuntime.Namespace,
+	}, authSecret)
+	if err == nil {
+		return nil
+	}
+	if !apierrors.IsNotFound(err) {
+		log.Error(err, "failed to get retrieve auth secret", "name", controlPlaneRuntime.Name)
+		return err
+	}
+
+	// Auth secret is absent — read the CA from the PKI secret.
+	pkiSecret := &corev1.Secret{}
+	if err := r.Get(ctx, types.NamespacedName{
+		Name:      fmt.Sprintf("%s-pki", controlPlaneRuntime.Name),
+		Namespace: controlPlaneRuntime.Namespace,
+	}, pkiSecret); err != nil {
+		return err
+	}
+	ca := pki.Certificate{
+		Cert: pkiSecret.Data[layout.PKI.CACert.SecretKey],
+		Key:  pkiSecret.Data[layout.PKI.CAKey.SecretKey],
+	}
+
+	adminCert, err := pki.SignCSR(ca, pki.CSR{CN: "kubernetes-admin", O: "system:masters", Hostnames: []string{}}, certificateDurationInHour)
+	if err != nil {
+		return err
+	}
+	controllerManagerCert, err := pki.SignCSR(ca, pki.CSR{CN: "system:kube-controller-manager", O: "system:kube-controller-manager", Hostnames: []string{}}, certificateDurationInHour)
+	if err != nil {
+		return err
+	}
+	schedulerCert, err := pki.SignCSR(ca, pki.CSR{CN: "system:kube-scheduler", O: "system:kube-scheduler", Hostnames: []string{}}, certificateDurationInHour)
+	if err != nil {
+		return err
+	}
+
+	adminConf, err := generateKubeconfig("kubernetes-admin", ca.Cert, adminCert)
+	if err != nil {
+		return err
+	}
+	controllerManagerConf, err := generateKubeconfig("system:kube-controller-manager", ca.Cert, controllerManagerCert)
+	if err != nil {
+		return err
+	}
+	schedulerConf, err := generateKubeconfig("system:kube-scheduler", ca.Cert, schedulerCert)
+	if err != nil {
+		return err
+	}
+
+	secret, err := r.createAuthSecret(controlPlaneRuntime, map[string][]byte{
+		layout.Auth.AdminConf.SecretKey:             adminConf,
+		layout.Auth.ControllerManagerConf.SecretKey: controllerManagerConf,
+		layout.Auth.SchedulerConf.SecretKey:         schedulerConf,
+	})
+	if err != nil {
+		return err
+	}
+	return r.Create(ctx, secret)
 }
 
 func (r *RuntimeReconciler) createAuthSecret(
