@@ -164,7 +164,7 @@ type DeploymentSpec struct {
 }
 type RegistrySettings struct {
 	Registry string `json:"registry,omitempty"`
-	// +default=tardigrade/samaritano
+	// +kubebuilder:default="tardigrade/samaritano"
 	Image string `json:"image,omitempty"`
 }
 
