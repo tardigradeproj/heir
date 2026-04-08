@@ -170,15 +170,7 @@ type RegistrySettings struct {
 
 // RuntimeStatus defines the observed state of Runtime.
 type RuntimeStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
 
-	// For Kubernetes API conventions, see:
-	// https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md#typical-status-properties
-
-	// conditions represent the current state of the Runtime resource.
-	// Each condition has a unique type and reflects the status of a specific aspect of the resource.
-	//
 	// Standard condition types include:
 	// - "Available": the resource is fully functional
 	// - "Progressing": the resource is being created or updated
@@ -189,6 +181,8 @@ type RuntimeStatus struct {
 	// +listMapKey=type
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+	// CertificatesExpireAt is the time when the PKI certificates stored in the -pki secret
+	CertificatesExpireAt *metav1.Time `json:"certificatesExpireAt,omitempty"`
 }
 
 // +kubebuilder:object:root=true
