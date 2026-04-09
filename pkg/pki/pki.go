@@ -56,8 +56,8 @@ func GenerateSelfSignedCert() (*Certificate, error) {
 }
 
 func SignCSR(ca Certificate, request CSR, expire time.Duration) (*Certificate, error) {
-	caCertPEM := ca.Key
-	caKeyPEM := ca.Cert
+	caCertPEM := ca.Cert
+	caKeyPEM := ca.Key
 	req := &csr.CertificateRequest{
 		CN: request.CN,
 		Names: []csr.Name{

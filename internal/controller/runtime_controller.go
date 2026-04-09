@@ -113,10 +113,10 @@ func newControlPlaneLayout() controlPlaneLayout {
 			SchedulerConf:         mountEntry{SecretKey: "scheduler.conf", MountPath: "/etc/kubernetes/kube-scheduler.conf"},
 		},
 		Config: configLayout{
-			APIServer:         mountEntry{SecretKey: "kube-apiserver", MountPath: "/etc/s6-overlay/s6-rc.d/kube-apiserver/run"},
-			ControllerManager: mountEntry{SecretKey: "kube-controller-manager", MountPath: "/etc/s6-overlay/s6-rc.d/kube-controller-manager/run"},
-			Scheduler:         mountEntry{SecretKey: "kube-scheduler", MountPath: "/etc/s6-overlay/s6-rc.d/kube-scheduler/run"},
-			Kine:              mountEntry{SecretKey: "kine", MountPath: "/etc/s6-overlay/s6-rc.d/kine/run"},
+			APIServer:         mountEntry{SecretKey: "kube-apiserver", MountPath: "/etc/kubernetes/manifests/kube-apiserver.sh"},
+			ControllerManager: mountEntry{SecretKey: "kube-controller-manager", MountPath: "/etc/kubernetes/manifests/kube-controller-manager.sh"},
+			Scheduler:         mountEntry{SecretKey: "kube-scheduler", MountPath: "/etc/kubernetes/manifests/kube-scheduler.sh"},
+			Kine:              mountEntry{SecretKey: "kine", MountPath: "/etc/kubernetes/manifests/kine.sh"},
 		},
 	}
 }
@@ -610,14 +610,13 @@ func mergeArgs(defaults, extra map[string]string) map[string]string {
 	return merged
 }
 
-// renderRunScript produces an s6-overlay execlineb run script for the given binary and args.
+// renderRunScript produces a shell script for the given binary and args.
 // Args are emitted in sorted order for deterministic output.
 func renderRunScript(binary string, args map[string]string) string {
 	var sb strings.Builder
-	sb.WriteString("#!/command/execlineb -P\n")
-	sb.WriteString("fdmove -c 2 1\n")
+	sb.WriteString("#!/bin/sh\n")
 	if len(args) == 0 {
-		sb.WriteString(binary)
+		sb.WriteString("exec " + binary)
 		return sb.String()
 	}
 	keys := make([]string, 0, len(args))
@@ -625,7 +624,7 @@ func renderRunScript(binary string, args map[string]string) string {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	sb.WriteString(binary + " \\\n")
+	sb.WriteString("exec " + binary + " \\\n")
 	for i, k := range keys {
 		if i < len(keys)-1 {
 			fmt.Fprintf(&sb, "  --%s=%s \\\n", k, args[k])
@@ -828,6 +827,9 @@ func setupKubeApiServerAltNames(apiserver controlplanev1alpha1.APIServerSpec) []
 		"server.kubernetes.local",
 		"api-server.kubernetes.local",
 	)
+	sans = slices.DeleteFunc(sans, func(s string) bool {
+		return s == ""
+	})
 	slices.Sort(sans)
 	return slices.Compact(sans)
 }

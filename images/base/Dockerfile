@@ -9,8 +9,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl xz-utils c
     && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
 
-# Create service AND log-service directories
+# Create service AND log-service directories, plus the manifests directory where
+# the <runtime>-config ConfigMap entries will be mounted at runtime.
 RUN mkdir -p \
+    /etc/kubernetes/manifests \
     /etc/s6-overlay/s6-rc.d/kine/dependencies.d \
     /etc/s6-overlay/s6-rc.d/kine-log \
     /etc/s6-overlay/s6-rc.d/kube-apiserver/dependencies.d \
@@ -33,7 +35,7 @@ EOF
 COPY --chmod=700 <<EOF /etc/s6-overlay/s6-rc.d/kine/run
 #!/command/execlineb -P
 fdmove -c 2 1
-/usr/local/bin/kine
+/etc/kubernetes/manifests/kine.sh
 EOF
 
 COPY <<EOF /etc/s6-overlay/s6-rc.d/kine-log/type
@@ -64,7 +66,7 @@ RUN touch /etc/s6-overlay/s6-rc.d/kube-apiserver/dependencies.d/kine
 COPY --chmod=700 <<EOF /etc/s6-overlay/s6-rc.d/kube-apiserver/run
 #!/command/execlineb -P
 fdmove -c 2 1
-/usr/local/bin/kube-apiserver
+/etc/kubernetes/manifests/kube-apiserver.sh
 EOF
 
 COPY <<EOF /etc/s6-overlay/s6-rc.d/kube-apiserver-log/type
@@ -95,7 +97,7 @@ RUN touch /etc/s6-overlay/s6-rc.d/kube-controller-manager/dependencies.d/kube-ap
 COPY --chmod=700 <<EOF /etc/s6-overlay/s6-rc.d/kube-controller-manager/run
 #!/command/execlineb -P
 fdmove -c 2 1
-/usr/local/bin/kube-controller-manager
+/etc/kubernetes/manifests/kube-controller-manager.sh
 EOF
 
 COPY <<EOF /etc/s6-overlay/s6-rc.d/kube-controller-manager-log/type
@@ -126,7 +128,7 @@ RUN touch /etc/s6-overlay/s6-rc.d/kube-scheduler/dependencies.d/kube-apiserver
 COPY --chmod=700 <<EOF /etc/s6-overlay/s6-rc.d/kube-scheduler/run
 #!/command/execlineb -P
 fdmove -c 2 1
-/usr/local/bin/kube-scheduler
+/etc/kubernetes/manifests/kube-scheduler.sh
 EOF
 
 COPY <<EOF /etc/s6-overlay/s6-rc.d/kube-scheduler-log/type
