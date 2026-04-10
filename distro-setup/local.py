@@ -49,7 +49,7 @@ def start_local_container() -> str:
     Returns the container name so it can be passed to copy_to_container.
     """
     container_name = "local-test"
-    image = "samaritano-base:v1"
+    image = "samaritano-base:v3"
 
     result = subprocess.run(
         ["docker", "ps", "-a", "--filter", f"name=^{container_name}$", "--format", "{{.Names}}"],
@@ -64,11 +64,10 @@ def start_local_container() -> str:
     cmd = [
         "docker", "run", "-d",
         "--name", container_name,
-        "-v", f"{services_dir}/kine.service:/etc/s6-overlay/s6-rc.d/kine/run",
-        "-v", f"{services_dir}/kube-apiserver.service:/etc/s6-overlay/s6-rc.d/kube-apiserver/run",
-        "-v", f"{services_dir}/kube-controller-manager.service:/etc/s6-overlay/s6-rc.d/kube-controller-manager/run",
-        "-v", f"{services_dir}/kube-scheduler.service:/etc/s6-overlay/s6-rc.d/kube-scheduler/run",
-        "-v", f"{services_dir}/kube-scheduler.yaml:/etc/kubernetes/kube-scheduler.yaml",
+        "-v", f"{services_dir}/kine.sh:/etc/kubernetes/manifests/kine.sh",
+        "-v", f"{services_dir}/kube-apiserver.sh:/etc/kubernetes/manifests/kube-apiserver.sh",
+        "-v", f"{services_dir}/kube-controller-manager.sh:/etc/kubernetes/manifests/kube-controller-manager.sh",
+        "-v", f"{services_dir}/kube-scheduler.sh:/etc/kubernetes/manifests/kube-scheduler.sh",
         image,
     ]
     print(f"Running: {' '.join(cmd)}")

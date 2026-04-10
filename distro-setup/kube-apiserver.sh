@@ -1,9 +1,10 @@
-#!/command/execlineb -P
-fdmove -c 2 1
-/usr/local/bin/kube-apiserver \
+#!/bin/sh
+
+exec /usr/local/bin/kube-apiserver \
   --allow-privileged=true \
   --authorization-mode=Node,RBAC \
   --bind-address=0.0.0.0 \
+  --enable-bootstrap-token-auth=true \
   --client-ca-file=/etc/kubernetes/pki/ca.crt \
   --enable-admission-plugins=NamespaceLifecycle,NodeRestriction,LimitRanger,ServiceAccount,DefaultStorageClass,ResourceQuota \
   --etcd-servers=http://127.0.0.1:2379 \

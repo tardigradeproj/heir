@@ -1,10 +1,6 @@
-#!/command/execlineb -P
-fdmove -c 2 1
-/usr/local/bin/kube-scheduler --config=/etc/kubernetes/kube-scheduler.yaml
+#!/bin/sh
 
-#!/command/execlineb -P
-fdmove -c 2 1
-/usr/local/bin/kube-scheduler
+exec /usr/local/bin/kube-scheduler
     - --authentication-kubeconfig=/etc/kubernetes/scheduler.conf
     - --authorization-kubeconfig=/etc/kubernetes/scheduler.conf
     - --bind-address=127.0.0.1

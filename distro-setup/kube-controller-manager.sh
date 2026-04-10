@@ -1,6 +1,6 @@
-#!/command/execlineb -P
-fdmove -c 2 1
-/usr/local/bin/kube-controller-manager \
+#!/bin/sh
+
+exec /usr/local/bin/kube-controller-manager \
   --bind-address=0.0.0.0 \
   --cluster-cidr=10.200.0.0/16 \
   --allocate-node-cidrs=true \
