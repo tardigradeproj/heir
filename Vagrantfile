@@ -43,7 +43,7 @@ Vagrant.configure("2") do |config|
     echo 'export PATH=$PATH:/usr/local/go/bin' > /etc/profile.d/golang.sh
     echo 'export GOPATH=/home/vagrant/go' >> /etc/profile.d/golang.sh
     echo 'export PATH=$PATH:$GOPATH/bin' >> /etc/profile.d/golang.sh
-    
+
     GO_PATH_LINE='export PATH=$PATH:/usr/local/go/bin'
     for profile in /etc/profile.d/go.sh ~/.profile ~/.bashrc; do
       if ! grep -qF "$GO_PATH_LINE" "$profile" 2>/dev/null; then
@@ -51,4 +51,13 @@ Vagrant.configure("2") do |config|
       fi
     done
   SHELL
+  config.vm.provision "shell", name: "provision-kind-cluster", inline: <<-SHELL
+    kind create cluster --name samaritano
+  SHELL
+
+  config.vm.provision "shell", name: "resize-fs", inline: <<-SHELL
+    sudo lvextend -l +100%FREE /dev/mapper/ubuntu--vg-ubuntu--lv
+    sudo resize2fs /dev/mapper/ubuntu--vg-ubuntu--lv
+  SHELL
+
 end

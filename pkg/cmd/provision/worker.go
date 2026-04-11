@@ -29,6 +29,7 @@ func workerProvisionCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("failed to join worker node: %w", err)
 			}
+			fmt.Println("worker node successfully setup, your cluster is growing...")
 			return nil
 		},
 	}
