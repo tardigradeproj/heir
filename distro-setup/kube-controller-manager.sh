@@ -12,5 +12,6 @@ exec /usr/local/bin/kube-controller-manager \
   --service-account-private-key-file=/etc/kubernetes/pki/service-accounts.key \
   --service-cluster-ip-range=10.32.0.0/24 \
   --use-service-account-credentials=true \
+  --controllers=*,tokencleaner /
   --v=2
 
