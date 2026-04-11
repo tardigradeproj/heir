@@ -5,6 +5,7 @@ go 1.25.3
 require (
 	al.essio.dev/pkg/shellescape v1.6.0
 	github.com/cloudflare/cfssl v1.6.5
+	github.com/coreos/go-systemd/v22 v22.5.0
 	github.com/onsi/ginkgo/v2 v2.28.0
 	github.com/onsi/gomega v1.39.1
 	github.com/sirupsen/logrus v1.9.3
@@ -37,6 +38,7 @@ require (
 	github.com/go-openapi/jsonreference v0.21.0 // indirect
 	github.com/go-openapi/swag v0.23.1 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
+	github.com/godbus/dbus/v5 v5.0.4 // indirect
 	github.com/google/btree v1.1.3 // indirect
 	github.com/google/cel-go v0.26.0 // indirect
 	github.com/google/certificate-transparency-go v1.1.7 // indirect
