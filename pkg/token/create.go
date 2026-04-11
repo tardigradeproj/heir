@@ -3,10 +3,8 @@ package token
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
-	"crypto/x509"
+	"encoding/base64"
 	"encoding/hex"
-	"encoding/pem"
 	"fmt"
 	"time"
 
@@ -14,31 +12,55 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 )
 
-// Token holds the generated bootstrap token ID, secret, and the SHA256 hash
-// of the cluster CA certificate used when joining nodes.
 type Token struct {
-	ID     string // 6 lowercase hex characters  [a-z0-9]{6}
-	Secret string // 16 lowercase hex characters [a-z0-9]{16}
-	CAHash string // sha256:<hex-encoded digest of the cluster CA DER bytes>
+	ID     string
+	Secret string
 }
 
 func (t Token) String() string {
-	return fmt.Sprintf("%s.%s", t.ID, t.Secret)
+	return t.ID + "." + t.Secret
 }
 
-// CreateBootstrapToken generates a bootstrap token and creates the corresponding
-// Secret in kube-system on the cluster reached via kubeconfig/contextName.
-// It also reads the cluster CA from certificate-authority-data in the kubeconfig,
-// computes its SHA256 digest, and stores it in Token.CAHash so callers can use it
-// in kubeadm-style join commands (--discovery-token-ca-cert-hash sha256:<hash>).
-func CreateBootstrapToken(kubeconfig, contextName string, expiry time.Duration) (Token, error) {
+// CreateBootstrapToken generates a bootstrap token, persists it as a Secret in
+// kube-system, and returns a base64-encoded bootstrap kubeconfig.
+func CreateBootstrapToken(ctx context.Context, kubeconfig, contextName string, expiry time.Duration) (string, error) {
 	t, err := Generate()
 	if err != nil {
-		return Token{}, err
+		return "", err
 	}
 
+	clientConfig := buildClientConfig(kubeconfig, contextName)
+	server, caData, err := extractClusterInfo(clientConfig, contextName)
+	if err != nil {
+		return "", err
+	}
+
+	restConfig, err := clientConfig.ClientConfig()
+	if err != nil {
+		return "", fmt.Errorf("failed to build rest config: %w", err)
+	}
+	client, err := kubernetes.NewForConfig(restConfig)
+	if err != nil {
+		return "", fmt.Errorf("failed to create kubernetes client: %w", err)
+	}
+
+	secret := NewSecret(t, expiry)
+	if _, err := client.CoreV1().Secrets(secret.Namespace).Create(ctx, secret, metav1.CreateOptions{}); err != nil {
+		return "", fmt.Errorf("failed to create bootstrap token secret: %w", err)
+	}
+
+	bootstrapKubeconfig, err := buildBootstrapKubeconfig(t, server, caData)
+	if err != nil {
+		return "", fmt.Errorf("failed to build bootstrap kubeconfig: %w", err)
+	}
+
+	return base64.StdEncoding.EncodeToString(bootstrapKubeconfig), nil
+}
+
+func buildClientConfig(kubeconfig, contextName string) clientcmd.ClientConfig {
 	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
 	if kubeconfig != "" {
 		loadingRules.ExplicitPath = kubeconfig
@@ -47,91 +69,92 @@ func CreateBootstrapToken(kubeconfig, contextName string, expiry time.Duration) 
 	if contextName != "" {
 		overrides.CurrentContext = contextName
 	}
-	clientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, overrides)
+	return clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, overrides)
+}
 
-	restConfig, err := clientConfig.ClientConfig()
-	if err != nil {
-		return Token{}, fmt.Errorf("failed to configure kubernetes client: %w", err)
-	}
-
-	// Derive the CA hash from certificate-authority-data in the kubeconfig.
+func extractClusterInfo(clientConfig clientcmd.ClientConfig, contextName string) (server string, caData []byte, err error) {
 	rawConfig, err := clientConfig.RawConfig()
 	if err != nil {
-		return Token{}, fmt.Errorf("reading raw kubeconfig: %w", err)
-	}
-	clusterName := rawConfig.Contexts[rawConfig.CurrentContext].Cluster
-	caData := rawConfig.Clusters[clusterName].CertificateAuthorityData
-
-	caHash, err := caCertHash(caData)
-	if err != nil {
-		return Token{}, fmt.Errorf("computing CA hash: %w", err)
-	}
-	t.CAHash = "sha256:" + caHash
-
-	client, err := kubernetes.NewForConfig(restConfig)
-	if err != nil {
-		return Token{}, fmt.Errorf("failed to configure kubernetes client: %w", err)
+		return "", nil, fmt.Errorf("error to read kubeconfig: %w", err)
 	}
 
-	secret := NewSecret(t, expiry)
-	if _, err := client.CoreV1().Secrets("kube-system").Create(
-		context.Background(), secret, metav1.CreateOptions{},
-	); err != nil {
-		return Token{}, fmt.Errorf("failed creating bootstrap token secret: %w", err)
+	activeContext := rawConfig.CurrentContext
+	if contextName != "" {
+		activeContext = contextName
 	}
-	return t, nil
+
+	ctxEntry, ok := rawConfig.Contexts[activeContext]
+	if !ok {
+		return "", nil, fmt.Errorf("context %q not found in kubeconfig", activeContext)
+	}
+	cluster, ok := rawConfig.Clusters[ctxEntry.Cluster]
+	if !ok {
+		return "", nil, fmt.Errorf("cluster %q not found in kubeconfig", ctxEntry.Cluster)
+	}
+
+	if cluster.Server == "" {
+		return "", nil, fmt.Errorf("cluster %q has no server URL", ctxEntry.Cluster)
+	}
+	if len(cluster.CertificateAuthorityData) == 0 {
+		return "", nil, fmt.Errorf("cluster %q has no embedded CA data", ctxEntry.Cluster)
+	}
+
+	return cluster.Server, cluster.CertificateAuthorityData, nil
 }
 
-// caCertHash returns the lowercase hex-encoded SHA256 digest of the DER bytes
-// of the first certificate found in the PEM-encoded caData.
-func caCertHash(caData []byte) (string, error) {
-	block, _ := pem.Decode(caData)
-	if block == nil {
-		return "", fmt.Errorf("no PEM block found in certificate-authority-data")
+func buildBootstrapKubeconfig(t Token, server string, caData []byte) ([]byte, error) {
+	const (
+		clusterName = "bootstrap"
+		userName    = "tls-bootstrap-token-user"
+	)
+
+	cfg := clientcmdapi.NewConfig()
+	cfg.Clusters[clusterName] = &clientcmdapi.Cluster{
+		Server:                   server,
+		CertificateAuthorityData: caData,
 	}
-	cert, err := x509.ParseCertificate(block.Bytes)
-	if err != nil {
-		return "", fmt.Errorf("parsing CA certificate: %w", err)
+	cfg.AuthInfos[userName] = &clientcmdapi.AuthInfo{
+		Token: t.String(),
 	}
-	digest := sha256.Sum256(cert.RawSubjectPublicKeyInfo)
-	return hex.EncodeToString(digest[:]), nil
+	cfg.Contexts[clusterName] = &clientcmdapi.Context{
+		Cluster:  clusterName,
+		AuthInfo: userName,
+	}
+	cfg.CurrentContext = clusterName
+
+	return clientcmd.Write(*cfg)
 }
 
-// Generate produces a new random bootstrap token whose components satisfy
-// the regular expression [a-z0-9]{6}\.[a-z0-9]{16}.
 func Generate() (Token, error) {
-	id, err := randomHex(3) // 3 bytes → 6 hex chars
+	id, err := randomHex(3)
 	if err != nil {
-		return Token{}, fmt.Errorf("generating join token id: %w", err)
+		return Token{}, fmt.Errorf("failed to generate token id: %w", err)
 	}
-	secret, err := randomHex(8) // 8 bytes → 16 hex chars
+	secret, err := randomHex(8)
 	if err != nil {
-		return Token{}, fmt.Errorf("generating join token secret: %w", err)
+		return Token{}, fmt.Errorf("failed to generate token secret: %w", err)
 	}
 	return Token{ID: id, Secret: secret}, nil
 }
 
-// NewSecret builds the bootstrap token Secret for the given token and expiry.
-// The caller is responsible for creating it in the cluster.
 func NewSecret(t Token, expiry time.Duration) *corev1.Secret {
-	expiration := time.Now().UTC().Add(expiry).Format(time.RFC3339)
-
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("bootstrap-token-%s", t.ID),
-			Namespace: "kube-system",
+			Name:      "bootstrap-token-" + t.ID,
+			Namespace: metav1.NamespaceSystem,
 		},
 		Type: corev1.SecretTypeBootstrapToken,
 		StringData: map[string]string{
 			"token-id":                       t.ID,
 			"token-secret":                   t.Secret,
-			"expiration":                     expiration,
+			"expiration":                     time.Now().UTC().Add(expiry).Format(time.RFC3339),
 			"usage-bootstrap-authentication": "true",
 			"usage-bootstrap-signing":        "true",
 			"auth-extra-groups":              "system:bootstrappers:worker",
 		},
 	}
 }
+
 func randomHex(n int) (string, error) {
 	b := make([]byte, n)
 	if _, err := rand.Read(b); err != nil {

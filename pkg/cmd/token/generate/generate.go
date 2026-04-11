@@ -22,12 +22,11 @@ func NewCommand() *cobra.Command {
 		Short: "Generate a bootstrap token secret on the target cluster",
 		Long:  "Generate a bootstrap token secret on the target cluster",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			t, err := token.CreateBootstrapToken(flags.Kubeconfig, flags.Name, flags.Expiry)
+			b64Kubeconfig, err := token.CreateBootstrapToken(cmd.Context(), flags.Kubeconfig, flags.Name, flags.Expiry)
 			if err != nil {
-				return err
+				return fmt.Errorf("unable to generate bootstrap token: %w", err)
 			}
-			command := fmt.Sprintf("samaritano worker --token %s.%s --discovery-token-ca-cert-hash %s", t.ID, t.Secret, t.CAHash)
-			fmt.Println(command)
+			fmt.Println(b64Kubeconfig)
 			return nil
 		},
 	}
