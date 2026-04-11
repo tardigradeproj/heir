@@ -4,7 +4,7 @@ ARCH               ?= arm64
 KUBE_VERSION       ?= v1.34.0
 CONTAINERD_VERSION ?= 2.1.0
 ARTIFACTS_DIR      ?= $(shell pwd)/artifacts
-WORKER_DIR         ?= $(shell pwd)/pkg/provision/artifacts/worker
+WORKER_DIR         ?= $(ARTIFACTS_DIR)/worker
 
 .PHONY: download-kubelet
 download-kubelet: ## Download kubelet binary for ARCH

@@ -2,29 +2,30 @@ package provision
 
 import (
 	"context"
-	"embed"
 	"encoding/base64"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 
+	log "github.com/sirupsen/logrus"
+	"github.com/tardigrade-runtime/samaritano/artifacts"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
 var (
 	kubeletBin                 = "/usr/local/bin/kubelet"
-	kubeletBootstrapKubeconfig = "/etc/samaritano/kubernetes/kubelet.conf"
+	kubeletBootstrapKubeconfig = "/etc/samaritano/kubernetes/bootstrap-kubelet.conf"
+	kubeletKubeconfig          = "/etc/samaritano/kubernetes/kubelet.conf"
 	kubernetesPKI              = "/etc/samaritano/kubernetes/pki"
 	kubeletConfigFile          = "/var/lib/samaritano/kubelet/config.yaml"
 	kubeletStaticPod           = "/etc/samaritano/kubernetes/manifests"
 	kubeletCertDir             = "/var/lib/samaritano/kubelet/pki"
 	containerdBin              = "/usr/local/bin/containerd"
-	containerdConfiguration    = "/etc/samaritano/kubernetes/containerd.conf"
+	containerdConfiguration    = "/etc/samaritano/kubernetes/config.toml"
+	cniBIn                     = "/opt/cni/bin"
+	cniConfiguration           = "/etc/cni/net.d"
 )
-
-//go:embed artifacts/worker/kubelet artifacts/worker/containerd
-var embeddedFiles embed.FS
 
 func Join(ctx context.Context, token string, opts ...Option) error {
 	jointCtx := &joinContext{
@@ -33,22 +34,32 @@ func Join(ctx context.Context, token string, opts ...Option) error {
 	for _, opt := range opts {
 		opt(jointCtx)
 	}
-	// decompress kubelet and containerd
-	if err := extractStreamed("artifacts/worker/kubelet", kubeletBin); err != nil {
+
+	log.Info("extracting kubelet")
+	if err := extractStreamed("worker/kubelet", kubeletBin); err != nil {
 		return fmt.Errorf("failed to extract kubelet: %w", err)
 	}
-	if err := extractStreamed("artifacts/worker/containerd", containerdBin); err != nil {
-		return fmt.Errorf("failed to extract kubelet: %w", err)
+	log.Info("extracting containerd")
+	if err := extractStreamed("worker/containerd", containerdBin); err != nil {
+		return fmt.Errorf("failed to extract containerd: %w", err)
 	}
+	log.Info("saving bootstrap kubeconfig")
 	if err := saveBootstrapKubeconfig(jointCtx.token, kubeletBootstrapKubeconfig); err != nil {
 		return fmt.Errorf("failed to save bootstrap kubeconfig: %w", err)
 	}
+	log.Info("saving kubelet config")
 	if err := saveKubeletConfig(kubeletConfigFile); err != nil {
 		return fmt.Errorf("failed to save kubelet config: %w", err)
 	}
+	log.Info("saving containerd config")
+	if err := saveContainerdConfig(containerdConfiguration); err != nil {
+		return fmt.Errorf("failed to save containerd config: %w", err)
+	}
+	log.Info("setting up systemd units")
 	if err := setupUnits(ctx, jointCtx); err != nil {
 		return fmt.Errorf("failed to setup systemd units: %w", err)
 	}
+	log.Info("worker node provisioning complete")
 	return nil
 }
 
@@ -72,6 +83,7 @@ func saveBootstrapKubeconfig(b64Kubeconfig string, dst string) error {
 	if err := os.WriteFile(dst, raw, 0600); err != nil {
 		return fmt.Errorf("failed to write bootstrap kubeconfig: %w", err)
 	}
+	log.WithField("path", dst).Info("bootstrap kubeconfig written")
 
 	// Extract the cluster CA from the kubeconfig and write it to the PKI directory
 	// so kubelet can use it to verify the API server during certificate rotation.
@@ -91,11 +103,13 @@ func saveBootstrapKubeconfig(b64Kubeconfig string, dst string) error {
 	if err := os.WriteFile(caCertPath, cluster.CertificateAuthorityData, 0644); err != nil {
 		return fmt.Errorf("failed to write CA certificate: %w", err)
 	}
+	log.WithField("path", caCertPath).Info("cluster CA certificate written")
 
 	return nil
 }
 
 func saveKubeletConfig(dst string) error {
+	log.WithField("path", dst).Info("writing kubelet config")
 	content := fmt.Sprintf(`kind: KubeletConfiguration
 apiVersion: kubelet.config.k8s.io/v1beta1
 authentication:
@@ -133,9 +147,35 @@ logging:
 	return nil
 }
 
+func saveContainerdConfig(dst string) error {
+	log.WithField("path", dst).Info("writing containerd config")
+	content := fmt.Sprintf(`
+version = 2
+[plugins."io.containerd.grpc.v1.cri"]
+  [plugins."io.containerd.grpc.v1.cri".containerd]
+    snapshotter = "overlayfs"
+    default_runtime_name = "runc"
+  [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
+    runtime_type = "io.containerd.runc.v2"
+  [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
+    SystemdCgroup = true
+[plugins."io.containerd.grpc.v1.cri".cni]
+  bin_dir = "%s"
+  conf_dir = "%s"
+`, cniBIn, cniConfiguration)
+
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		return fmt.Errorf("failed to create containerd config directory: %w", err)
+	}
+	if err := os.WriteFile(dst, []byte(content), 0644); err != nil {
+		return fmt.Errorf("failed to write containerd config: %w", err)
+	}
+	return nil
+}
+
 func extractStreamed(src string, dst string) error {
 	// Open the embedded file as a stream
-	source, err := embeddedFiles.Open(src)
+	source, err := artifact.FS.Open(src)
 	if err != nil {
 		return err
 	}

@@ -30,4 +30,5 @@ go.work
 
 # Kubeconfig might contain secrets
 *.kubeconfig
-artifacts
+artifacts/worker/kubelet
+artifacts/worker/containerd

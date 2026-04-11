@@ -9,6 +9,7 @@ import (
 
 	"github.com/coreos/go-systemd/v22/dbus"
 	"github.com/coreos/go-systemd/v22/unit"
+	log "github.com/sirupsen/logrus"
 )
 
 type systemdService struct {
@@ -64,13 +65,17 @@ func setupUnits(ctx context.Context, jctx *joinContext) error {
 	kubeletArgs["config"] = kubeletConfigFile
 	kubeletArgs["bootstrap-kubeconfig"] = kubeletBootstrapKubeconfig
 	kubeletArgs["cert-dir"] = kubeletCertDir
+	kubeletArgs["kubeconfig"] = kubeletKubeconfig
 
 	unitFlags := map[string]map[string]string{
-		"containerd.service": {},
-		"kubelet.service":    kubeletArgs,
+		"containerd.service": {
+			"config": containerdConfiguration,
+		},
+		"kubelet.service": kubeletArgs,
 	}
 
 	for name, svc := range services() {
+		log.WithField("unit", name).Info("writing unit file")
 		content, err := io.ReadAll(unit.Serialize(svc.config(unitFlags[name])))
 		if err != nil {
 			return fmt.Errorf("failed to serialize %s: %w", name, err)
@@ -80,18 +85,21 @@ func setupUnits(ctx context.Context, jctx *joinContext) error {
 		}
 	}
 
+	log.Info("reloading systemd daemon")
 	if err := conn.ReloadContext(ctx); err != nil {
 		return fmt.Errorf("failed to reload systemd daemon: %w", err)
 	}
 
 	unitNames := []string{"containerd.service", "kubelet.service"}
 
+	log.WithField("units", unitNames).Info("enabling units")
 	if _, _, err := conn.EnableUnitFilesContext(ctx, unitNames, false, true); err != nil {
 		return fmt.Errorf("failed to enable units: %w", err)
 	}
 
 	// Start containerd before kubelet since kubelet depends on it.
 	for _, name := range unitNames {
+		log.WithField("unit", name).Info("starting unit")
 		ch := make(chan string, 1)
 		if _, err := conn.StartUnitContext(ctx, name, "replace", ch); err != nil {
 			return fmt.Errorf("failed to start %s: %w", name, err)
@@ -99,6 +107,7 @@ func setupUnits(ctx context.Context, jctx *joinContext) error {
 		if result := <-ch; result != "done" {
 			return fmt.Errorf("failed to start %s: job result %q", name, result)
 		}
+		log.WithField("unit", name).Info("unit started")
 	}
 
 	return nil
