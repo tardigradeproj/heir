@@ -2,6 +2,8 @@ IMAGE_REGISTRY ?= ghcr.io/tardigrade
 IMAGE_NAME     ?= samaritano-base
 IMAGE_TAG      ?= latest
 
+include Makefile.distro
+
 
 # Image URL to use all building/pushing image targets
 IMG ?= controller:latest
