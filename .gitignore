@@ -30,5 +30,6 @@ go.work
 
 # Kubeconfig might contain secrets
 *.kubeconfig
-artifacts/worker/kubelet
-artifacts/worker/containerd
+
+artifacts/*
+!artifacts/embed.go
