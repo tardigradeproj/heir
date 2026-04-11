@@ -13,5 +13,6 @@ exec /usr/local/bin/kube-controller-manager \
   --service-cluster-ip-range=10.32.0.0/24 \
   --use-service-account-credentials=true \
   --controllers=*,tokencleaner /
+  --allocate-node-cidrs=true /
   --v=2
 

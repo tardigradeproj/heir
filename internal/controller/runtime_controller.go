@@ -522,6 +522,8 @@ func (r *RuntimeReconciler) setupControlPlaneConfiguration(
 			"service-account-private-key-file": layout.PKI.ServiceAccountKey.MountPath,
 			"service-cluster-ip-range":         net.ServiceCIDR,
 			"use-service-account-credentials":  "true",
+			"allocate-node-cidrs=true":         "true",
+			"controllers":                      "*,tokencleaner",
 			"v":                                "2",
 		}, controlPlaneRuntime.Spec.UpstreamCluster.ControllerManager.ExtraArgs),
 	)
