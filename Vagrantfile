@@ -3,8 +3,18 @@ Vagrant.configure("2") do |config|
   config.vm.box = "hashicorp-education/ubuntu-24-04"
   config.vm.disk :disk, size: "25GB", primary: true
 
+  config.vm.provider "virtualbox" do |vb|
+    vb.cpus = 2
+  end
+
   config.vm.synced_folder "./", "/home/vagrant/samaritano", type: "rsync",
     rsync__exclude: [".git/", ".DS_Store", "vendor/"]
+
+  # In VirtualBox NAT networking the host is always at 10.0.2.2.
+  # This lets you reach host Docker containers by name: host.docker.internal:<port>
+  config.vm.provision "shell", name: "host-dns", inline: <<-SHELL
+    echo "10.0.2.2 host.docker.internal" >> /etc/hosts
+  SHELL
 
   config.vm.provision "shell", name: "kubectl", inline: <<-SHELL
     ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
@@ -13,26 +23,26 @@ Vagrant.configure("2") do |config|
     chmod +x /usr/local/bin/kubectl
   SHELL
 
-  config.vm.provision "shell", name: "docker", inline: <<-SHELL
-    apt-get update -q
-    apt-get install -y -q ca-certificates curl gnupg
-    install -m 0755 -d /etc/apt/keyrings
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-    chmod a+r /etc/apt/keyrings/docker.gpg
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-      https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
-      > /etc/apt/sources.list.d/docker.list
-    apt-get update -q
-    apt-get install -y -q docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-    usermod -aG docker vagrant
-  SHELL
+#   config.vm.provision "shell", name: "docker", inline: <<-SHELL
+#     apt-get update -q
+#     apt-get install -y -q ca-certificates curl gnupg
+#     install -m 0755 -d /etc/apt/keyrings
+#     curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+#     chmod a+r /etc/apt/keyrings/docker.gpg
+#     echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+#       https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+#       > /etc/apt/sources.list.d/docker.list
+#     apt-get update -q
+#     apt-get install -y -q docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+#     usermod -aG docker vagrant
+#   SHELL
 
-  config.vm.provision "shell", name: "kind", inline: <<-SHELL
-    ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
-    KIND_VERSION=$(curl -fsSL https://api.github.com/repos/kubernetes-sigs/kind/releases/latest | grep '"tag_name"' | cut -d'"' -f4)
-    curl -fsSL "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-${ARCH}" -o /usr/local/bin/kind
-    chmod +x /usr/local/bin/kind
-  SHELL
+#   config.vm.provision "shell", name: "kind", inline: <<-SHELL
+#     ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
+#     KIND_VERSION=$(curl -fsSL https://api.github.com/repos/kubernetes-sigs/kind/releases/latest | grep '"tag_name"' | cut -d'"' -f4)
+#     curl -fsSL "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-${ARCH}" -o /usr/local/bin/kind
+#     chmod +x /usr/local/bin/kind
+#   SHELL
 
   config.vm.provision "shell", name: "golang", inline: <<-SHELL
     ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
@@ -51,13 +61,23 @@ Vagrant.configure("2") do |config|
       fi
     done
   SHELL
-  config.vm.provision "shell", name: "provision-kind-cluster", inline: <<-SHELL
-    kind create cluster --name samaritano
-  SHELL
+#   config.vm.provision "shell", name: "provision-kind-cluster", inline: <<-SHELL
+#     kind create cluster --name samaritano
+#   SHELL
 
   config.vm.provision "shell", name: "resize-fs", inline: <<-SHELL
     sudo lvextend -l +100%FREE /dev/mapper/ubuntu--vg-ubuntu--lv
     sudo resize2fs /dev/mapper/ubuntu--vg-ubuntu--lv
+  SHELL
+
+#   config.vm.provision "shell", name: "minikube", inline: <<-SHELL
+#     ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
+#     curl -fsSL "https://storage.googleapis.com/minikube/releases/latest/minikube-linux-${ARCH}" -o /usr/local/bin/minikube
+#     chmod +x /usr/local/bin/minikube
+#   SHELL
+
+  config.vm.provision "shell", name: "disable-swap", inline: <<-SHELL
+    swapoff -a
   SHELL
 
 end
