@@ -15,6 +15,8 @@ import (
 
 var (
 	kubeletBin                 = "/usr/local/bin/kubelet"
+	containerdShimRunc         = "/usr/local/bin/containerd-shim-runc-v2"
+	runc                       = "/usr/local/bin/runc"
 	kubeletBootstrapKubeconfig = "/etc/samaritano/kubernetes/bootstrap-kubelet.conf"
 	kubeletKubeconfig          = "/etc/samaritano/kubernetes/kubelet.conf"
 	kubernetesPKI              = "/etc/samaritano/kubernetes/pki"
@@ -22,6 +24,8 @@ var (
 	kubeletStaticPod           = "/etc/samaritano/kubernetes/manifests"
 	kubeletCertDir             = "/var/lib/samaritano/kubelet/pki"
 	containerdBin              = "/usr/local/bin/containerd"
+	ctrBin                     = "/usr/local/bin/ctr"
+	crictlBin                  = "/usr/local/bin/crictl"
 	containerdConfiguration    = "/etc/samaritano/kubernetes/config.toml"
 	cniBIn                     = "/opt/cni/bin"
 	cniConfiguration           = "/etc/cni/net.d"
@@ -35,13 +39,19 @@ func Join(ctx context.Context, token string, opts ...Option) error {
 		opt(jointCtx)
 	}
 
-	log.Info("extracting kubelet")
-	if err := extractStreamed("worker/kubelet", kubeletBin); err != nil {
-		return fmt.Errorf("failed to extract kubelet: %w", err)
+	binaries := []struct{ src, dst string }{
+		{"worker/kubelet", kubeletBin},
+		{"worker/containerd", containerdBin},
+		{"worker/containerd-shim-runc-v2", containerdShimRunc},
+		{"worker/runc", runc},
+		{"worker/crictl", crictlBin},
+		{"worker/ctr", ctrBin},
 	}
-	log.Info("extracting containerd")
-	if err := extractStreamed("worker/containerd", containerdBin); err != nil {
-		return fmt.Errorf("failed to extract containerd: %w", err)
+	for _, b := range binaries {
+		log.WithField("dst", b.dst).Info("extracting binary")
+		if err := extractStreamed(b.src, b.dst); err != nil {
+			return fmt.Errorf("failed to extract %s: %w", b.src, err)
+		}
 	}
 	log.Info("saving bootstrap kubeconfig")
 	if err := saveBootstrapKubeconfig(jointCtx.token, kubeletBootstrapKubeconfig); err != nil {
