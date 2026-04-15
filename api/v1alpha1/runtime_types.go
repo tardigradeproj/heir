@@ -22,8 +22,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
-// ClusterSpec defines how Cluster components are configured
-type ClusterSpec struct {
+// UpstreamCluster defines how UpstreamCluster components are configured
+type UpstreamCluster struct {
 	APIServer         APIServerSpec         `json:"apiServer,omitempty"`
 	ControllerManager ControllerManagerSpec `json:"controllerManager,omitempty"`
 	Scheduler         SchedulerSpec         `json:"scheduler,omitempty"`
@@ -74,11 +74,11 @@ type KineSpec struct {
 
 // RuntimeSpec defines the desired state of Runtime
 type RuntimeSpec struct {
-	ControlPlane ControlPlaneSpec `json:"controlPlane,omitempty"`
-	Cluster      ClusterSpec      `json:"cluster,omitempty"`
+	ControlPlane    ControlPlaneSpec `json:"controlPlane,omitempty"`
+	UpstreamCluster UpstreamCluster  `json:"upstreamCluster,omitempty"`
 }
 
-// ControlPlaneSpec defines how control plane must be created in the Admin Cluster,
+// ControlPlaneSpec defines how control plane must be created in the Admin UpstreamCluster,
 // such as the number of Pod replicas, the Service resource, or the Ingress.
 type ControlPlaneSpec struct {
 	// Samaritano provides details about the distribution to install
@@ -88,6 +88,7 @@ type ControlPlaneSpec struct {
 	Deployment DeploymentSpec `json:"deployment,omitempty"`
 	// Defining the options for an Optional Ingress which will expose API Server of the Tenant Control Plane
 	Ingress *IngressSpec `json:"ingress,omitempty"`
+	Service ServiceSpec  `json:"service,omitempty"`
 }
 type SamaritanoSpec struct {
 	Version string `json:"version"`
@@ -121,6 +122,7 @@ type AdditionalPort struct {
 	//
 	// * Un-prefixed protocol names - reserved for IANA standard service names (as per
 	// RFC-6335 and https://www.iana.org/assignments/service-names).
+	// +optional
 	AppProtocol *string `json:"appProtocol,omitempty"`
 	// The port that will be exposed by this service.
 	Port int32 `json:"port"`
@@ -129,6 +131,7 @@ type AdditionalPort struct {
 	// If this is a string, it will be looked up as a named port in the
 	// target Pod's container ports. If this is not specified, the value
 	// of the 'port' field is used (an identity map).
+	// +optional
 	TargetPort intstr.IntOrString `json:"targetPort"`
 }
 type AdditionalMetadata struct {
@@ -136,6 +139,11 @@ type AdditionalMetadata struct {
 	Annotations map[string]string `json:"annotations,omitempty"`
 }
 type DeploymentSpec struct {
+	AdditionalMetadata AdditionalMetadata `json:"additionalMetadata,omitempty"`
+	// RegistrySettings allows to override the default images for the given Runtime instance.
+	// It could be used to point to a different container registry rather than the public one.
+	// +optional
+	RegistrySettings RegistrySettings `json:"registrySettings,omitempty"`
 	//+kubebuilder:default=2
 	// +kubebuilder:validation:Minimum=1
 	Replicas *int32 `json:"replicas,omitempty"`
@@ -154,18 +162,15 @@ type DeploymentSpec struct {
 	// ServiceAccountName allows to specify the service account to be mounted to the pods of the Control plane deployment
 	ServiceAccountName string `json:"serviceAccountName,omitempty"`
 }
+type RegistrySettings struct {
+	Registry string `json:"registry,omitempty"`
+	// +kubebuilder:default="tardigrade/samaritano"
+	Image string `json:"image,omitempty"`
+}
 
 // RuntimeStatus defines the observed state of Runtime.
 type RuntimeStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
 
-	// For Kubernetes API conventions, see:
-	// https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md#typical-status-properties
-
-	// conditions represent the current state of the Runtime resource.
-	// Each condition has a unique type and reflects the status of a specific aspect of the resource.
-	//
 	// Standard condition types include:
 	// - "Available": the resource is fully functional
 	// - "Progressing": the resource is being created or updated
@@ -176,6 +181,8 @@ type RuntimeStatus struct {
 	// +listMapKey=type
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+	// CertificatesExpireAt is the time when the PKI certificates stored in the -pki secret
+	CertificatesExpireAt *metav1.Time `json:"certificatesExpireAt,omitempty"`
 }
 
 // +kubebuilder:object:root=true

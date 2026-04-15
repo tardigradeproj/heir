@@ -5,6 +5,8 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/tardigrade-runtime/samaritano/pkg/cmd/build"
+	"github.com/tardigrade-runtime/samaritano/pkg/cmd/provision"
+	"github.com/tardigrade-runtime/samaritano/pkg/cmd/token"
 )
 
 func main() {
@@ -15,6 +17,8 @@ func main() {
 	}
 
 	root.AddCommand(build.NewCommand())
+	root.AddCommand(token.NewCommand())
+	root.AddCommand(provision.NewCommand())
 
 	if err := root.Execute(); err != nil {
 		os.Exit(1)

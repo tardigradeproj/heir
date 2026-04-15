@@ -2,6 +2,8 @@ IMAGE_REGISTRY ?= ghcr.io/tardigrade
 IMAGE_NAME     ?= samaritano-base
 IMAGE_TAG      ?= latest
 
+include Makefile.distro
+
 
 # Image URL to use all building/pushing image targets
 IMG ?= controller:latest
@@ -115,7 +117,7 @@ build: manifests generate fmt vet ## Build manager binary.
 
 .PHONY: run-distro
 run-distro:
-	go run cmd/distro.go build control-plane-image --base-image ghcr.io/tardigrade/samaritano-base:latest --image=$(IMAGE_NAME):v1 --type=file $$(pwd)/artifacts/kubernetes-server-linux-arm64.tar.gz
+	go run cmd/distro.go build control-plane-image --base-image ghcr.io/tardigrade/samaritano-base:latest --image=$(IMAGE_NAME):v3 --type=file $$(pwd)/artifacts/kubernetes-server-linux-arm64.tar.gz
 
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.

@@ -1,0 +1,60 @@
+## Distro artifact targets — included by the root Makefile
+
+ARCH               ?= arm64
+KUBE_VERSION       ?= v1.34.0
+CONTAINERD_VERSION ?= 2.1.0
+RUNC_VERSION       ?= v1.2.6
+CRICTL_VERSION     ?= v1.33.0
+ARTIFACTS_DIR      ?= $(shell pwd)/artifacts
+WORKER_DIR         ?= $(ARTIFACTS_DIR)/worker
+
+.PHONY: download-kubelet
+download-kubelet: ## Download kubelet binary for ARCH
+	@mkdir -p "$(WORKER_DIR)"
+	@echo "Downloading kubelet $(KUBE_VERSION) for linux/$(ARCH)..."
+	curl -fsSL "https://dl.k8s.io/$(KUBE_VERSION)/bin/linux/$(ARCH)/kubelet" \
+		-o "$(WORKER_DIR)/kubelet"
+	@chmod +x "$(WORKER_DIR)/kubelet"
+	@echo "kubelet ready: $(WORKER_DIR)/kubelet"
+
+.PHONY: download-containerd
+download-containerd: ## Download containerd and containerd-shim-runc-v2 binaries for ARCH
+	@mkdir -p "$(WORKER_DIR)"
+	@echo "Downloading containerd $(CONTAINERD_VERSION) for linux/$(ARCH)..."
+	@tmpdir=$$(mktemp -d); \
+	curl -fsSL "https://github.com/containerd/containerd/releases/download/v$(CONTAINERD_VERSION)/containerd-$(CONTAINERD_VERSION)-linux-$(ARCH).tar.gz" \
+		-o "$$tmpdir/containerd.tar.gz"; \
+	tar -xzf "$$tmpdir/containerd.tar.gz" -C "$$tmpdir" bin/containerd bin/containerd-shim-runc-v2 bin/ctr; \
+	mv "$$tmpdir/bin/containerd" "$(WORKER_DIR)/containerd"; \
+	mv "$$tmpdir/bin/containerd-shim-runc-v2" "$(WORKER_DIR)/containerd-shim-runc-v2"; \
+	mv "$$tmpdir/bin/ctr" "$(WORKER_DIR)/ctr"; \
+	rm -rf "$$tmpdir"
+	@chmod +x "$(WORKER_DIR)/containerd" "$(WORKER_DIR)/containerd-shim-runc-v2" "$(WORKER_DIR)/ctr"
+	@echo "containerd ready: $(WORKER_DIR)/containerd"
+	@echo "containerd-shim-runc-v2 ready: $(WORKER_DIR)/containerd-shim-runc-v2"
+	@echo "ctr ready: $(WORKER_DIR)/ctr"
+
+.PHONY: download-runc
+download-runc: ## Download runc binary for ARCH
+	@mkdir -p "$(WORKER_DIR)"
+	@echo "Downloading runc $(RUNC_VERSION) for linux/$(ARCH)..."
+	curl -fsSL "https://github.com/opencontainers/runc/releases/download/$(RUNC_VERSION)/runc.$(ARCH)" \
+		-o "$(WORKER_DIR)/runc"
+	@chmod +x "$(WORKER_DIR)/runc"
+	@echo "runc ready: $(WORKER_DIR)/runc"
+
+.PHONY: download-crictl
+download-crictl: ## Download crictl binary for ARCH
+	@mkdir -p "$(WORKER_DIR)"
+	@echo "Downloading crictl $(CRICTL_VERSION) for linux/$(ARCH)..."
+	@tmpdir=$$(mktemp -d); \
+	curl -fsSL "https://github.com/kubernetes-sigs/cri-tools/releases/download/$(CRICTL_VERSION)/crictl-$(CRICTL_VERSION)-linux-$(ARCH).tar.gz" \
+		-o "$$tmpdir/crictl.tar.gz"; \
+	tar -xzf "$$tmpdir/crictl.tar.gz" -C "$$tmpdir" crictl; \
+	mv "$$tmpdir/crictl" "$(WORKER_DIR)/crictl"; \
+	rm -rf "$$tmpdir"
+	@chmod +x "$(WORKER_DIR)/crictl"
+	@echo "crictl ready: $(WORKER_DIR)/crictl"
+
+.PHONY: download-worker-artifacts
+download-worker-artifacts: download-kubelet download-containerd download-runc download-crictl ## Download all worker node artifacts

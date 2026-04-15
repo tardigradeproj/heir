@@ -1,9 +1,31 @@
 apiVersion: controlplane.tardigrade.runtime.io/v1alpha1
 kind: Runtime
 metadata:
-  labels:
-    app.kubernetes.io/name: samaritano
-    app.kubernetes.io/managed-by: kustomize
-  name: runtime-sample
+  name: my-cluster
+  namespace: default
 spec:
-  # TODO(user): Add fields here
+  controlPlane:
+    samaritano:
+      version: v1.32.0
+    deployment:
+      replicas: 1
+      serviceAccountName: default
+    service:
+      serviceType: ClusterIP
+
+  upstreamCluster:
+    apiServer:
+      externalAddress: ""   # set if behind a load balancer, e.g. "192.168.1.100"
+      sans: []              # extra SANs to add to the apiserver certificate
+      extraArgs: {}
+    controllerManager:
+      extraArgs: {}
+    scheduler:
+      extraArgs: {}
+    network:
+      podCIDR: 10.244.0.0/16
+      serviceCIDR: 10.96.0.0/16
+    storage:
+      type: kine
+      kine:
+        dataSource: sqlite:///var/lib/kine/db.sqlite
