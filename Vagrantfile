@@ -10,7 +10,7 @@ Vagrant.configure("2") do |config|
   config.vm.synced_folder "./", "/home/vagrant/samaritano", type: "rsync",
     rsync__exclude: [".git/", ".DS_Store", "vendor/"]
 
-  # In VirtualBox NAT networking the host is always at 10.0.2.2.
+  # In VirtualBox NAT networking the host is always        .
   # This lets you reach host Docker containers by name: host.docker.internal:<port>
   config.vm.provision "shell", name: "host-dns", inline: <<-SHELL
     echo "10.0.2.2 host.docker.internal" >> /etc/hosts
