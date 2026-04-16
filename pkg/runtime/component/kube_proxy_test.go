@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 
 	controlplanev1alpha1 "github.com/tardigrade-runtime/samaritano/api/v1alpha1"
@@ -29,17 +31,12 @@ func TestGetConfig_Disabled(t *testing.T) {
 	runtime := kubeProxyRuntime(controlplanev1alpha1.KubeProxySpec{Disabled: true})
 
 	cfg, err := getConfig(runtime)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if cfg != nil {
-		t.Errorf("expected nil config when disabled, got %+v", cfg)
-	}
+	require.NoError(t, err)
+	assert.Nil(t, cfg)
 }
 
 func TestGetConfig_BasicFields(t *testing.T) {
 	runtime := kubeProxyRuntime(controlplanev1alpha1.KubeProxySpec{
-		Disabled: false,
 		RegisterSetting: controlplanev1alpha1.RegistrySettings{
 			Registry:   "registry.k8s.io",
 			Image:      "kube-proxy:v1.34.0",
@@ -50,63 +47,27 @@ func TestGetConfig_BasicFields(t *testing.T) {
 	})
 
 	cfg, err := getConfig(runtime)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if cfg == nil {
-		t.Fatal("expected non-nil config")
-	}
+	require.NoError(t, err)
+	require.NotNil(t, cfg)
 
-	if !cfg.Enabled {
-		t.Error("expected Enabled to be true")
-	}
-	if cfg.ClusterCIDR != "10.244.0.0/16" {
-		t.Errorf("ClusterCIDR: got %q, want %q", cfg.ClusterCIDR, "10.244.0.0/16")
-	}
-	if cfg.ControlPlaneEndpoint != "https://api.example.com:6443" {
-		t.Errorf("ControlPlaneEndpoint: got %q, want %q", cfg.ControlPlaneEndpoint, "https://api.example.com:6443")
-	}
-	if cfg.Image != "registry.k8s.io/kube-proxy:v1.34.0" {
-		t.Errorf("Image: got %q, want %q", cfg.Image, "registry.k8s.io/kube-proxy:v1.34.0")
-	}
-	if cfg.PullPolicy != string(corev1.PullIfNotPresent) {
-		t.Errorf("PullPolicy: got %q, want %q", cfg.PullPolicy, corev1.PullIfNotPresent)
-	}
-	if cfg.Mode != "iptables" {
-		t.Errorf("Mode: got %q, want %q", cfg.Mode, "iptables")
-	}
-	if cfg.MetricsBindAddress != "0.0.0.0:10249" {
-		t.Errorf("MetricsBindAddress: got %q, want %q", cfg.MetricsBindAddress, "0.0.0.0:10249")
-	}
-	if cfg.DualStack {
-		t.Error("expected DualStack to be false")
-	}
+	assert.True(t, cfg.Enabled)
+	assert.False(t, cfg.DualStack)
+	assert.Equal(t, "10.244.0.0/16", cfg.ClusterCIDR)
+	assert.Equal(t, "https://api.example.com:6443", cfg.ControlPlaneEndpoint)
+	assert.Equal(t, "registry.k8s.io/kube-proxy:v1.34.0", cfg.Image)
+	assert.Equal(t, string(corev1.PullIfNotPresent), cfg.PullPolicy)
+	assert.Equal(t, "iptables", cfg.Mode)
+	assert.Equal(t, "0.0.0.0:10249", cfg.MetricsBindAddress)
 }
 
 func TestGetConfig_DefaultArgs(t *testing.T) {
 	runtime := kubeProxyRuntime(controlplanev1alpha1.KubeProxySpec{})
 
 	cfg, err := getConfig(runtime)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 
-	hasConfig := false
-	hasHostname := false
-	for _, arg := range cfg.Args {
-		if arg == "--config=/var/lib/kube-proxy/config.conf" {
-			hasConfig = true
-		}
-		if arg == "--hostname-override=$(NODE_NAME)" {
-			hasHostname = true
-		}
-	}
-	if !hasConfig {
-		t.Errorf("expected --config arg in %v", cfg.Args)
-	}
-	if !hasHostname {
-		t.Errorf("expected --hostname-override arg in %v", cfg.Args)
-	}
+	assert.Contains(t, cfg.Args, "--config=/var/lib/kube-proxy/config.conf")
+	assert.Contains(t, cfg.Args, "--hostname-override=$(NODE_NAME)")
 }
 
 func TestGetConfig_ExtraArgs(t *testing.T) {
@@ -118,21 +79,10 @@ func TestGetConfig_ExtraArgs(t *testing.T) {
 	})
 
 	cfg, err := getConfig(runtime)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 
-	argSet := make(map[string]bool, len(cfg.Args))
-	for _, arg := range cfg.Args {
-		argSet[arg] = true
-	}
-
-	if !argSet["--v=4"] {
-		t.Errorf("expected --v=4 in args %v", cfg.Args)
-	}
-	if !argSet["--kubeconfig=/custom/path"] {
-		t.Errorf("expected --kubeconfig=/custom/path in args %v", cfg.Args)
-	}
+	assert.Contains(t, cfg.Args, "--v=4")
+	assert.Contains(t, cfg.Args, "--kubeconfig=/custom/path")
 }
 
 func TestGetConfig_ExtraArgs_OverrideDefault(t *testing.T) {
@@ -143,21 +93,10 @@ func TestGetConfig_ExtraArgs_OverrideDefault(t *testing.T) {
 	})
 
 	cfg, err := getConfig(runtime)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 
-	argSet := make(map[string]bool, len(cfg.Args))
-	for _, arg := range cfg.Args {
-		argSet[arg] = true
-	}
-
-	if !argSet["--config=/custom/config.conf"] {
-		t.Errorf("expected overridden --config arg in %v", cfg.Args)
-	}
-	if argSet["--config=/var/lib/kube-proxy/config.conf"] {
-		t.Errorf("default --config should have been overridden, but still present in %v", cfg.Args)
-	}
+	assert.Contains(t, cfg.Args, "--config=/custom/config.conf")
+	assert.NotContains(t, cfg.Args, "--config=/var/lib/kube-proxy/config.conf")
 }
 
 func TestGetConfig_NodePortAddresses(t *testing.T) {
@@ -167,33 +106,24 @@ func TestGetConfig_NodePortAddresses(t *testing.T) {
 	})
 
 	cfg, err := getConfig(runtime)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 
 	want, _ := json.Marshal(addrs)
-	if cfg.NodePortAddresses != string(want) {
-		t.Errorf("NodePortAddresses: got %q, want %q", cfg.NodePortAddresses, string(want))
-	}
+	assert.Equal(t, string(want), cfg.NodePortAddresses)
 }
 
 func TestGetConfig_JSONFields(t *testing.T) {
 	runtime := kubeProxyRuntime(controlplanev1alpha1.KubeProxySpec{})
 
 	cfg, err := getConfig(runtime)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 
-	// Each JSON field must be valid JSON (not empty string)
 	for name, val := range map[string]string{
-		"IPTables":         cfg.IPTables,
-		"IPVS":             cfg.IPVS,
-		"NFTables":         cfg.NFTables,
+		"IPTables":          cfg.IPTables,
+		"IPVS":              cfg.IPVS,
+		"NFTables":          cfg.NFTables,
 		"NodePortAddresses": cfg.NodePortAddresses,
 	} {
-		if !json.Valid([]byte(val)) {
-			t.Errorf("%s is not valid JSON: %q", name, val)
-		}
+		assert.Truef(t, json.Valid([]byte(val)), "%s is not valid JSON: %q", name, val)
 	}
 }
