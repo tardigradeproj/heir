@@ -18,13 +18,7 @@ package controller
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/json"
 	"fmt"
-	"slices"
-	"sort"
-	"strings"
-	"time"
 
 	"github.com/tardigrade-runtime/samaritano/pkg/pki"
 	appsv1 "k8s.io/api/apps/v1"
@@ -36,8 +30,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	clientcmd "k8s.io/client-go/tools/clientcmd"
-	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -51,7 +43,6 @@ const (
 )
 
 var layout = samaritanoruntime.NewControlPlaneLayout()
-var certificateDurationInHour = time.Duration(8760) * time.Hour
 
 // RuntimeReconciler reconciles a Runtime object
 type RuntimeReconciler struct {
@@ -396,164 +387,40 @@ func mergeMaps(base, extra map[string]string) map[string]string {
 // setupControlPlaneConfiguration reconciles the <resourceName>-config ConfigMap that holds the
 // s6-overlay run scripts for every supervised process. It creates the ConfigMap when absent and
 // updates it only when the SHA-256 hash of the newly generated data differs from the stored one.
-// ExtraArgs values always win over the built-in defaults; no flag is emitted twice.
 // Returns the hex-encoded SHA-256 hash of the current ConfigMap data.
 func (r *RuntimeReconciler) setupControlPlaneConfiguration(
 	ctx context.Context,
 	controlPlaneRuntime *controlplanev1alpha1.Runtime,
 ) (string, error) {
 	log := logf.FromContext(ctx)
-	net := controlPlaneRuntime.Spec.UpstreamCluster.Network
-	apiserverScript := renderRunScript("/usr/local/bin/kube-apiserver",
-		mergeArgs(map[string]string{
-			"allow-privileged":                 "true",
-			"authorization-mode":               "Node,RBAC",
-			"bind-address":                     "0.0.0.0",
-			"client-ca-file":                   layout.PKI.CACert.MountPath,
-			"enable-admission-plugins":         "NamespaceLifecycle,NodeRestriction,LimitRanger,ServiceAccount,DefaultStorageClass,ResourceQuota",
-			"etcd-servers":                     "http://127.0.0.1:2379",
-			"event-ttl":                        "1h",
-			"kubelet-certificate-authority":    layout.PKI.CACert.MountPath,
-			"kubelet-client-certificate":       layout.PKI.APIServerCert.MountPath,
-			"kubelet-client-key":               layout.PKI.APIServerKey.MountPath,
-			"runtime-config":                   "api/all=true",
-			"service-account-issuer":           "https://kubernetes.default.svc.cluster.local",
-			"service-account-key-file":         layout.PKI.ServiceAccountCert.MountPath,
-			"service-account-signing-key-file": layout.PKI.ServiceAccountKey.MountPath,
-			"service-cluster-ip-range":         net.ServiceCIDR,
-			"service-node-port-range":          "30000-32767",
-			"tls-cert-file":                    layout.PKI.APIServerCert.MountPath,
-			"tls-private-key-file":             layout.PKI.APIServerKey.MountPath,
-			"v":                                "2",
-		}, controlPlaneRuntime.Spec.UpstreamCluster.APIServer.ExtraArgs),
-	)
 
-	controllerManagerScript := renderRunScript("/usr/local/bin/kube-controller-manager",
-		mergeArgs(map[string]string{
-			"allocate-node-cidrs":              "true",
-			"bind-address":                     "0.0.0.0",
-			"cluster-cidr":                     net.PodCIDR,
-			"cluster-name":                     "tardigrade",
-			"cluster-signing-cert-file":        layout.PKI.CACert.MountPath,
-			"cluster-signing-key-file":         layout.PKI.CAKey.MountPath,
-			"kubeconfig":                       layout.Auth.ControllerManagerConf.MountPath,
-			"root-ca-file":                     layout.PKI.CACert.MountPath,
-			"service-account-private-key-file": layout.PKI.ServiceAccountKey.MountPath,
-			"service-cluster-ip-range":         net.ServiceCIDR,
-			"use-service-account-credentials":  "true",
-			"allocate-node-cidrs=true":         "true",
-			"controllers":                      "*,tokencleaner",
-			"v":                                "2",
-		}, controlPlaneRuntime.Spec.UpstreamCluster.ControllerManager.ExtraArgs),
-	)
-
-	schedulerScript := renderRunScript("/usr/local/bin/kube-scheduler",
-		mergeArgs(map[string]string{
-			"authentication-kubeconfig": layout.Auth.SchedulerConf.MountPath,
-			"authorization-kubeconfig":  layout.Auth.SchedulerConf.MountPath,
-			"bind-address":              "127.0.0.1",
-			"kubeconfig":                layout.Auth.SchedulerConf.MountPath,
-			"leader-elect":              "true",
-		}, controlPlaneRuntime.Spec.UpstreamCluster.Scheduler.ExtraArgs),
-	)
-
-	kineArgs := map[string]string{}
-	if controlPlaneRuntime.Spec.UpstreamCluster.Storage.Kine.DataSource != "" {
-		kineArgs["endpoint"] = controlPlaneRuntime.Spec.UpstreamCluster.Storage.Kine.DataSource
-	}
-	kineScript := renderRunScript("/usr/local/bin/kine", kineArgs)
-
-	desired := map[string]string{
-		layout.Config.APIServer.SecretKey:         apiserverScript,
-		layout.Config.ControllerManager.SecretKey: controllerManagerScript,
-		layout.Config.Scheduler.SecretKey:         schedulerScript,
-		layout.Config.Kine.SecretKey:              kineScript,
-	}
-
-	desiredHash, err := hashConfigData(desired)
+	desired, desiredHash, err := samaritanoruntime.GenerateControlPlaneConfig(controlPlaneRuntime, layout)
 	if err != nil {
 		return "", err
 	}
 
-	configMap := &corev1.ConfigMap{}
-	err = r.Get(ctx, types.NamespacedName{
-		Name:      fmt.Sprintf("%s-config", controlPlaneRuntime.Name),
-		Namespace: controlPlaneRuntime.Namespace,
-	}, configMap)
+	existing := &corev1.ConfigMap{}
+	err = r.Get(ctx, types.NamespacedName{Name: desired.Name, Namespace: desired.Namespace}, existing)
 	if err != nil && apierrors.IsNotFound(err) {
-		configMap = &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      fmt.Sprintf("%s-config", controlPlaneRuntime.Name),
-				Namespace: controlPlaneRuntime.Namespace,
-			},
-			Data: desired,
-		}
-		if err := ctrl.SetControllerReference(controlPlaneRuntime, configMap, r.Scheme); err != nil {
+		if err := ctrl.SetControllerReference(controlPlaneRuntime, desired, r.Scheme); err != nil {
 			return "", err
 		}
-		return desiredHash, r.Create(ctx, configMap)
+		return desiredHash, r.Create(ctx, desired)
 	}
 	if err != nil {
 		return "", err
 	}
-	existingHash, err := hashConfigData(configMap.Data)
+
+	existingHash, err := samaritanoruntime.HashConfigData(existing.Data)
 	if err != nil {
 		return "", err
 	}
 	if existingHash == desiredHash {
-		log.Info("configmap is up to date; skipping update", "configmap", configMap.Name)
+		log.Info("configmap is up to date; skipping update", "configmap", existing.Name)
 		return existingHash, nil
 	}
-	configMap.Data = desired
-	return desiredHash, r.Update(ctx, configMap)
-}
-
-// hashConfigData returns the hex-encoded SHA-256 digest of a ConfigMap data map.
-// encoding/json marshals map keys in sorted order, ensuring a deterministic digest.
-func hashConfigData(data map[string]string) (string, error) {
-	b, err := json.Marshal(data)
-	if err != nil {
-		return "", err
-	}
-	sum := sha256.Sum256(b)
-	return fmt.Sprintf("%x", sum), nil
-}
-
-// mergeArgs returns a new map with all entries from defaults overridden by any matching key in extra.
-func mergeArgs(defaults, extra map[string]string) map[string]string {
-	merged := make(map[string]string, len(defaults)+len(extra))
-	for k, v := range defaults {
-		merged[k] = v
-	}
-	for k, v := range extra {
-		merged[k] = v
-	}
-	return merged
-}
-
-// renderRunScript produces a shell script for the given binary and args.
-// Args are emitted in sorted order for deterministic output.
-func renderRunScript(binary string, args map[string]string) string {
-	var sb strings.Builder
-	sb.WriteString("#!/bin/sh\n")
-	if len(args) == 0 {
-		sb.WriteString("exec " + binary)
-		return sb.String()
-	}
-	keys := make([]string, 0, len(args))
-	for k := range args {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	sb.WriteString("exec " + binary + " \\\n")
-	for i, k := range keys {
-		if i < len(keys)-1 {
-			fmt.Fprintf(&sb, "  --%s=%s \\\n", k, args[k])
-		} else {
-			fmt.Fprintf(&sb, "  --%s=%s", k, args[k])
-		}
-	}
-	return sb.String()
+	existing.Data = desired.Data
+	return desiredHash, r.Update(ctx, existing)
 }
 
 // setupPKIConfiguration reconciles the <resourceName>-pki Secret that holds the root CA and all
@@ -576,56 +443,14 @@ func (r *RuntimeReconciler) setupPKIConfiguration(
 		return err
 	}
 
-	ca, err := pki.GenerateSelfSignedCert()
+	secret, err := samaritanoruntime.GeneratePKISecret(controlPlaneRuntime, layout)
 	if err != nil {
 		return err
 	}
-	apiserverCert, err := pki.SignCSR(*ca, pki.CSR{
-		Name:      "kubernetes",
-		O:         "kubernetes",
-		CN:        "kube-apiserver",
-		Hostnames: setupKubeApiServerAltNames(controlPlaneRuntime.Spec.UpstreamCluster.APIServer),
-	}, certificateDurationInHour)
-	if err != nil {
-		return err
-	}
-	serviceAccountCert, err := pki.SignCSR(*ca, pki.CSR{
-		CN:        "service-accounts",
-		Hostnames: []string{},
-	}, certificateDurationInHour)
-	if err != nil {
-		return err
-	}
-
-	secret, err := r.createPKISecret(controlPlaneRuntime, map[string][]byte{
-		layout.PKI.CACert.SecretKey:             ca.Cert,
-		layout.PKI.CAKey.SecretKey:              ca.Key,
-		layout.PKI.APIServerCert.SecretKey:      apiserverCert.Cert,
-		layout.PKI.APIServerKey.SecretKey:       apiserverCert.Key,
-		layout.PKI.ServiceAccountCert.SecretKey: serviceAccountCert.Cert,
-		layout.PKI.ServiceAccountKey.SecretKey:  serviceAccountCert.Key,
-	})
-	if err != nil {
+	if err := ctrl.SetControllerReference(controlPlaneRuntime, secret, r.Scheme); err != nil {
 		return err
 	}
 	return r.Create(ctx, secret)
-}
-
-func (r *RuntimeReconciler) createPKISecret(
-	controlPlaneRuntime *controlplanev1alpha1.Runtime,
-	data map[string][]byte,
-) (*corev1.Secret, error) {
-	pkiSecret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("%s-pki", controlPlaneRuntime.Name),
-			Namespace: controlPlaneRuntime.Namespace,
-		},
-		Data: data,
-	}
-	if err := ctrl.SetControllerReference(controlPlaneRuntime, pkiSecret, r.Scheme); err != nil {
-		return nil, err
-	}
-	return pkiSecret, nil
 }
 
 // setupAuthConfiguration reconciles the <resourceName>-auth Secret that holds kubeconfigs for
@@ -664,93 +489,12 @@ func (r *RuntimeReconciler) setupAuthConfiguration(
 		Key:  pkiSecret.Data[layout.PKI.CAKey.SecretKey],
 	}
 
-	adminCert, err := pki.SignCSR(ca, pki.CSR{CN: "kubernetes-admin", O: "system:masters", Hostnames: []string{}}, certificateDurationInHour)
+	secret, err := samaritanoruntime.GenerateAuthSecret(controlPlaneRuntime, ca, layout)
 	if err != nil {
 		return err
 	}
-	controllerManagerCert, err := pki.SignCSR(ca, pki.CSR{CN: "system:kube-controller-manager", O: "system:kube-controller-manager", Hostnames: []string{}}, certificateDurationInHour)
-	if err != nil {
-		return err
-	}
-	schedulerCert, err := pki.SignCSR(ca, pki.CSR{CN: "system:kube-scheduler", O: "system:kube-scheduler", Hostnames: []string{}}, certificateDurationInHour)
-	if err != nil {
-		return err
-	}
-
-	adminConf, err := generateKubeconfig("kubernetes-admin", ca.Cert, adminCert)
-	if err != nil {
-		return err
-	}
-	controllerManagerConf, err := generateKubeconfig("system:kube-controller-manager", ca.Cert, controllerManagerCert)
-	if err != nil {
-		return err
-	}
-	schedulerConf, err := generateKubeconfig("system:kube-scheduler", ca.Cert, schedulerCert)
-	if err != nil {
-		return err
-	}
-
-	secret, err := r.createAuthSecret(controlPlaneRuntime, map[string][]byte{
-		layout.Auth.AdminConf.SecretKey:             adminConf,
-		layout.Auth.ControllerManagerConf.SecretKey: controllerManagerConf,
-		layout.Auth.SchedulerConf.SecretKey:         schedulerConf,
-	})
-	if err != nil {
+	if err := ctrl.SetControllerReference(controlPlaneRuntime, secret, r.Scheme); err != nil {
 		return err
 	}
 	return r.Create(ctx, secret)
-}
-
-func (r *RuntimeReconciler) createAuthSecret(
-	controlPlaneRuntime *controlplanev1alpha1.Runtime,
-	data map[string][]byte,
-) (*corev1.Secret, error) {
-	authSecret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("%s-auth", controlPlaneRuntime.Name),
-			Namespace: controlPlaneRuntime.Namespace,
-		},
-		Data: data,
-	}
-	if err := ctrl.SetControllerReference(controlPlaneRuntime, authSecret, r.Scheme); err != nil {
-		return nil, err
-	}
-	return authSecret, nil
-}
-
-func generateKubeconfig(username string, caCert []byte, cert *pki.Certificate) ([]byte, error) {
-	kubeconfig := clientcmdapi.NewConfig()
-	kubeconfig.Clusters["kubernetes"] = &clientcmdapi.Cluster{
-		Server:                   "https://127.0.0.1:6443",
-		CertificateAuthorityData: caCert,
-	}
-	kubeconfig.AuthInfos[username] = &clientcmdapi.AuthInfo{
-		ClientCertificateData: cert.Cert,
-		ClientKeyData:         cert.Key,
-	}
-	contextName := fmt.Sprintf("%s@kubernetes", username)
-	kubeconfig.Contexts[contextName] = &clientcmdapi.Context{
-		Cluster:  "kubernetes",
-		AuthInfo: username,
-	}
-	kubeconfig.CurrentContext = contextName
-	return clientcmd.Write(*kubeconfig)
-}
-
-func setupKubeApiServerAltNames(apiserver controlplanev1alpha1.APIServerSpec) []string {
-	sans := append([]string{}, apiserver.Sans...)
-	sans = append(sans, apiserver.ExternalAddress,
-		"127.0.0.1",
-		"kubernetes",
-		"kubernetes.default",
-		"kubernetes.default.svc",
-		"kubernetes.default.cluster",
-		"server.kubernetes.local",
-		"api-server.kubernetes.local",
-	)
-	sans = slices.DeleteFunc(sans, func(s string) bool {
-		return s == ""
-	})
-	slices.Sort(sans)
-	return slices.Compact(sans)
 }
