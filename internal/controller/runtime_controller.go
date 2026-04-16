@@ -43,83 +43,15 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	controlplanev1alpha1 "github.com/tardigrade-runtime/samaritano/api/v1alpha1"
+	samaritanoruntime "github.com/tardigrade-runtime/samaritano/pkg/runtime"
 )
 
 const (
 	typeAvailableRuntime = "Available"
 )
 
-var layout = newControlPlaneLayout()
+var layout = samaritanoruntime.NewControlPlaneLayout()
 var certificateDurationInHour = time.Duration(8760) * time.Hour
-
-// mountEntry binds a Secret/ConfigMap key to its absolute mount path inside the control-plane container.
-type mountEntry struct {
-	// SecretKey is the key name used in the Kubernetes Secret or ConfigMap.
-	SecretKey string
-	// MountPath is the absolute path where the file will be projected inside the container.
-	MountPath string
-}
-
-// pkiLayout describes the certificate and key entries stored in the <name>-pki Secret.
-type pkiLayout struct {
-	CACert             mountEntry
-	CAKey              mountEntry
-	APIServerCert      mountEntry
-	APIServerKey       mountEntry
-	ServiceAccountCert mountEntry
-	ServiceAccountKey  mountEntry
-}
-
-// authLayout describes the kubeconfig entries stored in the <name>-auth Secret.
-type authLayout struct {
-	AdminConf             mountEntry
-	ControllerManagerConf mountEntry
-	SchedulerConf         mountEntry
-}
-
-// configLayout describes the s6-overlay run-script entries stored in the <name>-config ConfigMap.
-// Each entry is the run script for one supervised service.
-type configLayout struct {
-	APIServer         mountEntry
-	ControllerManager mountEntry
-	Scheduler         mountEntry
-	Kine              mountEntry
-}
-
-// controlPlaneLayout groups all Secret/ConfigMap keys and their container mount paths for a
-// control-plane instance. Use newControlPlaneLayout to obtain the canonical set of values.
-type controlPlaneLayout struct {
-	PKI    pkiLayout
-	Auth   authLayout
-	Config configLayout
-}
-
-// newControlPlaneLayout returns the fixed layout that describes every file that must be
-// projected into the control-plane container: PKI certificates, kubeconfigs, and s6-overlay
-// service scripts.
-func newControlPlaneLayout() controlPlaneLayout {
-	return controlPlaneLayout{
-		PKI: pkiLayout{
-			CACert:             mountEntry{SecretKey: "ca.crt", MountPath: "/etc/kubernetes/pki/ca.crt"},
-			CAKey:              mountEntry{SecretKey: "ca.key", MountPath: "/etc/kubernetes/pki/ca.key"},
-			APIServerCert:      mountEntry{SecretKey: "apiserver.crt", MountPath: "/etc/kubernetes/pki/kube-apiserver.crt"},
-			APIServerKey:       mountEntry{SecretKey: "apiserver.key", MountPath: "/etc/kubernetes/pki/kube-apiserver.key"},
-			ServiceAccountCert: mountEntry{SecretKey: "sa.crt", MountPath: "/etc/kubernetes/pki/service-accounts.crt"},
-			ServiceAccountKey:  mountEntry{SecretKey: "sa.key", MountPath: "/etc/kubernetes/pki/service-accounts.key"},
-		},
-		Auth: authLayout{
-			AdminConf:             mountEntry{SecretKey: "admin.conf", MountPath: "/etc/kubernetes/admin.conf"},
-			ControllerManagerConf: mountEntry{SecretKey: "controller-manager.conf", MountPath: "/etc/kubernetes/kube-controller-manager.conf"},
-			SchedulerConf:         mountEntry{SecretKey: "scheduler.conf", MountPath: "/etc/kubernetes/kube-scheduler.conf"},
-		},
-		Config: configLayout{
-			APIServer:         mountEntry{SecretKey: "kube-apiserver", MountPath: "/etc/kubernetes/manifests/kube-apiserver.sh"},
-			ControllerManager: mountEntry{SecretKey: "kube-controller-manager", MountPath: "/etc/kubernetes/manifests/kube-controller-manager.sh"},
-			Scheduler:         mountEntry{SecretKey: "kube-scheduler", MountPath: "/etc/kubernetes/manifests/kube-scheduler.sh"},
-			Kine:              mountEntry{SecretKey: "kine", MountPath: "/etc/kubernetes/manifests/kine.sh"},
-		},
-	}
-}
 
 // RuntimeReconciler reconciles a Runtime object
 type RuntimeReconciler struct {

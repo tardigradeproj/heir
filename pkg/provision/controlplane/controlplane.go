@@ -30,13 +30,18 @@ func Provision(ctx context.Context, opts ...Option) error {
 		return fmt.Errorf("failed to parse config: %w", err)
 	}
 
+	if pCtx.name != "" {
+		runtime.Name = pCtx.name
+	}
+	if pCtx.namespace != "" {
+		runtime.Namespace = pCtx.namespace
+	}
+
 	log.WithFields(log.Fields{
-		"cluster.name": pCtx.name,
-		"namespace":    pCtx.namespace,
+		"cluster.name": runtime.Name,
+		"namespace":    runtime.Namespace,
 	}).Info("provisioning control plane")
-	fmt.Println(runtime.Namespace)
-	fmt.Println(runtime.Spec.UpstreamCluster.Network)
-	_ = runtime
+
 	return nil
 }
 
