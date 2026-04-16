@@ -110,7 +110,7 @@ var _ = Describe("Runtime Controller Config", func() {
 					Spec: controlplanev1alpha1.RuntimeSpec{
 						ControlPlane: controlplanev1alpha1.ControlPlaneSpec{
 							Samaritano: controlplanev1alpha1.SamaritanoSpec{
-								Version: "v1.32.0",
+								Image: "v1.32.0",
 							},
 							Service: controlplanev1alpha1.ServiceSpec{
 								ServiceType: corev1.ServiceTypeClusterIP,
@@ -177,7 +177,7 @@ var _ = Describe("Runtime Controller PKI", func() {
 					Spec: controlplanev1alpha1.RuntimeSpec{
 						ControlPlane: controlplanev1alpha1.ControlPlaneSpec{
 							Samaritano: controlplanev1alpha1.SamaritanoSpec{
-								Version: "v1.32.0",
+								Image: "v1.32.0",
 							},
 							Service: controlplanev1alpha1.ServiceSpec{
 								ServiceType: corev1.ServiceTypeClusterIP,
@@ -275,7 +275,7 @@ var _ = Describe("Runtime Controller Service", func() {
 				},
 				Spec: controlplanev1alpha1.RuntimeSpec{
 					ControlPlane: controlplanev1alpha1.ControlPlaneSpec{
-						Samaritano: controlplanev1alpha1.SamaritanoSpec{Version: "v1.32.0"},
+						Samaritano: controlplanev1alpha1.SamaritanoSpec{Image: "v1.32.0"},
 						Service:    svcSpec,
 					},
 				},

@@ -402,7 +402,7 @@ func (r *RuntimeReconciler) setupDeployment(
 					Containers: []corev1.Container{
 						{
 							Name:         "samaritano",
-							Image:        buildImage(deploySpec.RegistrySettings, samaritano.Version),
+							Image:        samaritano.Image,
 							Ports:        containerPorts,
 							VolumeMounts: volumeMounts,
 						},
@@ -431,19 +431,6 @@ func (r *RuntimeReconciler) setupDeployment(
 	existing.Spec = desired.Spec
 	existing.Labels = desired.Labels
 	return r.Update(ctx, existing)
-}
-
-// buildImage composes the container image reference from RegistrySettings and the version tag.
-// Falls back to "tardigrade/samaritano" when no image override is provided.
-func buildImage(settings controlplanev1alpha1.RegistrySettings, version string) string {
-	image := settings.Image
-	if image == "" {
-		image = "tardigrade/samaritano"
-	}
-	if settings.Registry != "" {
-		return fmt.Sprintf("%s/%s:%s", settings.Registry, image, version)
-	}
-	return fmt.Sprintf("%s:%s", image, version)
 }
 
 // setupDeploymentPorts converts AdditionalPort entries from the spec into

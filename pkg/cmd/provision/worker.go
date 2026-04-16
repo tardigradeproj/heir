@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-	"github.com/tardigrade-runtime/samaritano/pkg/provision"
+	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker"
 )
 
 type workerFlagpole struct {
@@ -21,10 +21,10 @@ func workerProvisionCommand() *cobra.Command {
 		Short: "Provision a worker node and join it to the cluster",
 		Long:  "Provision a worker node and join it to the cluster",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			err := provision.Join(cmd.Context(), flags.Token,
-				provision.WithKubeProxyExtraArgs(flags.KubeProxyExtraArgs),
-				provision.WithNodeLabels(flags.NodeLabels),
-				provision.WithKubeletExtraArgs(flags.KubeletExtraArgs),
+			err := worker.Join(cmd.Context(), flags.Token,
+				worker.WithKubeProxyExtraArgs(flags.KubeProxyExtraArgs),
+				worker.WithNodeLabels(flags.NodeLabels),
+				worker.WithKubeletExtraArgs(flags.KubeletExtraArgs),
 			)
 			if err != nil {
 				return fmt.Errorf("failed to join worker node: %w", err)

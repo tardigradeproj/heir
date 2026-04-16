@@ -24,11 +24,16 @@ import (
 
 // UpstreamCluster defines how UpstreamCluster components are configured
 type UpstreamCluster struct {
-	APIServer         APIServerSpec         `json:"apiServer,omitempty"`
+	// +kubebuilder:default={}
+	APIServer APIServerSpec `json:"apiServer,omitempty"`
+	// +kubebuilder:default={}
 	ControllerManager ControllerManagerSpec `json:"controllerManager,omitempty"`
-	Scheduler         SchedulerSpec         `json:"scheduler,omitempty"`
-	Network           NetworkSpec           `json:"network,omitempty"`
-	Storage           StorageSpec           `json:"storage,omitempty"`
+	// +kubebuilder:default={}
+	Scheduler SchedulerSpec `json:"scheduler,omitempty"`
+	// +kubebuilder:default={}
+	Network NetworkSpec `json:"network,omitempty"`
+	// +kubebuilder:default={type="kine"}
+	Storage StorageSpec `json:"storage,omitempty"`
 }
 
 // APIServerSpec defines api-server configurations
@@ -57,7 +62,16 @@ type NetworkSpec struct {
 	// CIDR for Kubernetes Services: if empty, defaulted to 10.96.0.0/16.
 	//+kubebuilder:default="10.96.0.0/16"
 	//+kubebuilder:validation:Optional
+	// +optional
 	ServiceCIDR string `json:"serviceCIDR,omitempty"`
+	// CNI configuration
+	// +kubebuilder:default={}
+	CNI CNISpec `json:"cni,omitempty"`
+}
+type CNISpec struct {
+	// +kubebuilder:validation:Enum=calico;custom
+	//+kubebuilder:default="calico"
+	Supplier string `json:"supplier,omitempty"`
 }
 type StorageSpec struct {
 	// Type holds the type of storage to be used by APIServer
@@ -91,14 +105,12 @@ type ControlPlaneSpec struct {
 	Service ServiceSpec  `json:"service,omitempty"`
 }
 type SamaritanoSpec struct {
-	Version string `json:"version"`
+	Image string `json:"image,omitempty"`
 }
 type IngressSpec struct {
 	AdditionalMetadata AdditionalMetadata `json:"additionalMetadata,omitempty"`
 	IngressClassName   string             `json:"ingressClassName,omitempty"`
-	// Hostname is an optional field which will be used as Ingress's Host. If it is not defined,
-	// Ingress's host will be "<tenant>.<namespace>.<domain>", where domain is specified under NetworkProfileSpec
-	Hostname string `json:"hostname,omitempty"`
+	Hostname           string             `json:"hostname,omitempty"`
 }
 type ServiceSpec struct {
 	AdditionalMetadata AdditionalMetadata `json:"additionalMetadata,omitempty"`
