@@ -8,11 +8,16 @@ import (
 
 	log "github.com/sirupsen/logrus"
 	"github.com/tardigrade-runtime/samaritano/api/v1alpha1"
+	"github.com/tardigrade-runtime/samaritano/pkg/pki"
+	samaritanoruntime "github.com/tardigrade-runtime/samaritano/pkg/runtime"
 	apiextensions "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apiextensions-apiserver/pkg/apiserver/schema"
 	"k8s.io/apiextensions-apiserver/pkg/apiserver/schema/defaulting"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/json"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/yaml"
 )
 
@@ -42,6 +47,124 @@ func Provision(ctx context.Context, opts ...Option) error {
 		"namespace":    runtime.Namespace,
 	}).Info("provisioning control plane")
 
+	client, err := buildClient(pCtx.kubeconfig)
+	if err != nil {
+		return fmt.Errorf("failed to build kubernetes client: %w", err)
+	}
+
+	layout := samaritanoruntime.NewControlPlaneLayout()
+
+	if err := setupPKI(ctx, client, runtime, layout); err != nil {
+		return fmt.Errorf("failed to setup PKI: %w", err)
+	}
+
+	if err := setupAuth(ctx, client, runtime, layout); err != nil {
+		return fmt.Errorf("failed to setup auth: %w", err)
+	}
+
+	configHash, err := setupConfig(ctx, client, runtime, layout)
+	if err != nil {
+		return fmt.Errorf("failed to setup config: %w", err)
+	}
+
+	if err := setupService(ctx, client, runtime); err != nil {
+		return fmt.Errorf("failed to setup service: %w", err)
+	}
+
+	if err := setupDeployment(ctx, client, runtime, layout, configHash); err != nil {
+		return fmt.Errorf("failed to setup deployment: %w", err)
+	}
+
+	return nil
+}
+
+func buildClient(kubeconfig string) (*kubernetes.Clientset, error) {
+	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+	if kubeconfig != "" {
+		loadingRules.ExplicitPath = kubeconfig
+	}
+	restConfig, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+		loadingRules, &clientcmd.ConfigOverrides{},
+	).ClientConfig()
+	if err != nil {
+		return nil, err
+	}
+	return kubernetes.NewForConfig(restConfig)
+}
+
+func setupPKI(ctx context.Context, client *kubernetes.Clientset, runtime *v1alpha1.Runtime, layout samaritanoruntime.ControlPlaneLayout) error {
+	secret, err := samaritanoruntime.GeneratePKISecret(runtime, layout)
+	if err != nil {
+		return err
+	}
+	log.WithField("secret", secret.Name).Info("creating PKI secret")
+	if _, err := client.CoreV1().Secrets(runtime.Namespace).Create(ctx, secret, metav1.CreateOptions{}); err != nil {
+		return fmt.Errorf("failed to create PKI secret: %w", err)
+	}
+	log.Info("PKI secret created")
+
+	return nil
+}
+
+func setupAuth(ctx context.Context, client *kubernetes.Clientset, runtime *v1alpha1.Runtime, layout samaritanoruntime.ControlPlaneLayout) error {
+	pkiSecret, err := client.CoreV1().Secrets(runtime.Namespace).Get(ctx, fmt.Sprintf("%s-pki", runtime.Name), metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to get PKI secret: %w", err)
+	}
+	ca := pki.Certificate{
+		Cert: pkiSecret.Data[layout.PKI.CACert.SecretKey],
+		Key:  pkiSecret.Data[layout.PKI.CAKey.SecretKey],
+	}
+
+	secret, err := samaritanoruntime.GenerateAuthSecret(runtime, ca, layout)
+	if err != nil {
+		return err
+	}
+	log.WithField("secret", secret.Name).Info("creating auth secret")
+	if _, err := client.CoreV1().Secrets(runtime.Namespace).Create(ctx, secret, metav1.CreateOptions{}); err != nil {
+		return fmt.Errorf("failed to create auth secret: %w", err)
+	}
+	log.Info("auth secret created")
+
+	return nil
+}
+
+func setupConfig(ctx context.Context, client *kubernetes.Clientset, runtime *v1alpha1.Runtime, layout samaritanoruntime.ControlPlaneLayout) (string, error) {
+	cm, configHash, err := samaritanoruntime.GenerateControlPlaneConfig(runtime, layout)
+	if err != nil {
+		return "", err
+	}
+	log.WithField("configmap", cm.Name).Info("creating config configmap")
+	if _, err := client.CoreV1().ConfigMaps(runtime.Namespace).Create(ctx, cm, metav1.CreateOptions{}); err != nil {
+		return "", fmt.Errorf("failed to create config configmap: %w", err)
+	}
+	log.Info("config configmap created")
+	return configHash, nil
+}
+
+func setupService(ctx context.Context, client *kubernetes.Clientset, runtime *v1alpha1.Runtime) error {
+	svc, err := samaritanoruntime.GenerateService(runtime)
+	if err != nil {
+		return err
+	}
+	log.WithField("service", svc.Name).Info("creating service")
+	if _, err := client.CoreV1().Services(runtime.Namespace).Create(ctx, svc, metav1.CreateOptions{}); err != nil {
+		return fmt.Errorf("failed to create service: %w", err)
+	}
+	log.Info("service created")
+	return nil
+}
+
+func setupDeployment(ctx context.Context, client *kubernetes.Clientset, runtime *v1alpha1.Runtime, layout samaritanoruntime.ControlPlaneLayout, configHash string) error {
+	deploy, err := samaritanoruntime.GenerateDeployment(runtime, layout, configHash)
+	if err != nil {
+		return err
+	}
+	log.WithField("deployment", deploy.Name).Info("creating deployment")
+	if _, err := client.AppsV1().Deployments(runtime.Namespace).Create(ctx, deploy, metav1.CreateOptions{}); err != nil {
+		return fmt.Errorf("failed to create deployment: %w", err)
+	}
+	log.Info("deployment created")
 	return nil
 }
 

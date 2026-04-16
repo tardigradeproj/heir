@@ -1,15 +1,42 @@
 package component
 
 import (
+	"bytes"
 	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
+	"k8s.io/apimachinery/pkg/util/yaml"
+	sigsyaml "sigs.k8s.io/yaml"
 
 	controlplanev1alpha1 "github.com/tardigrade-runtime/samaritano/api/v1alpha1"
 )
+
+// parseManifest splits a multi-document YAML manifest and returns a map of Kind -> raw JSON bytes.
+func parseManifest(t *testing.T, manifest []byte) map[string][]byte {
+	t.Helper()
+	resources := make(map[string][]byte)
+	decoder := yaml.NewYAMLToJSONDecoder(bytes.NewReader(manifest))
+	for {
+		var raw json.RawMessage
+		if err := decoder.Decode(&raw); err != nil {
+			break
+		}
+		if len(raw) == 0 {
+			continue
+		}
+		var meta struct {
+			Kind string `json:"kind"`
+		}
+		require.NoError(t, json.Unmarshal(raw, &meta))
+		resources[meta.Kind] = raw
+	}
+	return resources
+}
 
 func kubeProxyRuntime(spec controlplanev1alpha1.KubeProxySpec) *controlplanev1alpha1.Runtime {
 	return &controlplanev1alpha1.Runtime{
@@ -61,6 +88,7 @@ func TestGetConfig_BasicFields(t *testing.T) {
 }
 
 func TestGetConfig_DefaultArgs(t *testing.T) {
+
 	runtime := kubeProxyRuntime(controlplanev1alpha1.KubeProxySpec{})
 
 	cfg, err := getConfig(runtime)
@@ -125,5 +153,133 @@ func TestGetConfig_JSONFields(t *testing.T) {
 		"NodePortAddresses": cfg.NodePortAddresses,
 	} {
 		assert.Truef(t, json.Valid([]byte(val)), "%s is not valid JSON: %q", name, val)
+	}
+}
+
+func TestCreateManifest(t *testing.T) {
+	tests := []struct {
+		name     string
+		spec     controlplanev1alpha1.KubeProxySpec
+		wantErr  bool
+		validate func(t *testing.T, resources map[string][]byte)
+	}{
+		{
+			name:    "disabled returns error due to nil template data",
+			spec:    controlplanev1alpha1.KubeProxySpec{Disabled: true},
+			wantErr: false,
+			validate: func(t *testing.T, resources map[string][]byte) {
+				assert.Equal(t, resources, map[string][]byte{})
+			},
+		},
+		{
+			name: "all expected resource kinds are present",
+			spec: controlplanev1alpha1.KubeProxySpec{
+				RegisterSetting: controlplanev1alpha1.RegistrySettings{
+					Registry: "registry.k8s.io",
+					Image:    "kube-proxy:v1.34.0",
+				},
+			},
+			validate: func(t *testing.T, resources map[string][]byte) {
+				for _, kind := range []string{"ServiceAccount", "Role", "ClusterRoleBinding", "RoleBinding", "ConfigMap", "DaemonSet"} {
+					assert.Contains(t, resources, kind, "missing resource kind %s", kind)
+				}
+			},
+		},
+		{
+			name: "service account is in kube-system namespace",
+			spec: controlplanev1alpha1.KubeProxySpec{},
+			validate: func(t *testing.T, resources map[string][]byte) {
+				var sa corev1.ServiceAccount
+				require.NoError(t, sigsyaml.Unmarshal(resources["ServiceAccount"], &sa))
+				assert.Equal(t, "kube-proxy", sa.Name)
+				assert.Equal(t, "kube-system", sa.Namespace)
+			},
+		},
+		{
+			name: "cluster role binding references system:node-proxier",
+			spec: controlplanev1alpha1.KubeProxySpec{},
+			validate: func(t *testing.T, resources map[string][]byte) {
+				var crb rbacv1.ClusterRoleBinding
+				require.NoError(t, sigsyaml.Unmarshal(resources["ClusterRoleBinding"], &crb))
+				assert.Equal(t, "system:node-proxier", crb.RoleRef.Name)
+				assert.Equal(t, "kube-proxy", crb.Subjects[0].Name)
+				assert.Equal(t, "kube-system", crb.Subjects[0].Namespace)
+			},
+		},
+		{
+			name: "configmap contains cluster CIDR and control plane endpoint",
+			spec: controlplanev1alpha1.KubeProxySpec{},
+			validate: func(t *testing.T, resources map[string][]byte) {
+				var cm corev1.ConfigMap
+				require.NoError(t, sigsyaml.Unmarshal(resources["ConfigMap"], &cm))
+				assert.Contains(t, cm.Data["config.conf"], "clusterCIDR: 10.244.0.0/16")
+				assert.Contains(t, cm.Data["kubeconfig.conf"], "server: https://api.example.com:6443")
+			},
+		},
+		{
+			name: "configmap reflects proxy mode",
+			spec: controlplanev1alpha1.KubeProxySpec{Mode: "ipvs"},
+			validate: func(t *testing.T, resources map[string][]byte) {
+				var cm corev1.ConfigMap
+				require.NoError(t, sigsyaml.Unmarshal(resources["ConfigMap"], &cm))
+				assert.Contains(t, cm.Data["config.conf"], `mode: "ipvs"`)
+			},
+		},
+		{
+			name: "daemonset uses image from registry settings",
+			spec: controlplanev1alpha1.KubeProxySpec{
+				RegisterSetting: controlplanev1alpha1.RegistrySettings{
+					Registry:   "my.registry.io",
+					Image:      "kube-proxy:v1.30.0",
+					PullPolicy: corev1.PullAlways,
+				},
+			},
+			validate: func(t *testing.T, resources map[string][]byte) {
+				var ds appsv1.DaemonSet
+				require.NoError(t, sigsyaml.Unmarshal(resources["DaemonSet"], &ds))
+				container := ds.Spec.Template.Spec.Containers[0]
+				assert.Equal(t, "my.registry.io/kube-proxy:v1.30.0", container.Image)
+				assert.Equal(t, corev1.PullAlways, container.ImagePullPolicy)
+			},
+		},
+		{
+			name: "daemonset args include extra args",
+			spec: controlplanev1alpha1.KubeProxySpec{
+				ExtraArgs: map[string]string{"v": "4"},
+			},
+			validate: func(t *testing.T, resources map[string][]byte) {
+				var ds appsv1.DaemonSet
+				require.NoError(t, sigsyaml.Unmarshal(resources["DaemonSet"], &ds))
+				assert.Contains(t, ds.Spec.Template.Spec.Containers[0].Args, "--v=4")
+			},
+		},
+		{
+			name: "daemonset mounts NODE_NAME env from field ref",
+			spec: controlplanev1alpha1.KubeProxySpec{},
+			validate: func(t *testing.T, resources map[string][]byte) {
+				var ds appsv1.DaemonSet
+				require.NoError(t, sigsyaml.Unmarshal(resources["DaemonSet"], &ds))
+				envVars := ds.Spec.Template.Spec.Containers[0].Env
+				require.Len(t, envVars, 1)
+				assert.Equal(t, "NODE_NAME", envVars[0].Name)
+				assert.Equal(t, "spec.nodeName", envVars[0].ValueFrom.FieldRef.FieldPath)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runtime := kubeProxyRuntime(tt.spec)
+
+			manifest, err := CreateManifest(runtime)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+
+			resources := parseManifest(t, manifest)
+			tt.validate(t, resources)
+		})
 	}
 }

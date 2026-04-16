@@ -19,6 +19,7 @@ package v1alpha1
 import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
@@ -34,12 +35,15 @@ type UpstreamCluster struct {
 	Network NetworkSpec `json:"network,omitempty"`
 	// +kubebuilder:default={type="kine"}
 	Storage StorageSpec `json:"storage,omitempty"`
+	// +kubebuilder:default={}
+	ExtraResources ExtraResourcesSpec `json:"extraResources,omitempty"`
 }
 
 // APIServerSpec defines api-server configurations
 type APIServerSpec struct {
 	// If Samaritano controllers are running behind a loadbalancer provide the loadbalancer address here. This will configure all cluster
 	// components to connect to this address and also configures this address to be used when joining new nodes into the cluster.
+	// eg: https://my-cluster.io:9963
 	ExternalAddress string `json:"externalAddress,omitempty"`
 	// sans defines a List of additional addresses to push to API servers serving certificate
 	Sans []string `json:"sans,omitempty"`
@@ -66,7 +70,8 @@ type NetworkSpec struct {
 	ServiceCIDR string `json:"serviceCIDR,omitempty"`
 	// CNI configuration
 	// +kubebuilder:default={}
-	CNI CNISpec `json:"cni,omitempty"`
+	CNI       CNISpec        `json:"cni,omitempty"`
+	KubeProxy *KubeProxySpec `json:"kubeProxy,omitempty"`
 }
 type CNISpec struct {
 	// +kubebuilder:validation:Enum=calico;custom
@@ -84,6 +89,15 @@ type StorageSpec struct {
 type KineSpec struct {
 	// DataSource holds the URL of the data source. Refer to: https://github.com/rancher/kine/
 	DataSource string `json:"dataSource,omitempty"`
+}
+
+// ExtraResourcesSpec holds a list of arbitrary Kubernetes objects to be applied
+// to the upstream cluster on startup.
+type ExtraResourcesSpec struct {
+	// Objects is a list of Kubernetes objects to apply on cluster startup.
+	// Any valid Kubernetes resource manifest is accepted.
+	// +optional
+	Objects []runtime.RawExtension `json:"objects,omitempty"`
 }
 
 // RuntimeSpec defines the desired state of Runtime
@@ -174,10 +188,12 @@ type DeploymentSpec struct {
 	// ServiceAccountName allows to specify the service account to be mounted to the pods of the Control plane deployment
 	ServiceAccountName string `json:"serviceAccountName,omitempty"`
 }
+
+// #TODO: review
 type RegistrySettings struct {
-	Registry string `json:"registry,omitempty"`
-	// +kubebuilder:default="tardigrade/samaritano"
-	Image string `json:"image,omitempty"`
+	Registry   string            `json:"registry,omitempty"`
+	Image      string            `json:"image,omitempty"`
+	PullPolicy corev1.PullPolicy `json:"pullPolicy,omitempty"`
 }
 
 // RuntimeStatus defines the observed state of Runtime.

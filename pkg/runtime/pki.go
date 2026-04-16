@@ -63,7 +63,6 @@ func GeneratePKISecret(runtime *controlplanev1alpha1.Runtime, layout ControlPlan
 func APIServerAltNames(apiserver controlplanev1alpha1.APIServerSpec) []string {
 	sans := append([]string{}, apiserver.Sans...)
 	sans = append(sans,
-		apiserver.ExternalAddress,
 		"127.0.0.1",
 		"kubernetes",
 		"kubernetes.default",

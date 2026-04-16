@@ -1,9 +1,11 @@
-package controller
+package v1alpha1
 
 import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-type KubeProxy struct {
+type KubeProxySpec struct {
 	Disabled bool `json:"disabled,omitempty"`
+	//+kubebuilder:default={"register":"registry.k8s.io", "image":"kube-proxy:v1.34.0"}
+	RegisterSetting RegistrySettings `json:"registerSetting,omitempty"`
 	// Mode defines the kube-proxy mode.
 	// +kubebuilder:validation:Enum=iptables;ipvs;userspace;nft
 	//+kubebuilder:default="iptables"
