@@ -29,7 +29,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -160,50 +159,16 @@ func (r *RuntimeReconciler) setupService(
 	ctx context.Context,
 	controlPlaneRuntime *controlplanev1alpha1.Runtime,
 ) error {
-	svcSpec := controlPlaneRuntime.Spec.ControlPlane.Service
-
-	selectorLabels := map[string]string{
-		"app.kubernetes.io/name":       controlPlaneRuntime.Name,
-		"app.kubernetes.io/managed-by": "samaritano",
-	}
-
-	ports := []corev1.ServicePort{
-		{
-			Name:       "apiserver",
-			Port:       6443,
-			TargetPort: intstr.FromInt32(6443),
-			Protocol:   corev1.ProtocolTCP,
-		},
-	}
-	for _, p := range svcSpec.AdditionalPorts {
-		ports = append(ports, corev1.ServicePort{
-			Name:        p.Name,
-			Port:        p.Port,
-			TargetPort:  p.TargetPort,
-			Protocol:    p.Protocol,
-			AppProtocol: p.AppProtocol,
-		})
-	}
-
-	desired := &corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:        controlPlaneRuntime.Name,
-			Namespace:   controlPlaneRuntime.Namespace,
-			Labels:      mergeMaps(selectorLabels, svcSpec.AdditionalMetadata.Labels),
-			Annotations: svcSpec.AdditionalMetadata.Annotations,
-		},
-		Spec: corev1.ServiceSpec{
-			Type:     svcSpec.ServiceType,
-			Selector: selectorLabels,
-			Ports:    ports,
-		},
+	desired, err := samaritanoruntime.GenerateService(controlPlaneRuntime)
+	if err != nil {
+		return err
 	}
 	if err := ctrl.SetControllerReference(controlPlaneRuntime, desired, r.Scheme); err != nil {
 		return err
 	}
 
 	existing := &corev1.Service{}
-	err := r.Get(ctx, types.NamespacedName{Name: desired.Name, Namespace: desired.Namespace}, existing)
+	err = r.Get(ctx, types.NamespacedName{Name: desired.Name, Namespace: desired.Namespace}, existing)
 	if err != nil && apierrors.IsNotFound(err) {
 		return r.Create(ctx, desired)
 	}
@@ -213,7 +178,6 @@ func (r *RuntimeReconciler) setupService(
 	// Preserve ClusterIP — Kubernetes rejects updates that change it.
 	desired.Spec.ClusterIP = existing.Spec.ClusterIP
 
-	equality.Semantic.DeepEqual(desired.Spec, existing.Spec)
 	if existing.Spec.Type == desired.Spec.Type &&
 		equality.Semantic.DeepEqual(existing.Spec.Ports, desired.Spec.Ports) &&
 		equality.Semantic.DeepEqual(existing.Labels, desired.Labels) &&
@@ -236,111 +200,16 @@ func (r *RuntimeReconciler) setupDeployment(
 	controlPlaneRuntime *controlplanev1alpha1.Runtime,
 	configHash string,
 ) error {
-	deploySpec := controlPlaneRuntime.Spec.ControlPlane.Deployment
-	samaritano := controlPlaneRuntime.Spec.ControlPlane.Samaritano
-	labels := map[string]string{
-		"app.kubernetes.io/name":       controlPlaneRuntime.Name,
-		"app.kubernetes.io/managed-by": "samaritano",
-	}
-
-	// Merge any extra labels/annotations requested by the user.
-	podLabels := mergeMaps(labels, deploySpec.AdditionalMetadata.Labels)
-	podAnnotations := mergeMaps(
-		map[string]string{"samaritano.tardigrade.runtime.io/s6-overlay-config-hash": configHash},
-		deploySpec.AdditionalMetadata.Annotations,
-	)
-
-	containerPorts := setupDeploymentPorts(controlPlaneRuntime.Spec.ControlPlane.Service.AdditionalPorts)
-
-	// s6-overlay run-scripts need to be executable; 0755 is applied to the whole volume.
-	scriptMode := int32(0755)
-
-	volumes := []corev1.Volume{
-		{
-			Name: "pki",
-			VolumeSource: corev1.VolumeSource{
-				Secret: &corev1.SecretVolumeSource{
-					SecretName: fmt.Sprintf("%s-pki", controlPlaneRuntime.Name),
-				},
-			},
-		},
-		{
-			Name: "auth",
-			VolumeSource: corev1.VolumeSource{
-				Secret: &corev1.SecretVolumeSource{
-					SecretName: fmt.Sprintf("%s-auth", controlPlaneRuntime.Name),
-				},
-			},
-		},
-		{
-			Name: "config",
-			VolumeSource: corev1.VolumeSource{
-				ConfigMap: &corev1.ConfigMapVolumeSource{
-					LocalObjectReference: corev1.LocalObjectReference{
-						Name: fmt.Sprintf("%s-config", controlPlaneRuntime.Name),
-					},
-					DefaultMode: &scriptMode,
-				},
-			},
-		},
-	}
-
-	volumeMounts := []corev1.VolumeMount{
-		// PKI: mount the whole secret directory — all certs/keys land at /etc/kubernetes/pki/<file>.
-		{Name: "pki", MountPath: "/etc/kubernetes/pki", ReadOnly: true},
-		// Auth: one subPath mount per kubeconfig so the rest of /etc/kubernetes is unaffected.
-		{Name: "auth", MountPath: layout.Auth.AdminConf.MountPath, SubPath: layout.Auth.AdminConf.SecretKey, ReadOnly: true},
-		{Name: "auth", MountPath: layout.Auth.ControllerManagerConf.MountPath, SubPath: layout.Auth.ControllerManagerConf.SecretKey, ReadOnly: true},
-		{Name: "auth", MountPath: layout.Auth.SchedulerConf.MountPath, SubPath: layout.Auth.SchedulerConf.SecretKey, ReadOnly: true},
-		// Config: one subPath mount per s6 run-script.
-		{Name: "config", MountPath: layout.Config.APIServer.MountPath, SubPath: layout.Config.APIServer.SecretKey, ReadOnly: true},
-		{Name: "config", MountPath: layout.Config.ControllerManager.MountPath, SubPath: layout.Config.ControllerManager.SecretKey, ReadOnly: true},
-		{Name: "config", MountPath: layout.Config.Scheduler.MountPath, SubPath: layout.Config.Scheduler.SecretKey, ReadOnly: true},
-		{Name: "config", MountPath: layout.Config.Kine.MountPath, SubPath: layout.Config.Kine.SecretKey, ReadOnly: true},
-	}
-
-	var runtimeClassName *string
-	if deploySpec.RuntimeClassName != "" {
-		runtimeClassName = &deploySpec.RuntimeClassName
-	}
-
-	desired := &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      controlPlaneRuntime.Name,
-			Namespace: controlPlaneRuntime.Namespace,
-		},
-		Spec: appsv1.DeploymentSpec{
-			Replicas: deploySpec.Replicas,
-			Selector: &metav1.LabelSelector{MatchLabels: labels},
-			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels:      podLabels,
-					Annotations: podAnnotations,
-				},
-				Spec: corev1.PodSpec{
-					ServiceAccountName: deploySpec.ServiceAccountName,
-					RuntimeClassName:   runtimeClassName,
-					Tolerations:        deploySpec.Tolerations,
-					Affinity:           deploySpec.Affinity,
-					Containers: []corev1.Container{
-						{
-							Name:         "samaritano",
-							Image:        samaritano.Image,
-							Ports:        containerPorts,
-							VolumeMounts: volumeMounts,
-						},
-					},
-					Volumes: volumes,
-				},
-			},
-		},
+	desired, err := samaritanoruntime.GenerateDeployment(controlPlaneRuntime, layout, configHash)
+	if err != nil {
+		return err
 	}
 	if err := ctrl.SetControllerReference(controlPlaneRuntime, desired, r.Scheme); err != nil {
 		return err
 	}
 
 	existing := &appsv1.Deployment{}
-	err := r.Get(ctx, types.NamespacedName{Name: desired.Name, Namespace: desired.Namespace}, existing)
+	err = r.Get(ctx, types.NamespacedName{Name: desired.Name, Namespace: desired.Namespace}, existing)
 	if err != nil && apierrors.IsNotFound(err) {
 		return r.Create(ctx, desired)
 	}
@@ -354,34 +223,6 @@ func (r *RuntimeReconciler) setupDeployment(
 	existing.Spec = desired.Spec
 	existing.Labels = desired.Labels
 	return r.Update(ctx, existing)
-}
-
-// setupDeploymentPorts converts AdditionalPort entries from the spec into
-// corev1.ContainerPort values that can be attached to the control-plane container.
-// and adds default ports
-func setupDeploymentPorts(ports []controlplanev1alpha1.AdditionalPort) []corev1.ContainerPort {
-	out := make([]corev1.ContainerPort, 0, len(ports))
-	for _, p := range ports {
-		out = append(out, corev1.ContainerPort{
-			Name:          p.Name,
-			ContainerPort: p.Port,
-			Protocol:      p.Protocol,
-		})
-	}
-	out = append(out, corev1.ContainerPort{Name: "apiserver", ContainerPort: 6443, Protocol: corev1.ProtocolTCP})
-	return out
-}
-
-// mergeMaps returns a new map containing all keys from base overridden by extra.
-func mergeMaps(base, extra map[string]string) map[string]string {
-	out := make(map[string]string, len(base)+len(extra))
-	for k, v := range base {
-		out[k] = v
-	}
-	for k, v := range extra {
-		out[k] = v
-	}
-	return out
 }
 
 // setupControlPlaneConfiguration reconciles the <resourceName>-config ConfigMap that holds the
