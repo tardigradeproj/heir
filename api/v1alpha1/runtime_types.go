@@ -72,6 +72,7 @@ type NetworkSpec struct {
 	// +kubebuilder:default={}
 	CNI       CNISpec        `json:"cni,omitempty"`
 	KubeProxy *KubeProxySpec `json:"kubeProxy,omitempty"`
+	Coredns   *CorednsSpec   `json:"coredns,omitempty"`
 }
 type CNISpec struct {
 	// +kubebuilder:validation:Enum=calico;custom
