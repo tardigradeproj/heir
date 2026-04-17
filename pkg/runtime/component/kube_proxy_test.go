@@ -16,7 +16,7 @@ import (
 	controlplanev1alpha1 "github.com/tardigrade-runtime/samaritano/api/v1alpha1"
 )
 
-// parseManifest splits a multi-document YAML manifest and returns a map of Kind -> raw JSON bytes.
+// parseManifest splits a multi-document YAML manifest and returns a map of "Kind/name" -> raw JSON bytes.
 func parseManifest(t *testing.T, manifest []byte) map[string][]byte {
 	t.Helper()
 	resources := make(map[string][]byte)
@@ -30,10 +30,14 @@ func parseManifest(t *testing.T, manifest []byte) map[string][]byte {
 			continue
 		}
 		var meta struct {
-			Kind string `json:"kind"`
+			Kind     string `json:"kind"`
+			Metadata struct {
+				Name string `json:"name"`
+			} `json:"metadata"`
 		}
 		require.NoError(t, json.Unmarshal(raw, &meta))
-		resources[meta.Kind] = raw
+		key := meta.Kind + "/" + meta.Metadata.Name
+		resources[key] = raw
 	}
 	return resources
 }
@@ -180,8 +184,15 @@ func TestCreateManifest(t *testing.T) {
 				},
 			},
 			validate: func(t *testing.T, resources map[string][]byte) {
-				for _, kind := range []string{"ServiceAccount", "Role", "ClusterRoleBinding", "RoleBinding", "ConfigMap", "DaemonSet"} {
-					assert.Contains(t, resources, kind, "missing resource kind %s", kind)
+				for _, key := range []string{
+					"ServiceAccount/kube-proxy",
+					"Role/kube-proxy",
+					"ClusterRoleBinding/node-proxier",
+					"RoleBinding/kube-proxy",
+					"ConfigMap/kube-proxy",
+					"DaemonSet/kube-proxy",
+				} {
+					assert.Contains(t, resources, key, "missing resource %s", key)
 				}
 			},
 		},
@@ -190,7 +201,7 @@ func TestCreateManifest(t *testing.T) {
 			spec: controlplanev1alpha1.KubeProxySpec{},
 			validate: func(t *testing.T, resources map[string][]byte) {
 				var sa corev1.ServiceAccount
-				require.NoError(t, sigsyaml.Unmarshal(resources["ServiceAccount"], &sa))
+				require.NoError(t, sigsyaml.Unmarshal(resources["ServiceAccount/kube-proxy"], &sa))
 				assert.Equal(t, "kube-proxy", sa.Name)
 				assert.Equal(t, "kube-system", sa.Namespace)
 			},
@@ -200,7 +211,7 @@ func TestCreateManifest(t *testing.T) {
 			spec: controlplanev1alpha1.KubeProxySpec{},
 			validate: func(t *testing.T, resources map[string][]byte) {
 				var crb rbacv1.ClusterRoleBinding
-				require.NoError(t, sigsyaml.Unmarshal(resources["ClusterRoleBinding"], &crb))
+				require.NoError(t, sigsyaml.Unmarshal(resources["ClusterRoleBinding/node-proxier"], &crb))
 				assert.Equal(t, "system:node-proxier", crb.RoleRef.Name)
 				assert.Equal(t, "kube-proxy", crb.Subjects[0].Name)
 				assert.Equal(t, "kube-system", crb.Subjects[0].Namespace)
@@ -211,7 +222,7 @@ func TestCreateManifest(t *testing.T) {
 			spec: controlplanev1alpha1.KubeProxySpec{},
 			validate: func(t *testing.T, resources map[string][]byte) {
 				var cm corev1.ConfigMap
-				require.NoError(t, sigsyaml.Unmarshal(resources["ConfigMap"], &cm))
+				require.NoError(t, sigsyaml.Unmarshal(resources["ConfigMap/kube-proxy"], &cm))
 				assert.Contains(t, cm.Data["config.conf"], "clusterCIDR: 10.244.0.0/16")
 				assert.Contains(t, cm.Data["kubeconfig.conf"], "server: https://api.example.com:6443")
 			},
@@ -221,7 +232,7 @@ func TestCreateManifest(t *testing.T) {
 			spec: controlplanev1alpha1.KubeProxySpec{Mode: "ipvs"},
 			validate: func(t *testing.T, resources map[string][]byte) {
 				var cm corev1.ConfigMap
-				require.NoError(t, sigsyaml.Unmarshal(resources["ConfigMap"], &cm))
+				require.NoError(t, sigsyaml.Unmarshal(resources["ConfigMap/kube-proxy"], &cm))
 				assert.Contains(t, cm.Data["config.conf"], `mode: "ipvs"`)
 			},
 		},
@@ -236,7 +247,7 @@ func TestCreateManifest(t *testing.T) {
 			},
 			validate: func(t *testing.T, resources map[string][]byte) {
 				var ds appsv1.DaemonSet
-				require.NoError(t, sigsyaml.Unmarshal(resources["DaemonSet"], &ds))
+				require.NoError(t, sigsyaml.Unmarshal(resources["DaemonSet/kube-proxy"], &ds))
 				container := ds.Spec.Template.Spec.Containers[0]
 				assert.Equal(t, "my.registry.io/kube-proxy:v1.30.0", container.Image)
 				assert.Equal(t, corev1.PullAlways, container.ImagePullPolicy)
@@ -249,7 +260,7 @@ func TestCreateManifest(t *testing.T) {
 			},
 			validate: func(t *testing.T, resources map[string][]byte) {
 				var ds appsv1.DaemonSet
-				require.NoError(t, sigsyaml.Unmarshal(resources["DaemonSet"], &ds))
+				require.NoError(t, sigsyaml.Unmarshal(resources["DaemonSet/kube-proxy"], &ds))
 				assert.Contains(t, ds.Spec.Template.Spec.Containers[0].Args, "--v=4")
 			},
 		},
@@ -258,7 +269,7 @@ func TestCreateManifest(t *testing.T) {
 			spec: controlplanev1alpha1.KubeProxySpec{},
 			validate: func(t *testing.T, resources map[string][]byte) {
 				var ds appsv1.DaemonSet
-				require.NoError(t, sigsyaml.Unmarshal(resources["DaemonSet"], &ds))
+				require.NoError(t, sigsyaml.Unmarshal(resources["DaemonSet/kube-proxy"], &ds))
 				envVars := ds.Spec.Template.Spec.Containers[0].Env
 				require.Len(t, envVars, 1)
 				assert.Equal(t, "NODE_NAME", envVars[0].Name)
