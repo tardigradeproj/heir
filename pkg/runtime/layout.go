@@ -25,6 +25,13 @@ type AuthLayout struct {
 	SchedulerConf         MountEntry
 }
 
+// StaticManifest describes the manifests to be applied at the moment the cluster is initialized
+type StaticManifest struct {
+	Coredns   MountEntry
+	KubeProxy MountEntry
+	Bootstrap MountEntry
+}
+
 // ConfigLayout describes the s6-overlay run-script entries stored in the <name>-config ConfigMap.
 // Each entry is the run script for one supervised service.
 type ConfigLayout struct {
@@ -37,9 +44,10 @@ type ConfigLayout struct {
 // ControlPlaneLayout groups all Secret/ConfigMap keys and their container mount paths for a
 // control-plane instance. Use NewControlPlaneLayout to obtain the canonical set of values.
 type ControlPlaneLayout struct {
-	PKI    PKILayout
-	Auth   AuthLayout
-	Config ConfigLayout
+	PKI            PKILayout
+	Auth           AuthLayout
+	Config         ConfigLayout
+	StaticManifest StaticManifest
 }
 
 // NewControlPlaneLayout returns the fixed layout that describes every file that must be
@@ -60,11 +68,16 @@ func NewControlPlaneLayout() ControlPlaneLayout {
 			ControllerManagerConf: MountEntry{SecretKey: "controller-manager.conf", MountPath: "/etc/kubernetes/kube-controller-manager.conf"},
 			SchedulerConf:         MountEntry{SecretKey: "scheduler.conf", MountPath: "/etc/kubernetes/kube-scheduler.conf"},
 		},
+		StaticManifest: StaticManifest{
+			Coredns:   MountEntry{SecretKey: "coredns.yaml", MountPath: "/etc/kubernetes/manifests/manifests.d/coredns.yaml"},
+			KubeProxy: MountEntry{SecretKey: "kubeproxy.yaml", MountPath: "/etc/kubernetes/manifests/manifests.d/kubeproxy.yaml"},
+			Bootstrap: MountEntry{SecretKey: "tlsbootstrap.yaml", MountPath: "/etc/kubernetes/manifests/manifests.d/tlsbootstrap.yaml"},
+		},
 		Config: ConfigLayout{
-			APIServer:         MountEntry{SecretKey: "kube-apiserver", MountPath: "/etc/kubernetes/manifests/kube-apiserver.sh"},
-			ControllerManager: MountEntry{SecretKey: "kube-controller-manager", MountPath: "/etc/kubernetes/manifests/kube-controller-manager.sh"},
-			Scheduler:         MountEntry{SecretKey: "kube-scheduler", MountPath: "/etc/kubernetes/manifests/kube-scheduler.sh"},
-			Kine:              MountEntry{SecretKey: "kine", MountPath: "/etc/kubernetes/manifests/kine.sh"},
+			APIServer:         MountEntry{SecretKey: "kube-apiserver.sh", MountPath: "/etc/kubernetes/manifests/kube-apiserver.sh"},
+			ControllerManager: MountEntry{SecretKey: "kube-controller-manager.sh", MountPath: "/etc/kubernetes/manifests/kube-controller-manager.sh"},
+			Scheduler:         MountEntry{SecretKey: "kube-scheduler.sh", MountPath: "/etc/kubernetes/manifests/kube-scheduler.sh"},
+			Kine:              MountEntry{SecretKey: "kine.sh", MountPath: "/etc/kubernetes/manifests/kine.sh"},
 		},
 	}
 }

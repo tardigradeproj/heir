@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	controlplanev1alpha1 "github.com/tardigrade-runtime/samaritano/api/v1alpha1"
+	"github.com/tardigrade-runtime/samaritano/pkg/runtime/component"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -18,7 +19,15 @@ import (
 // owner reference and persisting the result.
 func GenerateControlPlaneConfig(runtime *controlplanev1alpha1.Runtime, layout ControlPlaneLayout) (*corev1.ConfigMap, string, error) {
 	net := runtime.Spec.UpstreamCluster.Network
-
+	kubeproxy, err := component.CreateKubeProxyManifest(runtime)
+	if err != nil {
+		return nil, "", err
+	}
+	tlsbootstrap := component.CreateBootstrapManifest()
+	coredns, err := component.CreateCorednsManifest(runtime)
+	if err != nil {
+		return nil, "", err
+	}
 	apiserverScript := RenderRunScript("/usr/local/bin/kube-apiserver",
 		MergeArgs(map[string]string{
 			"allow-privileged":                 "true",
@@ -83,6 +92,9 @@ func GenerateControlPlaneConfig(runtime *controlplanev1alpha1.Runtime, layout Co
 		layout.Config.ControllerManager.SecretKey: controllerManagerScript,
 		layout.Config.Scheduler.SecretKey:         schedulerScript,
 		layout.Config.Kine.SecretKey:              kineScript,
+		layout.StaticManifest.Bootstrap.SecretKey: string(tlsbootstrap),
+		layout.StaticManifest.Coredns.SecretKey:   string(coredns),
+		layout.StaticManifest.KubeProxy.SecretKey: string(kubeproxy),
 	}
 
 	desiredHash, err := HashConfigData(data)

@@ -55,7 +55,7 @@ const coreDNSTemplate = `
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: coredns
+  name: coredns 
   namespace: kube-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1

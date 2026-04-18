@@ -10,7 +10,7 @@ import (
 	"github.com/tardigrade-runtime/samaritano/pkg/templatewriter"
 )
 
-func CreateManifest(runtime *controlplanev1alpha1.Runtime) ([]byte, error) {
+func CreateKubeProxyManifest(runtime *controlplanev1alpha1.Runtime) ([]byte, error) {
 	cfg, err := getConfig(runtime)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kube-proxy template configuration: %w", err)

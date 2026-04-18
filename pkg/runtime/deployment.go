@@ -60,6 +60,17 @@ func GenerateDeployment(runtime *controlplanev1alpha1.Runtime, layout ControlPla
 				},
 			},
 		},
+		{
+			Name: "static-config",
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: fmt.Sprintf("%s-config", runtime.Name),
+					},
+					DefaultMode: &scriptMode,
+				},
+			},
+		},
 	}
 
 	volumeMounts := []corev1.VolumeMount{
@@ -74,6 +85,8 @@ func GenerateDeployment(runtime *controlplanev1alpha1.Runtime, layout ControlPla
 		{Name: "config", MountPath: layout.Config.ControllerManager.MountPath, SubPath: layout.Config.ControllerManager.SecretKey, ReadOnly: true},
 		{Name: "config", MountPath: layout.Config.Scheduler.MountPath, SubPath: layout.Config.Scheduler.SecretKey, ReadOnly: true},
 		{Name: "config", MountPath: layout.Config.Kine.MountPath, SubPath: layout.Config.Kine.SecretKey, ReadOnly: true},
+		// mount static configs
+		{Name: "static-config", MountPath: "/etc/kubernetes/manifests/manifests.d", ReadOnly: true},
 	}
 
 	var runtimeClassName *string

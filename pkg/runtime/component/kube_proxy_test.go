@@ -282,7 +282,7 @@ func TestCreateManifest(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			runtime := kubeProxyRuntime(tt.spec)
 
-			manifest, err := CreateManifest(runtime)
+			manifest, err := CreateKubeProxyManifest(runtime)
 			if tt.wantErr {
 				require.Error(t, err)
 				return
