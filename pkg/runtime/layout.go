@@ -58,15 +58,15 @@ func NewControlPlaneLayout() ControlPlaneLayout {
 		PKI: PKILayout{
 			CACert:             MountEntry{SecretKey: "ca.crt", MountPath: "/etc/kubernetes/pki/ca.crt"},
 			CAKey:              MountEntry{SecretKey: "ca.key", MountPath: "/etc/kubernetes/pki/ca.key"},
-			APIServerCert:      MountEntry{SecretKey: "apiserver.crt", MountPath: "/etc/kubernetes/pki/kube-apiserver.crt"},
-			APIServerKey:       MountEntry{SecretKey: "apiserver.key", MountPath: "/etc/kubernetes/pki/kube-apiserver.key"},
-			ServiceAccountCert: MountEntry{SecretKey: "sa.crt", MountPath: "/etc/kubernetes/pki/service-accounts.crt"},
-			ServiceAccountKey:  MountEntry{SecretKey: "sa.key", MountPath: "/etc/kubernetes/pki/service-accounts.key"},
+			APIServerCert:      MountEntry{SecretKey: "apiserver.crt", MountPath: "/etc/kubernetes/pki/apiserver.crt"},
+			APIServerKey:       MountEntry{SecretKey: "apiserver.key", MountPath: "/etc/kubernetes/pki/apiserver.key"},
+			ServiceAccountCert: MountEntry{SecretKey: "sa.crt", MountPath: "/etc/kubernetes/pki/sa.crt"},
+			ServiceAccountKey:  MountEntry{SecretKey: "sa.key", MountPath: "/etc/kubernetes/pki/sa.key"},
 		},
 		Auth: AuthLayout{
 			AdminConf:             MountEntry{SecretKey: "admin.conf", MountPath: "/etc/kubernetes/admin.conf"},
-			ControllerManagerConf: MountEntry{SecretKey: "controller-manager.conf", MountPath: "/etc/kubernetes/kube-controller-manager.conf"},
-			SchedulerConf:         MountEntry{SecretKey: "scheduler.conf", MountPath: "/etc/kubernetes/kube-scheduler.conf"},
+			ControllerManagerConf: MountEntry{SecretKey: "kube-controller-manager.conf", MountPath: "/etc/kubernetes/kube-controller-manager.conf"},
+			SchedulerConf:         MountEntry{SecretKey: "kube-scheduler.conf", MountPath: "/etc/kubernetes/kube-scheduler.conf"},
 		},
 		StaticManifest: StaticManifest{
 			Coredns:   MountEntry{SecretKey: "coredns.yaml", MountPath: "/etc/kubernetes/manifests/manifests.d/coredns.yaml"},

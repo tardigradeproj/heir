@@ -8,7 +8,6 @@ import (
 
 	log "github.com/sirupsen/logrus"
 	"github.com/tardigrade-runtime/samaritano/api/v1alpha1"
-	"github.com/tardigrade-runtime/samaritano/pkg/pki"
 	samaritanoruntime "github.com/tardigrade-runtime/samaritano/pkg/runtime"
 	apiextensions "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -54,12 +53,8 @@ func Provision(ctx context.Context, opts ...Option) error {
 
 	layout := samaritanoruntime.NewControlPlaneLayout()
 
-	if err := setupPKI(ctx, client, runtime, layout); err != nil {
+	if err := setupPKIAuth(ctx, client, runtime, layout); err != nil {
 		return fmt.Errorf("failed to setup PKI: %w", err)
-	}
-
-	if err := setupAuth(ctx, client, runtime, layout); err != nil {
-		return fmt.Errorf("failed to setup auth: %w", err)
 	}
 
 	configHash, err := setupConfig(ctx, client, runtime, layout)
@@ -92,39 +87,16 @@ func buildClient(kubeconfig string) (*kubernetes.Clientset, error) {
 	return kubernetes.NewForConfig(restConfig)
 }
 
-func setupPKI(ctx context.Context, client *kubernetes.Clientset, runtime *v1alpha1.Runtime, layout samaritanoruntime.ControlPlaneLayout) error {
-	secret, err := samaritanoruntime.GeneratePKISecret(runtime, layout)
+func setupPKIAuth(ctx context.Context, client *kubernetes.Clientset, runtime *v1alpha1.Runtime, layout samaritanoruntime.ControlPlaneLayout) error {
+	secret, err := samaritanoruntime.GeneratePKIAuthSecret(runtime, layout)
 	if err != nil {
 		return err
 	}
-	log.WithField("secret", secret.Name).Info("creating PKI secret")
+	log.WithField("secret", secret.Name).Info("creating PKI auth secret")
 	if _, err := client.CoreV1().Secrets(runtime.Namespace).Create(ctx, secret, metav1.CreateOptions{}); err != nil {
-		return fmt.Errorf("failed to create PKI secret: %w", err)
+		return fmt.Errorf("failed to create PKI auth secret: %w", err)
 	}
-	log.Info("PKI secret created")
-
-	return nil
-}
-
-func setupAuth(ctx context.Context, client *kubernetes.Clientset, runtime *v1alpha1.Runtime, layout samaritanoruntime.ControlPlaneLayout) error {
-	pkiSecret, err := client.CoreV1().Secrets(runtime.Namespace).Get(ctx, fmt.Sprintf("%s-pki", runtime.Name), metav1.GetOptions{})
-	if err != nil {
-		return fmt.Errorf("failed to get PKI secret: %w", err)
-	}
-	ca := pki.Certificate{
-		Cert: pkiSecret.Data[layout.PKI.CACert.SecretKey],
-		Key:  pkiSecret.Data[layout.PKI.CAKey.SecretKey],
-	}
-
-	secret, err := samaritanoruntime.GenerateAuthSecret(runtime, ca, layout)
-	if err != nil {
-		return err
-	}
-	log.WithField("secret", secret.Name).Info("creating auth secret")
-	if _, err := client.CoreV1().Secrets(runtime.Namespace).Create(ctx, secret, metav1.CreateOptions{}); err != nil {
-		return fmt.Errorf("failed to create auth secret: %w", err)
-	}
-	log.Info("auth secret created")
+	log.Info("PKI auth secret created")
 
 	return nil
 }

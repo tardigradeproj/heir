@@ -34,18 +34,10 @@ func GenerateDeployment(runtime *controlplanev1alpha1.Runtime, layout ControlPla
 
 	volumes := []corev1.Volume{
 		{
-			Name: "pki",
+			Name: "pki-auth",
 			VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
-					SecretName: fmt.Sprintf("%s-pki", runtime.Name),
-				},
-			},
-		},
-		{
-			Name: "auth",
-			VolumeSource: corev1.VolumeSource{
-				Secret: &corev1.SecretVolumeSource{
-					SecretName: fmt.Sprintf("%s-auth", runtime.Name),
+					SecretName: fmt.Sprintf("%s-pki-auth", runtime.Name),
 				},
 			},
 		},
@@ -75,18 +67,20 @@ func GenerateDeployment(runtime *controlplanev1alpha1.Runtime, layout ControlPla
 
 	volumeMounts := []corev1.VolumeMount{
 		// PKI: mount the whole secret directory — all certs/keys land at /etc/kubernetes/pki/<file>.
-		{Name: "pki", MountPath: "/etc/kubernetes/pki", ReadOnly: true},
+		{Name: "pki-auth", MountPath: "/etc/kubernetes/pki", ReadOnly: true},
 		// Auth: one subPath mount per kubeconfig so the rest of /etc/kubernetes is unaffected.
-		{Name: "auth", MountPath: layout.Auth.AdminConf.MountPath, SubPath: layout.Auth.AdminConf.SecretKey, ReadOnly: true},
-		{Name: "auth", MountPath: layout.Auth.ControllerManagerConf.MountPath, SubPath: layout.Auth.ControllerManagerConf.SecretKey, ReadOnly: true},
-		{Name: "auth", MountPath: layout.Auth.SchedulerConf.MountPath, SubPath: layout.Auth.SchedulerConf.SecretKey, ReadOnly: true},
+		{Name: "pki-auth", MountPath: layout.Auth.AdminConf.MountPath, SubPath: layout.Auth.AdminConf.SecretKey, ReadOnly: true},
+		{Name: "pki-auth", MountPath: layout.Auth.ControllerManagerConf.MountPath, SubPath: layout.Auth.ControllerManagerConf.SecretKey, ReadOnly: true},
+		{Name: "pki-auth", MountPath: layout.Auth.SchedulerConf.MountPath, SubPath: layout.Auth.SchedulerConf.SecretKey, ReadOnly: true},
 		// Config: one subPath mount per s6 run-script.
 		{Name: "config", MountPath: layout.Config.APIServer.MountPath, SubPath: layout.Config.APIServer.SecretKey, ReadOnly: true},
 		{Name: "config", MountPath: layout.Config.ControllerManager.MountPath, SubPath: layout.Config.ControllerManager.SecretKey, ReadOnly: true},
 		{Name: "config", MountPath: layout.Config.Scheduler.MountPath, SubPath: layout.Config.Scheduler.SecretKey, ReadOnly: true},
 		{Name: "config", MountPath: layout.Config.Kine.MountPath, SubPath: layout.Config.Kine.SecretKey, ReadOnly: true},
 		// mount static configs
-		{Name: "static-config", MountPath: "/etc/kubernetes/manifests/manifests.d", ReadOnly: true},
+		{Name: "static-config", MountPath: layout.StaticManifest.Bootstrap.MountPath, SubPath: layout.StaticManifest.Bootstrap.SecretKey, ReadOnly: true},
+		{Name: "static-config", MountPath: layout.StaticManifest.KubeProxy.MountPath, SubPath: layout.StaticManifest.KubeProxy.SecretKey, ReadOnly: true},
+		{Name: "static-config", MountPath: layout.StaticManifest.Coredns.MountPath, SubPath: layout.StaticManifest.Coredns.SecretKey, ReadOnly: true},
 	}
 
 	var runtimeClassName *string

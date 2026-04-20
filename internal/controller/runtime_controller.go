@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/tardigrade-runtime/samaritano/pkg/pki"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -92,13 +91,9 @@ func (r *RuntimeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	// Run each reconciliation step; on any error mark the resource Degraded and requeue.
-	if err := r.setupPKIConfiguration(ctx, controlPlaneRuntime); err != nil {
-		log.Error(err, "failed to reconcile PKI configuration")
-		return r.setDegraded(ctx, controlPlaneRuntime, "PKISetupFailed", err.Error())
-	}
-	if err := r.setupAuthConfiguration(ctx, controlPlaneRuntime); err != nil {
-		log.Error(err, "failed to reconcile auth configuration")
-		return r.setDegraded(ctx, controlPlaneRuntime, "AuthFailed", err.Error())
+	if err := r.setupPKIAuthConfiguration(ctx, controlPlaneRuntime); err != nil {
+		log.Error(err, "failed to reconcile PKI auth configuration")
+		return r.setDegraded(ctx, controlPlaneRuntime, "PKIAuthSetupFailed", err.Error())
 	}
 	configHash, err := r.setupControlPlaneConfiguration(ctx, controlPlaneRuntime)
 	if err != nil {
@@ -264,19 +259,19 @@ func (r *RuntimeReconciler) setupControlPlaneConfiguration(
 	return desiredHash, r.Update(ctx, existing)
 }
 
-// setupPKIConfiguration reconciles the <resourceName>-pki Secret that holds the root CA and all
-// component certificates. If the Secret already exists it is left untouched. When absent, a new
-// self-signed CA is generated and used to sign the kube-apiserver and service-account certificates
+// setupPKIAuthConfiguration reconciles the <resourceName>-pki-auth Secret that holds the root CA,
+// all component certificates, and kubeconfigs. If the Secret already exists it is left untouched.
+// When absent, a new self-signed CA is generated and used to sign all certificates and kubeconfigs
 // before the Secret is created.
-func (r *RuntimeReconciler) setupPKIConfiguration(
+func (r *RuntimeReconciler) setupPKIAuthConfiguration(
 	ctx context.Context,
 	controlPlaneRuntime *controlplanev1alpha1.Runtime,
 ) error {
-	pkiSecret := &corev1.Secret{}
+	existing := &corev1.Secret{}
 	err := r.Get(ctx, types.NamespacedName{
-		Name:      fmt.Sprintf("%s-pki", controlPlaneRuntime.Name),
+		Name:      fmt.Sprintf("%s-pki-auth", controlPlaneRuntime.Name),
 		Namespace: controlPlaneRuntime.Namespace,
-	}, pkiSecret)
+	}, existing)
 	if err == nil {
 		return nil
 	}
@@ -284,53 +279,7 @@ func (r *RuntimeReconciler) setupPKIConfiguration(
 		return err
 	}
 
-	secret, err := samaritanoruntime.GeneratePKISecret(controlPlaneRuntime, layout)
-	if err != nil {
-		return err
-	}
-	if err := ctrl.SetControllerReference(controlPlaneRuntime, secret, r.Scheme); err != nil {
-		return err
-	}
-	return r.Create(ctx, secret)
-}
-
-// setupAuthConfiguration reconciles the <resourceName>-auth Secret that holds kubeconfigs for
-// admin, kube-controller-manager, and kube-scheduler. If the Secret already exists it is left
-// untouched — certificates are long-lived and should not be rotated on every loop. When absent,
-// the CA is read from the <resourceName>-pki Secret and used to sign a fresh certificate for
-// each component before the Secret is created.
-func (r *RuntimeReconciler) setupAuthConfiguration(
-	ctx context.Context,
-	controlPlaneRuntime *controlplanev1alpha1.Runtime,
-) error {
-	log := logf.FromContext(ctx)
-	authSecret := &corev1.Secret{}
-	err := r.Get(ctx, types.NamespacedName{
-		Name:      fmt.Sprintf("%s-auth", controlPlaneRuntime.Name),
-		Namespace: controlPlaneRuntime.Namespace,
-	}, authSecret)
-	if err == nil {
-		return nil
-	}
-	if !apierrors.IsNotFound(err) {
-		log.Error(err, "failed to get retrieve auth secret", "name", controlPlaneRuntime.Name)
-		return err
-	}
-
-	// Auth secret is absent — read the CA from the PKI secret.
-	pkiSecret := &corev1.Secret{}
-	if err := r.Get(ctx, types.NamespacedName{
-		Name:      fmt.Sprintf("%s-pki", controlPlaneRuntime.Name),
-		Namespace: controlPlaneRuntime.Namespace,
-	}, pkiSecret); err != nil {
-		return err
-	}
-	ca := pki.Certificate{
-		Cert: pkiSecret.Data[layout.PKI.CACert.SecretKey],
-		Key:  pkiSecret.Data[layout.PKI.CAKey.SecretKey],
-	}
-
-	secret, err := samaritanoruntime.GenerateAuthSecret(controlPlaneRuntime, ca, layout)
+	secret, err := samaritanoruntime.GeneratePKIAuthSecret(controlPlaneRuntime, layout)
 	if err != nil {
 		return err
 	}
