@@ -6,7 +6,7 @@ metadata:
 spec:
   controlPlane:
     samaritano:
-      image: nginx
+      image: localhost:5001/tardigrade
     deployment:
       replicas: 1
       serviceAccountName: default
@@ -26,4 +26,4 @@ spec:
     storage:
       type: kine
       kine:
-        dataSource: sqlite:///var/lib/kine/db.sqlite
+        dataSource: ""
