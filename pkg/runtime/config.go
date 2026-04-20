@@ -18,6 +18,7 @@ import (
 // SHA-256 hash of its data. No API calls are made; the caller is responsible for setting the
 // owner reference and persisting the result.
 func GenerateControlPlaneConfig(runtime *controlplanev1alpha1.Runtime, layout ControlPlaneLayout) (*corev1.ConfigMap, string, error) {
+	fmt.Println(fmt.Sprintf("%+v", runtime))
 	net := runtime.Spec.UpstreamCluster.Network
 	kubeproxy, err := component.CreateKubeProxyManifest(runtime)
 	if err != nil {

@@ -130,10 +130,12 @@ func setupAuth(ctx context.Context, client *kubernetes.Clientset, runtime *v1alp
 }
 
 func setupConfig(ctx context.Context, client *kubernetes.Clientset, runtime *v1alpha1.Runtime, layout samaritanoruntime.ControlPlaneLayout) (string, error) {
+	fmt.Println("1==>")
 	cm, configHash, err := samaritanoruntime.GenerateControlPlaneConfig(runtime, layout)
 	if err != nil {
 		return "", err
 	}
+	fmt.Println("==>")
 	log.WithField("configmap", cm.Name).Info("creating config configmap")
 	if _, err := client.CoreV1().ConfigMaps(runtime.Namespace).Create(ctx, cm, metav1.CreateOptions{}); err != nil {
 		return "", fmt.Errorf("failed to create config configmap: %w", err)

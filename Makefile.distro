@@ -5,6 +5,7 @@ KUBE_VERSION       ?= v1.34.0
 CONTAINERD_VERSION ?= 2.1.0
 RUNC_VERSION       ?= v1.2.6
 CRICTL_VERSION     ?= v1.33.0
+CALICO_VERSION     ?= 3.31.4
 ARTIFACTS_DIR      ?= $(shell pwd)/artifacts
 WORKER_DIR         ?= $(ARTIFACTS_DIR)/worker
 
@@ -55,6 +56,16 @@ download-crictl: ## Download crictl binary for ARCH
 	rm -rf "$$tmpdir"
 	@chmod +x "$(WORKER_DIR)/crictl"
 	@echo "crictl ready: $(WORKER_DIR)/crictl"
+
+.PHONY: download-calico
+download-calico: ## Download Calico manifests (operator-crds and tigera-operator) for the given CALICO_VERSION (default: 3.31.4)
+	@mkdir -p "$(ARTIFACTS_DIR)/manifests"
+	@echo "Downloading Calico v$(CALICO_VERSION) manifests..."
+	curl -fsSL "https://raw.githubusercontent.com/projectcalico/calico/v$(CALICO_VERSION)/manifests/operator-crds.yaml" \
+		-o "$(ARTIFACTS_DIR)/manifests/calico-operator-crds.yaml"
+	curl -fsSL "https://raw.githubusercontent.com/projectcalico/calico/v$(CALICO_VERSION)/manifests/tigera-operator.yaml" \
+		-o "$(ARTIFACTS_DIR)/manifests/calico-tigera-operator.yaml"
+	@echo "Calico manifests ready in $(ARTIFACTS_DIR)/manifests/"
 
 .PHONY: download-worker-artifacts
 download-worker-artifacts: download-kubelet download-containerd download-runc download-crictl ## Download all worker node artifacts

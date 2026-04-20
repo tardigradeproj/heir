@@ -990,7 +990,10 @@ spec:
                           It could be used to point to a different container registry rather than the public one.
                         properties:
                           image:
-                            default: tardigrade/samaritano
+                            type: string
+                          pullPolicy:
+                            description: PullPolicy describes a policy for if/when
+                              to pull a container image
                             type: string
                           registry:
                             type: string
@@ -1166,6 +1169,7 @@ spec:
                         description: |-
                           If Samaritano controllers are running behind a loadbalancer provide the loadbalancer address here. This will configure all cluster
                           components to connect to this address and also configures this address to be used when joining new nodes into the cluster.
+                          eg: https://my-cluster.io:9963
                         type: string
                       extraArgs:
                         additionalProperties:
@@ -1192,6 +1196,21 @@ spec:
                           controller manager process
                         type: object
                     type: object
+                  extraResources:
+                    default: {}
+                    description: |-
+                      ExtraResourcesSpec holds a list of arbitrary Kubernetes objects to be applied
+                      to the upstream cluster on startup.
+                    properties:
+                      objects:
+                        description: |-
+                          Objects is a list of Kubernetes objects to apply on cluster startup.
+                          Any valid Kubernetes resource manifest is accepted.
+                        items:
+                          type: object
+                          x-kubernetes-preserve-unknown-fields: true
+                        type: array
+                    type: object
                   network:
                     default: {}
                     properties:
@@ -1205,6 +1224,132 @@ spec:
                             - calico
                             - custom
                             type: string
+                        type: object
+                      coredns:
+                        default: {}
+                        properties:
+                          clusterDNSIP:
+                            default: 10.96.0.10
+                            type: string
+                          registerSetting:
+                            default:
+                              image: coredns/coredns:v1.12.1
+                              register: registry.k8s.io
+                            description: '#TODO: review'
+                            properties:
+                              image:
+                                type: string
+                              pullPolicy:
+                                description: PullPolicy describes a policy for if/when
+                                  to pull a container image
+                                type: string
+                              registry:
+                                type: string
+                            type: object
+                          replicas:
+                            default: 2
+                            format: int32
+                            minimum: 1
+                            type: integer
+                        type: object
+                      kubeProxy:
+                        default: {}
+                        properties:
+                          disabled:
+                            type: boolean
+                          extraArgs:
+                            additionalProperties:
+                              type: string
+                            description: |-
+                              Map of key-values (strings) for any extra arguments to pass down to kube-proxy process
+                              Any behavior triggered by these parameters is outside k0s support.
+                            type: object
+                          iptables:
+                            description: |-
+                              KubeProxyIPTablesConfiguration contains iptables-related kube-proxy configuration
+                              @see https://github.com/kubernetes/kube-proxy/blob/v0.34.3/config/v1alpha1/types.go#L27-L48
+                            properties:
+                              localhostNodePorts:
+                                type: boolean
+                              masqueradeAll:
+                                type: boolean
+                              masqueradeBit:
+                                format: int32
+                                type: integer
+                              minSyncPeriod:
+                                type: string
+                              syncPeriod:
+                                type: string
+                            type: object
+                          ipvs:
+                            description: |-
+                              KubeProxyIPVSConfiguration contains ipvs-related kube-proxy configuration
+                              @see https://github.com/kubernetes/kube-proxy/blob/v0.34.3/config/v1alpha1/types.go#L52-L78
+                            properties:
+                              excludeCIDRs:
+                                items:
+                                  type: string
+                                type: array
+                              minSyncPeriod:
+                                type: string
+                              scheduler:
+                                type: string
+                              strictARP:
+                                type: boolean
+                              syncPeriod:
+                                type: string
+                              tcpFinTimeout:
+                                type: string
+                              tcpTimeout:
+                                type: string
+                              udpTimeout:
+                                type: string
+                            type: object
+                          metricsBindAddress:
+                            type: string
+                          mode:
+                            default: iptables
+                            description: Mode defines the kube-proxy mode.
+                            enum:
+                            - iptables
+                            - ipvs
+                            - userspace
+                            - nft
+                            type: string
+                          nftables:
+                            description: |-
+                              KubeProxyNFTablesConfiguration contains nftables-related kube-proxy configuration
+                              @see https://github.com/kubernetes/kube-proxy/blob/v0.34.3/config/v1alpha1/types.go#L82-L97
+                            properties:
+                              masqueradeAll:
+                                type: boolean
+                              masqueradeBit:
+                                format: int32
+                                type: integer
+                              minSyncPeriod:
+                                type: string
+                              syncPeriod:
+                                type: string
+                            type: object
+                          nodePortAddresses:
+                            items:
+                              type: string
+                            type: array
+                          registerSetting:
+                            default:
+                              image: kube-proxy:v1.34.0
+                              register: registry.k8s.io
+                            description: '#TODO: review'
+                            properties:
+                              image:
+                                type: string
+                              pullPolicy:
+                                description: PullPolicy describes a policy for if/when
+                                  to pull a container image
+                                type: string
+                              registry:
+                                type: string
+                            type: object
                         type: object
                       podCIDR:
                         default: 10.244.0.0/16
@@ -1229,7 +1374,8 @@ spec:
                         type: object
                     type: object
                   storage:
-                    default: {}
+                    default:
+                    - type="kine"
                     properties:
                       kine:
                         description: Kine holds kine configuration

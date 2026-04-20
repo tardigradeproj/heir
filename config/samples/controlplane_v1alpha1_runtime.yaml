@@ -6,7 +6,7 @@ metadata:
 spec:
   controlPlane:
     samaritano:
-      version: v1.32.0
+      image: nginx
     deployment:
       replicas: 1
       serviceAccountName: default
