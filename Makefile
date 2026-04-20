@@ -1,7 +1,3 @@
-IMAGE_REGISTRY ?= ghcr.io/tardigrade
-IMAGE_NAME     ?= samaritano-base
-IMAGE_TAG      ?= latest
-
 include Makefile.distro
 
 
@@ -115,10 +111,6 @@ lint-config: golangci-lint ## Verify golangci-lint linter configuration
 .PHONY: build
 build: manifests generate fmt vet ## Build manager binary.
 	go build -o bin/manager cmd/main.go
-
-.PHONY: run-distro
-run-distro:
-	go run cmd/distro.go build control-plane-image --base-image ghcr.io/tardigrade/samaritano-base:latest --image=$(IMAGE_NAME):v3 --type=file $$(pwd)/artifacts/kubernetes-server-linux-arm64.tar.gz
 
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
@@ -261,49 +253,3 @@ define gomodver
 $(shell go list -m -f '{{if .Replace}}{{.Replace.Version}}{{else}}{{.Version}}{{end}}' $(1) 2>/dev/null)
 endef
 
-.PHONY: build-base
-build-base: ## Build the base container image
-	docker build \
-		-f images/base/Dockerfile \
-		-t $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG) \
-		images/base
-
-.PHONY: run-base
-run-base: ## Run the base container image with the privileges required by systemd
-	docker run -d \
-		--privileged \
-		--cgroupns=host \
-		-v /sys/fs/cgroup:/sys/fs/cgroup:rw \
-		$(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)
-
-.PHONY: run-controlplane-image
-run-controlplane-image: ## Run the base container image with the privileges required by systemd
-	docker run -d \
-		--privileged \
-		--cgroupns=host \
-		-v /sys/fs/cgroup:/sys/fs/cgroup:rw \
-		$(IMAGE_NAME):$(IMAGE_TAG)
-
-##@ Artifacts
-
-KUBE_VERSION   ?= v1.34.0
-KINE_VERSION   ?= v0.13.9
-ARTIFACTS_DIR  ?= $(shell pwd)/artifacts
-
-.PHONY: download-artifacts
-download-artifacts: ## Download Kubernetes server binaries and kine for ARCH, bundle kine into the kubernetes tarball
-	@mkdir -p "$(ARTIFACTS_DIR)"
-	@echo "Downloading Kubernetes $(KUBE_VERSION) for linux/$(ARCH)..."
-	curl -fsSL "https://dl.k8s.io/$(KUBE_VERSION)/kubernetes-server-linux-$(ARCH).tar.gz" \
-		-o "$(ARTIFACTS_DIR)/kubernetes-server-linux-$(ARCH).tar.gz"
-	@echo "Downloading kine $(KINE_VERSION) for $(ARCH)..."
-	curl -fsSL "https://github.com/k3s-io/kine/releases/download/$(KINE_VERSION)/kine-$(ARCH)" \
-		-o "$(ARTIFACTS_DIR)/kine"
-	@chmod +x "$(ARTIFACTS_DIR)/kine"
-	@echo "Injecting kine into kubernetes/server/bin/ ..."
-	@tmpdir=$$(mktemp -d); \
-	tar -xzf "$(ARTIFACTS_DIR)/kubernetes-server-linux-$(ARCH).tar.gz" -C "$$tmpdir"; \
-	cp "$(ARTIFACTS_DIR)/kine" "$$tmpdir/kubernetes/server/bin/kine"; \
-	tar -czf "$(ARTIFACTS_DIR)/kubernetes-server-linux-$(ARCH).tar.gz" -C "$$tmpdir" kubernetes; \
-	rm -rf "$$tmpdir"
-	@echo "Artifact ready: $(ARTIFACTS_DIR)/kubernetes-server-linux-$(ARCH).tar.gz"
