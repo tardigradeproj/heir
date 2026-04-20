@@ -111,12 +111,15 @@ kind: ServiceAccount
 metadata:
   name: kube-proxy
   namespace: kube-system
+  labels:
+    managed-by: bootstrap
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   labels:
     kubernetes.io/bootstrapping: rbac-defaults
+    managed-by: bootstrap
   name: kube-proxy
   namespace: kube-system
 rules:
@@ -132,6 +135,7 @@ metadata:
     rbac.authorization.kubernetes.io/autoupdate: "true"
   labels:
     kubernetes.io/bootstrapping: rbac-defaults
+    managed-by: bootstrap
   name: node-proxier
 roleRef:
   apiGroup: rbac.authorization.k8s.io
@@ -149,6 +153,7 @@ metadata:
     rbac.authorization.kubernetes.io/autoupdate: "true"
   labels:
     kubernetes.io/bootstrapping: rbac-defaults
+    managed-by: bootstrap
   name: kube-proxy
   namespace: kube-system
 roleRef:
@@ -168,6 +173,7 @@ metadata:
   namespace: kube-system
   labels:
     app: kube-proxy
+    managed-by: bootstrap
 data:
   kubeconfig.conf: |-
     apiVersion: v1
@@ -229,6 +235,7 @@ kind: DaemonSet
 metadata:
   labels:
     k8s-app: kube-proxy
+    managed-by: bootstrap
   name: kube-proxy
   namespace: kube-system
 spec:

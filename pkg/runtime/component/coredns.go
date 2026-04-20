@@ -55,14 +55,17 @@ const coreDNSTemplate = `
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: coredns 
+  name: coredns
   namespace: kube-system
+  labels:
+    managed-by: bootstrap
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
     kubernetes.io/bootstrapping: rbac-defaults
+    managed-by: bootstrap
   name: system-coredns
 rules:
 - apiGroups:
@@ -90,6 +93,7 @@ metadata:
     rbac.authorization.kubernetes.io/autoupdate: "true"
   labels:
     kubernetes.io/bootstrapping: rbac-defaults
+    managed-by: bootstrap
   name: system-coredns
 roleRef:
   apiGroup: rbac.authorization.k8s.io
@@ -105,6 +109,8 @@ kind: ConfigMap
 metadata:
   name: coredns
   namespace: kube-system
+  labels:
+    managed-by: bootstrap
 data:
   Corefile: |
     .:53 {
@@ -132,6 +138,7 @@ metadata:
   labels:
     k8s-app: kube-dns
     kubernetes.io/name: "CoreDNS"
+    managed-by: bootstrap
 spec:
   replicas: {{ .Replicas }}
   strategy:
@@ -251,6 +258,7 @@ metadata:
   labels:
     k8s-app: kube-dns
     kubernetes.io/name: "CoreDNS"
+    managed-by: bootstrap
 spec:
   minAvailable: 50%
   selector:
@@ -270,6 +278,7 @@ metadata:
     k8s-app: kube-dns
     kubernetes.io/cluster-service: "true"
     kubernetes.io/name: "CoreDNS"
+    managed-by: bootstrap
 spec:
   selector:
     k8s-app: kube-dns

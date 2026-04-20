@@ -8,6 +8,8 @@ const bootstrapManifest = `apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: samaritano:kubelet-bootstrap
+  labels:
+    managed-by: bootstrap
 subjects:
   - kind: Group
     name: system:bootstrappers:worker
@@ -21,6 +23,8 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: samaritano:kubelet-bootstrap-auto-approve-csrs
+  labels:
+    managed-by: bootstrap
 subjects:
   - kind: Group
     name: system:bootstrappers:worker
@@ -34,6 +38,8 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: samaritano:kubelet-cert-renew
+  labels:
+    managed-by: bootstrap
 subjects:
   - kind: Group
     name: system:nodes
