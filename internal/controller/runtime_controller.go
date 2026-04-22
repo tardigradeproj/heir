@@ -95,9 +95,9 @@ func (r *RuntimeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		log.Error(err, "failed to reconcile PKI auth configuration")
 		return r.setDegraded(ctx, controlPlaneRuntime, "PKIAuthSetupFailed", err.Error())
 	}
-	if err := r.setupKineSecret(ctx, controlPlaneRuntime); err != nil {
-		log.Error(err, "failed to reconcile kine secret")
-		return r.setDegraded(ctx, controlPlaneRuntime, "KineSecretFailed", err.Error())
+	if err := r.setupStorageSecret(ctx, controlPlaneRuntime); err != nil {
+		log.Error(err, "failed to reconcile storage secret")
+		return r.setDegraded(ctx, controlPlaneRuntime, "StorageSecretFailed", err.Error())
 	}
 	configHash, err := r.setupControlPlaneConfiguration(ctx, controlPlaneRuntime)
 	if err != nil {
@@ -263,16 +263,16 @@ func (r *RuntimeReconciler) setupControlPlaneConfiguration(
 	return desiredHash, r.Update(ctx, existing)
 }
 
-// setupKineSecret reconciles the <resourceName>-kine Secret that holds the kine run-script.
+// setupStorageSecret reconciles the <resourceName>-storage Secret that holds the storage backend run-script.
 // If a DataSourceRef is configured, the referenced Secret is resolved to obtain the endpoint value.
 // If the Secret already exists it is left untouched.
-func (r *RuntimeReconciler) setupKineSecret(
+func (r *RuntimeReconciler) setupStorageSecret(
 	ctx context.Context,
 	controlPlaneRuntime *controlplanev1alpha1.Runtime,
 ) error {
 	existing := &corev1.Secret{}
 	err := r.Get(ctx, types.NamespacedName{
-		Name:      fmt.Sprintf("%s-kine", controlPlaneRuntime.Name),
+		Name:      fmt.Sprintf("%s-storage", controlPlaneRuntime.Name),
 		Namespace: controlPlaneRuntime.Namespace,
 	}, existing)
 	if err == nil {
@@ -286,12 +286,12 @@ func (r *RuntimeReconciler) setupKineSecret(
 	if ref := controlPlaneRuntime.Spec.UpstreamCluster.Storage.Kine.DataSourceRef; ref != nil {
 		ds := &corev1.Secret{}
 		if err := r.Get(ctx, types.NamespacedName{Name: ref.Name, Namespace: controlPlaneRuntime.Namespace}, ds); err != nil {
-			return fmt.Errorf("failed to resolve kine DataSourceRef %s/%s: %w", controlPlaneRuntime.Namespace, ref.Name, err)
+			return fmt.Errorf("failed to resolve storage DataSourceRef %s/%s: %w", controlPlaneRuntime.Namespace, ref.Name, err)
 		}
 		dataSource = string(ds.Data[ref.Key])
 	}
 
-	secret := samaritanoruntime.GenerateKineSecret(controlPlaneRuntime, layout, dataSource)
+	secret := samaritanoruntime.GenerateStorageSecret(controlPlaneRuntime, layout, dataSource)
 	if err := ctrl.SetControllerReference(controlPlaneRuntime, secret, r.Scheme); err != nil {
 		return err
 	}

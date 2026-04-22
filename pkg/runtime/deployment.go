@@ -42,10 +42,10 @@ func GenerateDeployment(runtime *controlplanev1alpha1.Runtime, layout ControlPla
 			},
 		},
 		{
-			Name: "kine",
+			Name: "storage",
 			VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
-					SecretName:  fmt.Sprintf("%s-kine", runtime.Name),
+					SecretName:  fmt.Sprintf("%s-storage", runtime.Name),
 					DefaultMode: &scriptMode,
 				},
 			},
@@ -81,8 +81,8 @@ func GenerateDeployment(runtime *controlplanev1alpha1.Runtime, layout ControlPla
 		{Name: "pki-auth", MountPath: layout.Auth.AdminConf.MountPath, SubPath: layout.Auth.AdminConf.SecretKey, ReadOnly: true},
 		{Name: "pki-auth", MountPath: layout.Auth.ControllerManagerConf.MountPath, SubPath: layout.Auth.ControllerManagerConf.SecretKey, ReadOnly: true},
 		{Name: "pki-auth", MountPath: layout.Auth.SchedulerConf.MountPath, SubPath: layout.Auth.SchedulerConf.SecretKey, ReadOnly: true},
-		// Kine: run-script from the kine Secret.
-		{Name: "kine", MountPath: layout.Kine.Script.MountPath, SubPath: layout.Kine.Script.SecretKey, ReadOnly: true},
+		// Storage: run-script from the storage Secret.
+		{Name: "storage", MountPath: layout.Storage.Script.MountPath, SubPath: layout.Storage.Script.SecretKey, ReadOnly: true},
 		// Config: one subPath mount per s6 run-script.
 		{Name: "config", MountPath: layout.Config.APIServer.MountPath, SubPath: layout.Config.APIServer.SecretKey, ReadOnly: true},
 		{Name: "config", MountPath: layout.Config.ControllerManager.MountPath, SubPath: layout.Config.ControllerManager.SecretKey, ReadOnly: true},
