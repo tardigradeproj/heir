@@ -91,7 +91,7 @@ func GeneratePKIAuthSecret(runtime *controlplanev1alpha1.Runtime, layout Control
 		return nil, err
 	}
 
-	adminConf, err := generateKubeconfig("kubernetes-admin", ca.Cert, adminCert)
+	adminConf, err := generateKubeconfig(fmt.Sprintf("samaritano-%s", runtime.Name), ca.Cert, adminCert)
 	if err != nil {
 		return nil, err
 	}
@@ -110,15 +110,15 @@ func GeneratePKIAuthSecret(runtime *controlplanev1alpha1.Runtime, layout Control
 			Namespace: runtime.Namespace,
 		},
 		Data: map[string][]byte{
-			layout.PKI.CACert.SecretKey:             ca.Cert,
-			layout.PKI.CAKey.SecretKey:              ca.Key,
-			layout.PKI.APIServerCert.SecretKey:      apiserverCert.Cert,
-			layout.PKI.APIServerKey.SecretKey:       apiserverCert.Key,
-			layout.PKI.ServiceAccountCert.SecretKey: serviceAccountCert.Cert,
-			layout.PKI.ServiceAccountKey.SecretKey:  serviceAccountCert.Key,
-			layout.Auth.AdminConf.SecretKey:          adminConf,
+			layout.PKI.CACert.SecretKey:                 ca.Cert,
+			layout.PKI.CAKey.SecretKey:                  ca.Key,
+			layout.PKI.APIServerCert.SecretKey:          apiserverCert.Cert,
+			layout.PKI.APIServerKey.SecretKey:           apiserverCert.Key,
+			layout.PKI.ServiceAccountCert.SecretKey:     serviceAccountCert.Cert,
+			layout.PKI.ServiceAccountKey.SecretKey:      serviceAccountCert.Key,
+			layout.Auth.AdminConf.SecretKey:             adminConf,
 			layout.Auth.ControllerManagerConf.SecretKey: controllerManagerConf,
-			layout.Auth.SchedulerConf.SecretKey:     schedulerConf,
+			layout.Auth.SchedulerConf.SecretKey:         schedulerConf,
 		},
 	}, nil
 }

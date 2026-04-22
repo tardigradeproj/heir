@@ -9,6 +9,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/tardigrade-runtime/samaritano/api/v1alpha1"
 	samaritanoruntime "github.com/tardigrade-runtime/samaritano/pkg/runtime"
+	"gvisor.dev/gvisor/pkg/cleanup"
 	apiextensions "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apiextensions-apiserver/pkg/apiserver/schema"
@@ -17,6 +18,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"sigs.k8s.io/yaml"
 )
 
@@ -24,6 +26,8 @@ import (
 var crdManifest []byte
 
 func Provision(ctx context.Context, opts ...Option) error {
+	cleaner := cleanup.Make(func() {})
+	defer cleaner.Clean()
 	pCtx := &provisionContext{}
 	for _, opt := range opts {
 		opt(pCtx)
@@ -53,23 +57,30 @@ func Provision(ctx context.Context, opts ...Option) error {
 
 	layout := samaritanoruntime.NewControlPlaneLayout()
 
-	if err := setupPKIAuth(ctx, client, runtime, layout); err != nil {
-		return fmt.Errorf("failed to setup PKI: %w", err)
+	kubeconfig, err := setupPKIAuth(ctx, &cleaner, client, runtime, layout)
+	if err != nil {
+		return fmt.Errorf("failed to setup PKI auth: %w", err)
 	}
 
-	configHash, err := setupConfig(ctx, client, runtime, layout)
+	configHash, err := setupConfig(ctx, &cleaner, client, runtime, layout)
 	if err != nil {
 		return fmt.Errorf("failed to setup config: %w", err)
 	}
 
-	if err := setupService(ctx, client, runtime); err != nil {
+	if err := setupService(ctx, &cleaner, client, runtime); err != nil {
 		return fmt.Errorf("failed to setup service: %w", err)
 	}
 
-	if err := setupDeployment(ctx, client, runtime, layout, configHash); err != nil {
+	if err := setupDeployment(ctx, &cleaner, client, runtime, layout, configHash); err != nil {
 		return fmt.Errorf("failed to setup deployment: %w", err)
 	}
-
+	if pCtx.clusterKubeconfig != "" {
+		if err := writeKubeconfig(kubeconfig, pCtx.clusterKubeconfig, runtime.Spec.UpstreamCluster.APIServer.ExternalAddress); err != nil {
+			return fmt.Errorf("failed to write kubeconfig to %s: %w", pCtx.clusterKubeconfig, err)
+		}
+		log.WithField("path", pCtx.clusterKubeconfig).Info("kubeconfig written")
+	}
+	cleaner.Release()
 	return nil
 }
 
@@ -87,36 +98,56 @@ func buildClient(kubeconfig string) (*kubernetes.Clientset, error) {
 	return kubernetes.NewForConfig(restConfig)
 }
 
-func setupPKIAuth(ctx context.Context, client *kubernetes.Clientset, runtime *v1alpha1.Runtime, layout samaritanoruntime.ControlPlaneLayout) error {
+func setupPKIAuth(ctx context.Context,
+	cleaner *cleanup.Cleanup,
+	client *kubernetes.Clientset,
+	runtime *v1alpha1.Runtime,
+	layout samaritanoruntime.ControlPlaneLayout,
+) (*clientcmdapi.Config, error) {
 	secret, err := samaritanoruntime.GeneratePKIAuthSecret(runtime, layout)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	log.WithField("secret", secret.Name).Info("creating PKI auth secret")
 	if _, err := client.CoreV1().Secrets(runtime.Namespace).Create(ctx, secret, metav1.CreateOptions{}); err != nil {
-		return fmt.Errorf("failed to create PKI auth secret: %w", err)
+		return nil, fmt.Errorf("failed to create PKI auth secret: %w", err)
 	}
+	cleaner.Add(func() {
+		if err := client.CoreV1().Secrets(runtime.Namespace).Delete(ctx, secret.Name, metav1.DeleteOptions{}); err != nil {
+			log.WithError(err).WithField("ops", "cleanup").Error("failed to delete PKI auth secret")
+		}
+	})
 	log.Info("PKI auth secret created")
-
-	return nil
+	kubeconfigBytes, ok := secret.Data[layout.Auth.AdminConf.SecretKey]
+	if !ok {
+		return nil, fmt.Errorf("PKI auth secret does not contain admin kubeconfig")
+	}
+	kubeconfig, err := clientcmd.Load(kubeconfigBytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse admin kubeconfig: %w", err)
+	}
+	return kubeconfig, nil
 }
 
-func setupConfig(ctx context.Context, client *kubernetes.Clientset, runtime *v1alpha1.Runtime, layout samaritanoruntime.ControlPlaneLayout) (string, error) {
-	fmt.Println("1==>")
+func setupConfig(ctx context.Context, cleaner *cleanup.Cleanup, client *kubernetes.Clientset, runtime *v1alpha1.Runtime, layout samaritanoruntime.ControlPlaneLayout) (string, error) {
 	cm, configHash, err := samaritanoruntime.GenerateControlPlaneConfig(runtime, layout)
 	if err != nil {
 		return "", err
 	}
-	fmt.Println("==>")
 	log.WithField("configmap", cm.Name).Info("creating config configmap")
 	if _, err := client.CoreV1().ConfigMaps(runtime.Namespace).Create(ctx, cm, metav1.CreateOptions{}); err != nil {
 		return "", fmt.Errorf("failed to create config configmap: %w", err)
 	}
+	cleaner.Add(func() {
+		if err := client.CoreV1().ConfigMaps(runtime.Namespace).Delete(ctx, cm.Name, metav1.DeleteOptions{}); err != nil {
+			log.WithError(err).WithField("ops", "cleanup").Error("failed to delete configuration configmap")
+		}
+	})
 	log.Info("config configmap created")
 	return configHash, nil
 }
 
-func setupService(ctx context.Context, client *kubernetes.Clientset, runtime *v1alpha1.Runtime) error {
+func setupService(ctx context.Context, cleaner *cleanup.Cleanup, client *kubernetes.Clientset, runtime *v1alpha1.Runtime) error {
 	svc, err := samaritanoruntime.GenerateService(runtime)
 	if err != nil {
 		return err
@@ -125,11 +156,16 @@ func setupService(ctx context.Context, client *kubernetes.Clientset, runtime *v1
 	if _, err := client.CoreV1().Services(runtime.Namespace).Create(ctx, svc, metav1.CreateOptions{}); err != nil {
 		return fmt.Errorf("failed to create service: %w", err)
 	}
+	cleaner.Add(func() {
+		if err := client.CoreV1().Services(runtime.Namespace).Delete(ctx, svc.Name, metav1.DeleteOptions{}); err != nil {
+			log.WithError(err).WithField("ops", "cleanup").Error("failed to delete service")
+		}
+	})
 	log.Info("service created")
 	return nil
 }
 
-func setupDeployment(ctx context.Context, client *kubernetes.Clientset, runtime *v1alpha1.Runtime, layout samaritanoruntime.ControlPlaneLayout, configHash string) error {
+func setupDeployment(ctx context.Context, cleaner *cleanup.Cleanup, client *kubernetes.Clientset, runtime *v1alpha1.Runtime, layout samaritanoruntime.ControlPlaneLayout, configHash string) error {
 	deploy, err := samaritanoruntime.GenerateDeployment(runtime, layout, configHash)
 	if err != nil {
 		return err
@@ -138,8 +174,46 @@ func setupDeployment(ctx context.Context, client *kubernetes.Clientset, runtime 
 	if _, err := client.AppsV1().Deployments(runtime.Namespace).Create(ctx, deploy, metav1.CreateOptions{}); err != nil {
 		return fmt.Errorf("failed to create deployment: %w", err)
 	}
+	cleaner.Add(func() {
+		if err := client.AppsV1().Deployments(runtime.Namespace).Delete(ctx, deploy.Name, metav1.DeleteOptions{}); err != nil {
+			log.WithError(err).WithField("ops", "cleanup").Error("failed to delete deployment")
+		}
+	})
 	log.Info("deployment created")
 	return nil
+}
+
+// writeKubeconfig writes the given kubeconfig to path. If a valid kubeconfig
+// already exists at that path, the new clusters, users, and contexts are merged
+// into it and the current context is updated to the new one.
+func writeKubeconfig(kubeconfig *clientcmdapi.Config, path string, clusterExternalUrl string) error {
+	if clusterExternalUrl == "" {
+		log.Warn("the generated kubeconfig does not contain a server address and cannot be used to communicate with the Kubernetes API server; " +
+			"to resolve this, set spec.upstreamCluster.apiServer.externalAddress to the externally reachable address of the control plane " +
+			"(e.g. https://my-cluster.example.com:6443) and re-provision")
+	} else {
+		for _, cluster := range kubeconfig.Clusters {
+			cluster.Server = clusterExternalUrl
+		}
+	}
+	existing, err := clientcmd.LoadFromFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to load existing kubeconfig: %w", err)
+	}
+	if os.IsNotExist(err) {
+		return clientcmd.WriteToFile(*kubeconfig, path)
+	}
+	for k, v := range kubeconfig.Clusters {
+		existing.Clusters[k] = v
+	}
+	for k, v := range kubeconfig.AuthInfos {
+		existing.AuthInfos[k] = v
+	}
+	for k, v := range kubeconfig.Contexts {
+		existing.Contexts[k] = v
+	}
+	existing.CurrentContext = kubeconfig.CurrentContext
+	return clientcmd.WriteToFile(*existing, path)
 }
 
 // parseConfig reads a Runtime manifest from path, applies CRD-derived defaults,

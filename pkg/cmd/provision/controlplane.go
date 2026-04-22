@@ -1,8 +1,6 @@
 package provision
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
 	"github.com/tardigrade-runtime/samaritano/pkg/provision/controlplane"
 )
@@ -22,9 +20,12 @@ func controlplaneProvisionCommand() *cobra.Command {
 		Short: "Provision a control plane cluster on the host cluster",
 		Long:  "Provision a control plane cluster on the host cluster",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Println("provisioning control plane...")
 			if err := controlplane.Provision(cmd.Context(),
 				controlplane.WithConfig(flags.Config),
+				controlplane.WithKubeconfig(flags.Kubeconfig),
+				controlplane.WithClusterKubeconfig(flags.ClusterKubeconfig),
+				controlplane.WithNamespace(flags.Namespace),
+				controlplane.WithName(flags.Name),
 			); err != nil {
 				return err
 			}
@@ -58,7 +59,7 @@ func controlplaneProvisionCommand() *cobra.Command {
 	cmd.Flags().StringVar(
 		&flags.Namespace,
 		"namespace",
-		"samaritano",
+		"",
 		"namespace where the cluster will be provisioned",
 	)
 	return cmd
