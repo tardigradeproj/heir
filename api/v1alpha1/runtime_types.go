@@ -26,17 +26,17 @@ import (
 // UpstreamCluster defines how UpstreamCluster components are configured
 type UpstreamCluster struct {
 	// +kubebuilder:default={}
-	APIServer APIServerSpec `json:"apiServer,omitempty"`
+	APIServer APIServerSpec `json:"apiServer"`
 	// +kubebuilder:default={}
-	ControllerManager ControllerManagerSpec `json:"controllerManager,omitempty"`
+	ControllerManager ControllerManagerSpec `json:"controllerManager"`
 	// +kubebuilder:default={}
-	Scheduler SchedulerSpec `json:"scheduler,omitempty"`
+	Scheduler SchedulerSpec `json:"scheduler"`
 	// +kubebuilder:default={}
-	Network NetworkSpec `json:"network,omitempty"`
-	// +kubebuilder:default={type="kine"}
-	Storage StorageSpec `json:"storage,omitempty"`
+	Network NetworkSpec `json:"network"`
+	// +kubebuilder:default={"type": "kine"}
+	Storage StorageSpec `json:"storage"`
 	// +kubebuilder:default={}
-	ExtraResources ExtraResourcesSpec `json:"extraResources,omitempty"`
+	ExtraResources ExtraResourcesSpec `json:"extraResources"`
 }
 
 // APIServerSpec defines api-server configurations
@@ -72,9 +72,9 @@ type NetworkSpec struct {
 	// +kubebuilder:default={}
 	CNI CNISpec `json:"cni,omitempty"`
 	// +kubebuilder:default={}
-	KubeProxy *KubeProxySpec `json:"kubeProxy,omitempty"`
+	KubeProxy KubeProxySpec `json:"kubeProxy"`
 	// +kubebuilder:default={}
-	Coredns *CorednsSpec `json:"coredns,omitempty"`
+	Coredns CorednsSpec `json:"coredns"`
 }
 type CNISpec struct {
 	// +kubebuilder:validation:Enum=calico;custom
@@ -85,9 +85,9 @@ type StorageSpec struct {
 	// Type holds the type of storage to be used by APIServer
 	// +kubebuilder:validation:Enum=kine
 	//+kubebuilder:default="kine"
-	Type string `json:"type,omitempty"`
+	Type string `json:"type"`
 	// Kine holds kine configuration
-	Kine KineSpec `json:"kine,omitempty"`
+	Kine KineSpec `json:"kine"`
 }
 type KineSpec struct {
 	// DataSourceRef points to a Secret containing the Kine data source URL.
@@ -109,8 +109,10 @@ type ExtraResourcesSpec struct {
 
 // RuntimeSpec defines the desired state of Runtime
 type RuntimeSpec struct {
-	ControlPlane    ControlPlaneSpec `json:"controlPlane,omitempty"`
-	UpstreamCluster UpstreamCluster  `json:"upstreamCluster,omitempty"`
+	// +kubebuilder:default={}
+	ControlPlane ControlPlaneSpec `json:"controlPlane,omitempty"`
+	// +kubebuilder:default={}
+	UpstreamCluster UpstreamCluster `json:"upstreamCluster,omitempty"`
 }
 
 // ControlPlaneSpec defines how control plane must be created in the Admin UpstreamCluster,
@@ -177,7 +179,7 @@ type DeploymentSpec struct {
 	// It could be used to point to a different container registry rather than the public one.
 	// +optional
 	RegistrySettings RegistrySettings `json:"registrySettings,omitempty"`
-	//+kubebuilder:default=2
+	//+kubebuilder:default=1
 	// +kubebuilder:validation:Minimum=1
 	Replicas *int32 `json:"replicas,omitempty"`
 	// RuntimeClassName refers to a RuntimeClass object in the node.k8s.io group, which should be used

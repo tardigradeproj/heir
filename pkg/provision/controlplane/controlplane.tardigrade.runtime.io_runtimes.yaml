@@ -40,6 +40,7 @@ spec:
             description: spec defines the desired state of Runtime
             properties:
               controlPlane:
+                default: {}
                 description: |-
                   ControlPlaneSpec defines how control plane must be created in the Admin UpstreamCluster,
                   such as the number of Pod replicas, the Service resource, or the Ingress.
@@ -999,7 +1000,7 @@ spec:
                             type: string
                         type: object
                       replicas:
-                        default: 2
+                        default: 1
                         format: int32
                         minimum: 1
                         type: integer
@@ -1158,6 +1159,7 @@ spec:
                 - samaritano
                 type: object
               upstreamCluster:
+                default: {}
                 description: UpstreamCluster defines how UpstreamCluster components
                   are configured
                 properties:
@@ -1350,6 +1352,8 @@ spec:
                               registry:
                                 type: string
                             type: object
+                        required:
+                        - registerSetting
                         type: object
                       podCIDR:
                         default: 10.244.0.0/16
@@ -1361,6 +1365,9 @@ spec:
                         description: 'CIDR for Kubernetes Services: if empty, defaulted
                           to 10.96.0.0/16.'
                         type: string
+                    required:
+                    - coredns
+                    - kubeProxy
                     type: object
                   scheduler:
                     default: {}
@@ -1375,7 +1382,7 @@ spec:
                     type: object
                   storage:
                     default:
-                    - type="kine"
+                      type: kine
                     properties:
                       kine:
                         description: Kine holds kine configuration
@@ -1416,7 +1423,17 @@ spec:
                         enum:
                         - kine
                         type: string
+                    required:
+                    - kine
+                    - type
                     type: object
+                required:
+                - apiServer
+                - controllerManager
+                - extraResources
+                - network
+                - scheduler
+                - storage
                 type: object
             type: object
           status:
