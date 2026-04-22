@@ -50,9 +50,15 @@ func Provision(ctx context.Context, opts ...Option) error {
 		"namespace":    runtime.Namespace,
 	}).Info("provisioning control plane")
 
-	client, err := buildClient(pCtx.kubeconfig)
-	if err != nil {
-		return fmt.Errorf("failed to build kubernetes client: %w", err)
+	var client kubernetes.Interface
+	if pCtx.client != nil {
+		client = pCtx.client
+	} else {
+		cs, err := buildClient(pCtx.kubeconfig)
+		if err != nil {
+			return fmt.Errorf("failed to build kubernetes client: %w", err)
+		}
+		client = cs
 	}
 
 	layout := samaritanoruntime.NewControlPlaneLayout()
@@ -104,7 +110,7 @@ func buildClient(kubeconfig string) (*kubernetes.Clientset, error) {
 
 func setupPKIAuth(ctx context.Context,
 	cleaner *cleanup.Cleanup,
-	client *kubernetes.Clientset,
+	client kubernetes.Interface,
 	runtime *v1alpha1.Runtime,
 	layout samaritanoruntime.ControlPlaneLayout,
 ) (*clientcmdapi.Config, error) {
@@ -133,7 +139,7 @@ func setupPKIAuth(ctx context.Context,
 	return kubeconfig, nil
 }
 
-func setupStorageSecret(ctx context.Context, cleaner *cleanup.Cleanup, client *kubernetes.Clientset, runtime *v1alpha1.Runtime, layout samaritanoruntime.ControlPlaneLayout) error {
+func setupStorageSecret(ctx context.Context, cleaner *cleanup.Cleanup, client kubernetes.Interface, runtime *v1alpha1.Runtime, layout samaritanoruntime.ControlPlaneLayout) error {
 	var dataSource string
 	if ref := runtime.Spec.UpstreamCluster.Storage.Kine.DataSourceRef; ref != nil {
 		ds, err := client.CoreV1().Secrets(runtime.Namespace).Get(ctx, ref.Name, metav1.GetOptions{})
@@ -156,7 +162,7 @@ func setupStorageSecret(ctx context.Context, cleaner *cleanup.Cleanup, client *k
 	return nil
 }
 
-func setupConfig(ctx context.Context, cleaner *cleanup.Cleanup, client *kubernetes.Clientset, runtime *v1alpha1.Runtime, layout samaritanoruntime.ControlPlaneLayout) (string, error) {
+func setupConfig(ctx context.Context, cleaner *cleanup.Cleanup, client kubernetes.Interface, runtime *v1alpha1.Runtime, layout samaritanoruntime.ControlPlaneLayout) (string, error) {
 	cm, configHash, err := samaritanoruntime.GenerateControlPlaneConfig(runtime, layout)
 	if err != nil {
 		return "", err
@@ -174,7 +180,7 @@ func setupConfig(ctx context.Context, cleaner *cleanup.Cleanup, client *kubernet
 	return configHash, nil
 }
 
-func setupService(ctx context.Context, cleaner *cleanup.Cleanup, client *kubernetes.Clientset, runtime *v1alpha1.Runtime) error {
+func setupService(ctx context.Context, cleaner *cleanup.Cleanup, client kubernetes.Interface, runtime *v1alpha1.Runtime) error {
 	svc, err := samaritanoruntime.GenerateService(runtime)
 	if err != nil {
 		return err
@@ -192,7 +198,7 @@ func setupService(ctx context.Context, cleaner *cleanup.Cleanup, client *kuberne
 	return nil
 }
 
-func setupDeployment(ctx context.Context, cleaner *cleanup.Cleanup, client *kubernetes.Clientset, runtime *v1alpha1.Runtime, layout samaritanoruntime.ControlPlaneLayout, configHash string) error {
+func setupDeployment(ctx context.Context, cleaner *cleanup.Cleanup, client kubernetes.Interface, runtime *v1alpha1.Runtime, layout samaritanoruntime.ControlPlaneLayout, configHash string) error {
 	deploy, err := samaritanoruntime.GenerateDeployment(runtime, layout, configHash)
 	if err != nil {
 		return err

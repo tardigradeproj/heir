@@ -1,5 +1,7 @@
 package controlplane
 
+import "k8s.io/client-go/kubernetes"
+
 type Option func(*provisionContext)
 
 type provisionContext struct {
@@ -8,6 +10,7 @@ type provisionContext struct {
 	kubeconfig        string
 	clusterKubeconfig string
 	namespace         string
+	client            kubernetes.Interface // if set, skips buildClient (used in tests)
 }
 
 func WithName(name string) Option {
