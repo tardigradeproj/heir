@@ -11,7 +11,9 @@ spec:
       replicas: 1
       serviceAccountName: default
     service:
-      serviceType: ClusterIP
+      serviceType: NodePort
+
+
 
   upstreamCluster:
     apiServer:

@@ -90,8 +90,12 @@ type StorageSpec struct {
 	Kine KineSpec `json:"kine,omitempty"`
 }
 type KineSpec struct {
-	// DataSource holds the URL of the data source. Refer to: https://github.com/rancher/kine/
-	DataSource string `json:"dataSource,omitempty"`
+	// DataSourceRef points to a Secret containing the Kine data source URL.
+	// This prevents sensitive credentials from being exposed in plain text.
+	// If omitted, the system will default to the standard Kine storage mechanism.
+	// Refer to: https://github.com/rancher/kine/
+	// +optional
+	DataSourceRef *corev1.SecretKeySelector `json:"dataSourceRef,omitempty"`
 }
 
 // ExtraResourcesSpec holds a list of arbitrary Kubernetes objects to be applied
