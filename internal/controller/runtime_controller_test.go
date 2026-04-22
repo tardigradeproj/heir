@@ -149,7 +149,6 @@ var _ = Describe("Runtime Controller Config", func() {
 			Expect(configMap.Data).To(HaveKey(layout.Config.APIServer.SecretKey))
 			Expect(configMap.Data).To(HaveKey(layout.Config.ControllerManager.SecretKey))
 			Expect(configMap.Data).To(HaveKey(layout.Config.Scheduler.SecretKey))
-			Expect(configMap.Data).To(HaveKey(layout.Config.Kine.SecretKey))
 		})
 	})
 })

@@ -13,12 +13,30 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// GenerateKineSecret builds the <name>-kine Secret that holds the kine run-script.
+// dataSource is the kine endpoint connection string; if empty, kine runs with its default storage.
+// No API calls are made; the caller is responsible for setting the owner reference and persisting the result.
+func GenerateKineSecret(runtime *controlplanev1alpha1.Runtime, layout ControlPlaneLayout, dataSource string) *corev1.Secret {
+	kineArgs := map[string]string{}
+	if dataSource != "" {
+		kineArgs["endpoint"] = dataSource
+	}
+	return &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      fmt.Sprintf("%s-kine", runtime.Name),
+			Namespace: runtime.Namespace,
+		},
+		StringData: map[string]string{
+			layout.Kine.Script.SecretKey: RenderRunScript("/usr/local/bin/kine", kineArgs),
+		},
+	}
+}
+
 // GenerateControlPlaneConfig builds the <name>-config ConfigMap that holds the s6-overlay run
 // scripts for every supervised process, and returns the ConfigMap together with the hex-encoded
 // SHA-256 hash of its data. No API calls are made; the caller is responsible for setting the
 // owner reference and persisting the result.
 func GenerateControlPlaneConfig(runtime *controlplanev1alpha1.Runtime, layout ControlPlaneLayout) (*corev1.ConfigMap, string, error) {
-	fmt.Println(fmt.Sprintf("%+v", runtime))
 	net := runtime.Spec.UpstreamCluster.Network
 	kubeproxy, err := component.CreateKubeProxyManifest(runtime)
 	if err != nil {
@@ -81,17 +99,10 @@ func GenerateControlPlaneConfig(runtime *controlplanev1alpha1.Runtime, layout Co
 		}, runtime.Spec.UpstreamCluster.Scheduler.ExtraArgs),
 	)
 
-	kineArgs := map[string]string{}
-	if runtime.Spec.UpstreamCluster.Storage.Kine.DataSource != "" {
-		kineArgs["endpoint"] = runtime.Spec.UpstreamCluster.Storage.Kine.DataSource
-	}
-	kineScript := RenderRunScript("/usr/local/bin/kine", kineArgs)
-
 	data := map[string]string{
 		layout.Config.APIServer.SecretKey:         apiserverScript,
 		layout.Config.ControllerManager.SecretKey: controllerManagerScript,
 		layout.Config.Scheduler.SecretKey:         schedulerScript,
-		layout.Config.Kine.SecretKey:              kineScript,
 		layout.StaticManifest.Bootstrap.SecretKey: string(tlsbootstrap),
 		layout.StaticManifest.Coredns.SecretKey:   string(coredns),
 		layout.StaticManifest.KubeProxy.SecretKey: string(kubeproxy),

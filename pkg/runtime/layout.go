@@ -38,7 +38,11 @@ type ConfigLayout struct {
 	APIServer         MountEntry
 	ControllerManager MountEntry
 	Scheduler         MountEntry
-	Kine              MountEntry
+}
+
+// KineLayout describes the kine run-script entry stored in the <name>-kine Secret.
+type KineLayout struct {
+	Script MountEntry
 }
 
 // ControlPlaneLayout groups all Secret/ConfigMap keys and their container mount paths for a
@@ -48,6 +52,7 @@ type ControlPlaneLayout struct {
 	Auth           AuthLayout
 	Config         ConfigLayout
 	StaticManifest StaticManifest
+	Kine           KineLayout
 }
 
 // NewControlPlaneLayout returns the fixed layout that describes every file that must be
@@ -77,7 +82,9 @@ func NewControlPlaneLayout() ControlPlaneLayout {
 			APIServer:         MountEntry{SecretKey: "kube-apiserver.sh", MountPath: "/etc/kubernetes/manifests/kube-apiserver.sh"},
 			ControllerManager: MountEntry{SecretKey: "kube-controller-manager.sh", MountPath: "/etc/kubernetes/manifests/kube-controller-manager.sh"},
 			Scheduler:         MountEntry{SecretKey: "kube-scheduler.sh", MountPath: "/etc/kubernetes/manifests/kube-scheduler.sh"},
-			Kine:              MountEntry{SecretKey: "kine.sh", MountPath: "/etc/kubernetes/manifests/kine.sh"},
+		},
+		Kine: KineLayout{
+			Script: MountEntry{SecretKey: "kine.sh", MountPath: "/etc/kubernetes/manifests/kine.sh"},
 		},
 	}
 }

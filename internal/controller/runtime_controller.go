@@ -95,6 +95,10 @@ func (r *RuntimeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		log.Error(err, "failed to reconcile PKI auth configuration")
 		return r.setDegraded(ctx, controlPlaneRuntime, "PKIAuthSetupFailed", err.Error())
 	}
+	if err := r.setupKineSecret(ctx, controlPlaneRuntime); err != nil {
+		log.Error(err, "failed to reconcile kine secret")
+		return r.setDegraded(ctx, controlPlaneRuntime, "KineSecretFailed", err.Error())
+	}
 	configHash, err := r.setupControlPlaneConfiguration(ctx, controlPlaneRuntime)
 	if err != nil {
 		log.Error(err, "failed to reconcile control plane configuration")
@@ -257,6 +261,41 @@ func (r *RuntimeReconciler) setupControlPlaneConfiguration(
 	}
 	existing.Data = desired.Data
 	return desiredHash, r.Update(ctx, existing)
+}
+
+// setupKineSecret reconciles the <resourceName>-kine Secret that holds the kine run-script.
+// If a DataSourceRef is configured, the referenced Secret is resolved to obtain the endpoint value.
+// If the Secret already exists it is left untouched.
+func (r *RuntimeReconciler) setupKineSecret(
+	ctx context.Context,
+	controlPlaneRuntime *controlplanev1alpha1.Runtime,
+) error {
+	existing := &corev1.Secret{}
+	err := r.Get(ctx, types.NamespacedName{
+		Name:      fmt.Sprintf("%s-kine", controlPlaneRuntime.Name),
+		Namespace: controlPlaneRuntime.Namespace,
+	}, existing)
+	if err == nil {
+		return nil
+	}
+	if !apierrors.IsNotFound(err) {
+		return err
+	}
+
+	var dataSource string
+	if ref := controlPlaneRuntime.Spec.UpstreamCluster.Storage.Kine.DataSourceRef; ref != nil {
+		ds := &corev1.Secret{}
+		if err := r.Get(ctx, types.NamespacedName{Name: ref.Name, Namespace: controlPlaneRuntime.Namespace}, ds); err != nil {
+			return fmt.Errorf("failed to resolve kine DataSourceRef %s/%s: %w", controlPlaneRuntime.Namespace, ref.Name, err)
+		}
+		dataSource = string(ds.Data[ref.Key])
+	}
+
+	secret := samaritanoruntime.GenerateKineSecret(controlPlaneRuntime, layout, dataSource)
+	if err := ctrl.SetControllerReference(controlPlaneRuntime, secret, r.Scheme); err != nil {
+		return err
+	}
+	return r.Create(ctx, secret)
 }
 
 // setupPKIAuthConfiguration reconciles the <resourceName>-pki-auth Secret that holds the root CA,
