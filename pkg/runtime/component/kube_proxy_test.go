@@ -51,7 +51,7 @@ func kubeProxyRuntime(spec controlplanev1alpha1.KubeProxySpec) *controlplanev1al
 				},
 				Network: controlplanev1alpha1.NetworkSpec{
 					PodCIDR:   "10.244.0.0/16",
-					KubeProxy: &spec,
+					KubeProxy: spec,
 				},
 			},
 		},

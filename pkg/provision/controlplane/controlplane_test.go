@@ -230,3 +230,230 @@ func TestSetupPKIAuth(t *testing.T) {
 // Compile-time check: ensure the functions under test match the expected signatures.
 var _ func(string) (*kubernetes.Clientset, error) = buildClient
 var _ func(context.Context, *cleanup.Cleanup, kubernetes.Interface, *v1alpha1.Runtime, samaritanoruntime.ControlPlaneLayout) (*clientcmdapi.Config, error) = setupPKIAuth
+
+func TestParseConfig(t *testing.T) {
+	tests := []struct {
+		name        string
+		makeConfig  func(t *testing.T) string
+		wantErr     bool
+		errContains string
+		validate    func(t *testing.T, r *v1alpha1.Runtime)
+	}{
+		{
+			name: "non-existent file returns error",
+			makeConfig: func(_ *testing.T) string {
+				return "/tmp/samaritano-parseconfig-no-such-file.yaml"
+			},
+			wantErr:     true,
+			errContains: "failed to read samaritano config file",
+		},
+		{
+			name: "malformed YAML returns error",
+			makeConfig: func(t *testing.T) string {
+				return writeTempRuntimeConfig(t, "not: valid: [yaml")
+			},
+			wantErr: true,
+		},
+		{
+			name: "valid minimal config parses name and namespace",
+			makeConfig: func(t *testing.T) string {
+				return writeTempRuntimeConfig(t, minimalRuntimeConfig)
+			},
+			validate: func(t *testing.T, r *v1alpha1.Runtime) {
+				assert.Equal(t, "test-cluster", r.Name)
+				assert.Equal(t, "default", r.Namespace)
+			},
+		},
+		{
+			name: "CRD default: podCIDR is 10.244.0.0/16 when omitted",
+			makeConfig: func(t *testing.T) string {
+				return writeTempRuntimeConfig(t, minimalRuntimeConfig)
+			},
+			validate: func(t *testing.T, r *v1alpha1.Runtime) {
+				assert.Equal(t, "10.244.0.0/16", r.Spec.UpstreamCluster.Network.PodCIDR)
+			},
+		},
+		{
+			name: "CRD default: serviceCIDR is 10.96.0.0/16 when omitted",
+			makeConfig: func(t *testing.T) string {
+				return writeTempRuntimeConfig(t, minimalRuntimeConfig)
+			},
+			validate: func(t *testing.T, r *v1alpha1.Runtime) {
+				assert.Equal(t, "10.96.0.0/16", r.Spec.UpstreamCluster.Network.ServiceCIDR)
+			},
+		},
+		{
+			name: "CRD default: coredns.clusterDNSIP is 10.96.0.10 when omitted",
+			makeConfig: func(t *testing.T) string {
+				return writeTempRuntimeConfig(t, minimalRuntimeConfig)
+			},
+			validate: func(t *testing.T, r *v1alpha1.Runtime) {
+				assert.Equal(t, "10.96.0.10", r.Spec.UpstreamCluster.Network.Coredns.ClusterDNSIP)
+			},
+		},
+		{
+			name: "CRD default: coredns.replicas is 2 when omitted",
+			makeConfig: func(t *testing.T) string {
+				return writeTempRuntimeConfig(t, minimalRuntimeConfig)
+			},
+			validate: func(t *testing.T, r *v1alpha1.Runtime) {
+				require.NotNil(t, r.Spec.UpstreamCluster.Network.Coredns.Replicas)
+				assert.Equal(t, int32(2), *r.Spec.UpstreamCluster.Network.Coredns.Replicas)
+			},
+		},
+		{
+			name: "CRD default: deployment.replicas is 2 when omitted",
+			makeConfig: func(t *testing.T) string {
+				return writeTempRuntimeConfig(t, `apiVersion: controlplane.tardigrade.runtime.io/v1alpha1
+kind: Runtime
+metadata:
+  name: test-cluster
+  namespace: default
+spec:
+  controlPlane:
+    samaritano:
+      image: "samaritano:test"
+    deployment:
+      serviceAccountName: default
+    service:
+      serviceType: ClusterIP
+  upstreamCluster:
+    storage:
+      type: kine
+`)
+			},
+			validate: func(t *testing.T, r *v1alpha1.Runtime) {
+				require.NotNil(t, r.Spec.ControlPlane.Deployment.Replicas)
+				assert.Equal(t, int32(1), *r.Spec.ControlPlane.Deployment.Replicas)
+			},
+		},
+		{
+			name: "explicit podCIDR overrides default",
+			makeConfig: func(t *testing.T) string {
+				return writeTempRuntimeConfig(t, `apiVersion: controlplane.tardigrade.runtime.io/v1alpha1
+kind: Runtime
+metadata:
+  name: test-cluster
+  namespace: default
+spec:
+  controlPlane:
+    samaritano:
+      image: "samaritano:test"
+    deployment:
+      replicas: 1
+      serviceAccountName: default
+    service:
+      serviceType: ClusterIP
+  upstreamCluster:
+    storage:
+      type: kine
+    network:
+      podCIDR: "192.168.0.0/16"
+`)
+			},
+			validate: func(t *testing.T, r *v1alpha1.Runtime) {
+				assert.Equal(t, "192.168.0.0/16", r.Spec.UpstreamCluster.Network.PodCIDR)
+			},
+		},
+		{
+			name: "explicit coredns replicas overrides default",
+			makeConfig: func(t *testing.T) string {
+				return writeTempRuntimeConfig(t, `apiVersion: controlplane.tardigrade.runtime.io/v1alpha1
+kind: Runtime
+metadata:
+  name: test-cluster
+  namespace: default
+spec:
+  controlPlane:
+    samaritano:
+      image: "samaritano:test"
+    deployment:
+      replicas: 1
+      serviceAccountName: default
+    service:
+      serviceType: ClusterIP
+  upstreamCluster:
+    storage:
+      type: kine
+    network:
+      coredns:
+        replicas: 3
+`)
+			},
+			validate: func(t *testing.T, r *v1alpha1.Runtime) {
+				require.NotNil(t, r.Spec.UpstreamCluster.Network.Coredns.Replicas)
+				assert.Equal(t, int32(3), *r.Spec.UpstreamCluster.Network.Coredns.Replicas)
+			},
+		},
+		{
+			name: "explicit deployment replicas overrides default",
+			makeConfig: func(t *testing.T) string {
+				return writeTempRuntimeConfig(t, minimalRuntimeConfig) // replicas: 1
+			},
+			validate: func(t *testing.T, r *v1alpha1.Runtime) {
+				require.NotNil(t, r.Spec.ControlPlane.Deployment.Replicas)
+				assert.Equal(t, int32(1), *r.Spec.ControlPlane.Deployment.Replicas)
+			},
+		},
+		{
+			name: "kubeProxy.disabled is preserved",
+			makeConfig: func(t *testing.T) string {
+				return writeTempRuntimeConfig(t, `apiVersion: controlplane.tardigrade.runtime.io/v1alpha1
+kind: Runtime
+metadata:
+  name: test-cluster
+  namespace: default
+spec:
+  controlPlane:
+    samaritano:
+      image: "samaritano:test"
+    deployment:
+      replicas: 1
+      serviceAccountName: default
+    service:
+      serviceType: ClusterIP
+  upstreamCluster:
+    storage:
+      type: kine
+    network:
+      kubeProxy:
+        disabled: true
+`)
+			},
+			validate: func(t *testing.T, r *v1alpha1.Runtime) {
+				assert.True(t, r.Spec.UpstreamCluster.Network.KubeProxy.Disabled)
+			},
+		},
+		{
+			name: "apiServer externalAddress is preserved",
+			makeConfig: func(t *testing.T) string {
+				return writeTempRuntimeConfig(t, runtimeConfigWithExternalAddress)
+			},
+			validate: func(t *testing.T, r *v1alpha1.Runtime) {
+				assert.Equal(t, "https://my-cluster.example.com:6443",
+					r.Spec.UpstreamCluster.APIServer.ExternalAddress)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := tt.makeConfig(t)
+			r, err := parseConfig(path)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				if tt.errContains != "" {
+					assert.Contains(t, err.Error(), tt.errContains)
+				}
+				return
+			}
+
+			require.NoError(t, err)
+			require.NotNil(t, r)
+			if tt.validate != nil {
+				tt.validate(t, r)
+			}
+		})
+	}
+}

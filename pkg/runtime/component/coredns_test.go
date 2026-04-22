@@ -19,7 +19,7 @@ func corednsRuntime(spec controlplanev1alpha1.CorednsSpec) *controlplanev1alpha1
 		Spec: controlplanev1alpha1.RuntimeSpec{
 			UpstreamCluster: controlplanev1alpha1.UpstreamCluster{
 				Network: controlplanev1alpha1.NetworkSpec{
-					Coredns: &spec,
+					Coredns: spec,
 				},
 			},
 		},

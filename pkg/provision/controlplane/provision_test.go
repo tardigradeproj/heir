@@ -26,11 +26,8 @@ func withClient(client kubernetes.Interface) Option {
 }
 
 // minimalRuntimeConfig is the smallest valid Runtime manifest accepted by Provision.
-// Network pointer fields (kubeProxy, coredns) are set explicitly so that component
-// generators do not dereference nil pointers.
-// minimalRuntimeConfig is the smallest valid Runtime manifest accepted by Provision.
-// Network pointer fields (kubeProxy, coredns) and storage are set explicitly to
-// avoid CRD-defaulting issues with generated array defaults.
+// storage.type is set explicitly to avoid a CRD generator bug that emits an invalid
+// array default for the storage field.
 const minimalRuntimeConfig = `apiVersion: controlplane.tardigrade.runtime.io/v1alpha1
 kind: Runtime
 metadata:
@@ -48,9 +45,6 @@ spec:
   upstreamCluster:
     storage:
       type: kine
-    network:
-      kubeProxy: {}
-      coredns: {}
 `
 
 // runtimeConfigWithExternalAddress has an API server externalAddress set.
@@ -73,9 +67,6 @@ spec:
       externalAddress: "https://my-cluster.example.com:6443"
     storage:
       type: kine
-    network:
-      kubeProxy: {}
-      coredns: {}
 `
 
 // writeTempRuntimeConfig writes a Runtime manifest to a temp file and registers cleanup.
@@ -413,9 +404,6 @@ spec:
         dataSourceRef:
           name: my-db-secret
           key: url
-    network:
-      kubeProxy: {}
-      coredns: {}
 `)
 
 	err := Provision(context.Background(), WithConfig(configPath), withClient(fc))
