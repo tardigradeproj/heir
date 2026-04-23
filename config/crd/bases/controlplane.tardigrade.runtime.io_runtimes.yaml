@@ -1148,11 +1148,18 @@ spec:
                           - port
                           type: object
                         type: array
+                      apiServerNodePort:
+                        default: 30080
+                        description: ApiServer NodePort, only use this option when
+                          serviceType is NodePort
+                        format: int32
+                        type: integer
                       serviceType:
                         description: ServiceType allows specifying how to expose the
                           Control Plane.
                         type: string
                     required:
+                    - apiServerNodePort
                     - serviceType
                     type: object
                 required:

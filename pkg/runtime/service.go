@@ -23,6 +23,7 @@ func GenerateService(runtime *controlplanev1alpha1.Runtime) (*corev1.Service, er
 			Port:       6443,
 			TargetPort: intstr.FromInt32(6443),
 			Protocol:   corev1.ProtocolTCP,
+			NodePort:   svcSpec.ApiServerNodePort,
 		},
 	}
 	for _, p := range svcSpec.AdditionalPorts {

@@ -142,6 +142,9 @@ type ServiceSpec struct {
 	AdditionalPorts []AdditionalPort `json:"additionalPorts,omitempty"`
 	// ServiceType allows specifying how to expose the Control Plane.
 	ServiceType corev1.ServiceType `json:"serviceType"`
+	// ApiServer NodePort, only use this option when serviceType is NodePort
+	//+kubebuilder:default=30080
+	ApiServerNodePort int32 `json:"apiServerNodePort"`
 }
 type AdditionalPort struct {
 	// The name of this port within the Service created by tardigrade.

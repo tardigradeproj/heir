@@ -6,13 +6,12 @@ metadata:
 spec:
   controlPlane:
     samaritano:
-      image: localhost:5001/tardigrade
+      image: samaritano-base:v3
     deployment:
       replicas: 1
       serviceAccountName: default
     service:
       serviceType: NodePort
-
 
 
   upstreamCluster:

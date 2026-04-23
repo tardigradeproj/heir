@@ -33,3 +33,4 @@ go.work
 
 artifacts/*
 !artifacts/embed.go
+integration-test/tardigrade
