@@ -203,6 +203,7 @@ type DeploymentSpec struct {
 
 // #TODO: review
 type RegistrySettings struct {
+	//+kubebuilder:default="registry.k8s.io"
 	Registry   string            `json:"registry,omitempty"`
 	Image      string            `json:"image,omitempty"`
 	PullPolicy corev1.PullPolicy `json:"pullPolicy,omitempty"`

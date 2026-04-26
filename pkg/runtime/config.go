@@ -55,6 +55,7 @@ func GenerateControlPlaneConfig(runtime *controlplanev1alpha1.Runtime, layout Co
 			"client-ca-file":                   layout.PKI.CACert.MountPath,
 			"enable-admission-plugins":         "NamespaceLifecycle,NodeRestriction,LimitRanger,ServiceAccount,DefaultStorageClass,ResourceQuota",
 			"etcd-servers":                     "http://127.0.0.1:2379",
+			"enable-bootstrap-token-auth":      "true",
 			"event-ttl":                        "1h",
 			"kubelet-certificate-authority":    layout.PKI.CACert.MountPath,
 			"kubelet-client-certificate":       layout.PKI.APIServerCert.MountPath,

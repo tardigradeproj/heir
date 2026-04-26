@@ -997,6 +997,7 @@ spec:
                               to pull a container image
                             type: string
                           registry:
+                            default: registry.k8s.io
                             type: string
                         type: object
                       replicas:
@@ -1253,6 +1254,7 @@ spec:
                                   to pull a container image
                                 type: string
                               registry:
+                                default: registry.k8s.io
                                 type: string
                             type: object
                           replicas:
@@ -1347,7 +1349,7 @@ spec:
                           registerSetting:
                             default:
                               image: kube-proxy:v1.34.0
-                              register: registry.k8s.io
+                              registry: registry.k8s.io
                             description: '#TODO: review'
                             properties:
                               image:
@@ -1357,6 +1359,7 @@ spec:
                                   to pull a container image
                                 type: string
                               registry:
+                                default: registry.k8s.io
                                 type: string
                             type: object
                         required:

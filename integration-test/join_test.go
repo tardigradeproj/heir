@@ -5,24 +5,26 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/k0sproject/bootloose/pkg/cluster"
 	"github.com/k0sproject/bootloose/pkg/config"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
 
 type SamaritanoSuite struct {
 	suite.Suite
-
 	clusterDir string
 	cluster    *cluster.Cluster
 	cfg        config.Config
 }
 
 func (s *SamaritanoSuite) SetupSuite() {
-	dir, err := os.MkdirTemp("", "bootloose-k3s-*")
+
+	dir, err := os.MkdirTemp("", "bootloose-*")
 	s.Require().NoError(err)
 	s.clusterDir = dir
 
@@ -35,19 +37,14 @@ func (s *SamaritanoSuite) SetupSuite() {
 			{
 				Count: 1,
 				Spec: &config.Machine{
-					Image:      virtualMachineImage,
-					Name:       "node%d",
-					Privileged: true, // k3s needs this for cgroups/networking
+					Image:      "samaritano-integration-test:v1",
+					Name:       "bastion%d",
+					Privileged: true,
 					PortMappings: []config.PortMapping{
-						{ContainerPort: 22},                      // SSH (host port assigned dynamically)
-						{ContainerPort: 6443},                    // k3s API server
-						{ContainerPort: samaritanoApiServerPort}, // samaritano API server
+						{ContainerPort: 22},
 					},
+					Networks: []string{"kind"},
 					Volumes: []config.Volume{
-						{
-							Type:        "volume",
-							Destination: "/var/lib/rancher",
-						},
 						{
 							// Mount the samaritano distro binary built by make build-distro
 							Type:        "bind",
@@ -55,10 +52,9 @@ func (s *SamaritanoSuite) SetupSuite() {
 							Destination: "/usr/local/bin/tardigrade",
 						},
 						{
-							// Share the host Docker socket so images can be imported into k3s
 							Type:        "bind",
-							Source:      "/var/run/docker.sock",
-							Destination: "/var/run/docker.sock",
+							Source:      "./bastion-kubeconfig.yaml",
+							Destination: "/root/.kube/config",
 						},
 					},
 				},
@@ -66,10 +62,13 @@ func (s *SamaritanoSuite) SetupSuite() {
 			{
 				Count: 1,
 				Spec: &config.Machine{
-					Image:        "quay.io/k0sproject/bootloose-ubuntu20.04",
-					Name:         "worker%d",
-					Privileged:   true, // k3s needs this for cgroups/networking
-					PortMappings: []config.PortMapping{},
+					Image:      "quay.io/k0sproject/bootloose-ubuntu24.04",
+					Name:       "worker%d",
+					Privileged: true,
+					PortMappings: []config.PortMapping{
+						{ContainerPort: 22},
+					},
+					Networks: []string{"kind"},
 					Volumes: []config.Volume{
 						{
 							// Mount the samaritano distro binary built by make build-distro
@@ -90,6 +89,11 @@ func (s *SamaritanoSuite) SetupSuite() {
 	_ = cl.Delete()
 	s.Require().NoError(cl.Create())
 	s.cluster = cl
+
+	s.Require().NoError(err)
+	controlPlaneIP, err := controlPlaneNodeIP()
+	s.Require().NoError(err)
+	s.ConfigureVM(controlPlaneIP)
 }
 func (s *SamaritanoSuite) TearDownSuite() {
 	if s.cluster != nil {
@@ -98,7 +102,22 @@ func (s *SamaritanoSuite) TearDownSuite() {
 	if s.clusterDir != "" {
 		_ = os.RemoveAll(s.clusterDir)
 	}
+	_ = os.RemoveAll(tardigradeClusterKubeConfigPath)
 }
+func (s *SamaritanoSuite) ConfigureVM(kindContainerIP string) {
+	machines, err := s.cluster.Inspect(nil)
+	s.Require().NoError(err)
+
+	for _, machine := range machines {
+		func() {
+			conn := s.sshToNode(machine.Hostname())
+			defer conn.Close()
+			out, err := conn.Run(context.Background(), fmt.Sprintf("echo '%s %s' >> /etc/hosts", kindContainerIP, samaritanoExternalAddress))
+			s.Require().NoError(err, out)
+		}()
+	}
+}
+
 func (s *SamaritanoSuite) sshToNode(name string) *SSHConn {
 	machines, err := s.cluster.Inspect(nil)
 	s.Require().NoError(err)
@@ -134,87 +153,57 @@ func (s *SamaritanoSuite) sshToNode(name string) *SSHConn {
 	return conn
 }
 
-const runtimeConfig = `apiVersion: controlplane.tardigrade.runtime.io/v1alpha1
-kind: Runtime
-metadata:
-  name: my-cluster
-  namespace: default
-spec:
-  controlPlane:
-    samaritano:
-      image: samaritano-base:v3
-    deployment:
-      replicas: 1
-      serviceAccountName: default
-    service:
-      serviceType: NodePort
-  upstreamCluster:
-    apiServer:
-      externalAddress: ""
-      sans: []
-      extraArgs: {}
-    controllerManager:
-      extraArgs: {}
-    scheduler:
-      extraArgs: {}
-    storage:
-      type: kine
-      kine:
-        dataSource: ""
-`
-
 func (s *SamaritanoSuite) TestProvisionControlPlane() {
 	ctx := context.Background()
 	t := s.T()
 
-	conn := s.sshToNode("node0")
-	defer conn.Close()
+	bastionSSHConnection := s.sshToNode("bastion0")
+	defer bastionSSHConnection.Close()
+	workerSSHConnection := s.sshToNode("worker0")
+	defer workerSSHConnection.Close()
 
-	t.Log("waiting for k3s to be ready")
-	ctx30, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-	for {
-		out, err := conn.Run(ctx30, "k3s kubectl get nodes")
-		if err == nil {
-			t.Log(out)
-			break
-		}
-		select {
-		case <-ctx30.Done():
-			s.Require().NoError(fmt.Errorf("k3s never became ready: %w", err))
-		case <-time.After(2 * time.Second):
-		}
-	}
+	t.Log("writing tardigrade configuration")
+	out, err := bastionSSHConnection.Run(ctx, fmt.Sprintf("cat > /tmp/runtime-config.yaml << 'EOF'\n%sEOF", buildRuntimeConfig()))
+	require.NoError(t, err, out)
 
-	t.Log("importing", tardigradeDistroImage, "into k3s containerd")
-	out, err := conn.Run(ctx, fmt.Sprintf("docker save %s | k3s ctr images import -", tardigradeDistroImage))
-	s.Require().NoError(err, out)
+	t.Log("creating tardigrade cluster")
+	out, err = bastionSSHConnection.Run(ctx, "tardigrade provision controlplane"+
+		" --kubeconfig /root/.kube/config"+
+		" --cluster-kubeconfig /tmp/tardigrade-kubeconfig.yaml"+
+		" --config /tmp/runtime-config.yaml")
+	require.NoError(t, err, out)
 	t.Log(out)
 
-	t.Log("writing config.yaml")
-	out, err = conn.Run(ctx, fmt.Sprintf("cat > /root/config.yaml << 'EOF'\n%sEOF", runtimeConfig))
-	s.Require().NoError(err, out)
-
-	t.Log("provisioning control plane")
-	out, err = conn.Run(ctx, "tardigrade provision controlplane --kubeconfig=/etc/rancher/k3s/k3s.yaml --config=/root/config.yaml --cluster-kubeconfig=/root/kubeconfig.yaml")
-	s.Require().NoError(err, out)
-	t.Log(out)
-
-	t.Log("waiting for distro deployment pod to be running")
-	ctx30, cancel30 := context.WithTimeout(ctx, 30*time.Second)
+	t.Log("waiting for API server to be ready")
+	ctx30, cancel30 := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel30()
 	for {
-		out, err = conn.Run(ctx30, "k3s kubectl get pods -l app.kubernetes.io/name=my-cluster --field-selector=status.phase=Running --no-headers")
-		if err == nil && out != "" {
-			t.Log(out)
+		out, err = bastionSSHConnection.Run(ctx30, fmt.Sprintf("curl -kfs https://%s:%d/readyz", samaritanoExternalAddress, samaritanoApiServerPort))
+		t.Log(out)
+		if err == nil && strings.TrimSpace(out) == "ok" {
+			t.Log("API server is ready")
 			break
 		}
 		select {
 		case <-ctx30.Done():
-			s.Require().NoError(fmt.Errorf("pod for my-cluster never reached Running: %w", err))
+			require.NoError(t, fmt.Errorf("API server never became ready: %w", err))
 		case <-time.After(2 * time.Second):
 		}
 	}
+
+	t.Log("generating join command")
+	joinScript, err := bastionSSHConnection.Run(ctx, "tardigrade token generate"+
+		" --kubeconfig /tmp/tardigrade-kubeconfig.yaml"+
+		" --name samaritano-my-cluster@kubernetes"+
+		" --expiry 3h")
+	require.NoError(t, err, joinScript)
+
+	t.Log(joinScript)
+	t.Log("joining worker node")
+	joinOut, err := workerSSHConnection.Run(ctx, fmt.Sprintf(`tardigrade provision worker --kubelet-extra-args="fail-swap-on=false" --token=%s`, joinScript))
+	require.NoError(t, err, joinOut)
+	t.Log(joinOut)
+
 	time.Sleep(2 * time.Hour)
 }
 func TestSamaritanoSuite(t *testing.T) {

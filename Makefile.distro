@@ -13,7 +13,6 @@ CRICTL_VERSION     ?= v1.33.0
 CALICO_VERSION     ?= 3.31.4
 ARTIFACTS_DIR      ?= $(shell pwd)/artifacts
 WORKER_DIR         ?= $(ARTIFACTS_DIR)/worker
-BOOTLOOSE_IMG ?= bootloose-samaritano:v1
 INTEGRATION_TEST_DIR ?= $(shell pwd)/integration-test
 
 .PHONY: download-kubelet
@@ -125,13 +124,19 @@ build-controlplane-image:
 build-distro: ## Build cmd/distro for linux/ARCH and place the binary in integration-test/
 	GOOS=linux GOARCH=$(ARCH) go build -o $(INTEGRATION_TEST_DIR)/tardigrade ./cmd/distro.go
 
-.PHONY: build-bootloose-image
-build-bootloose-image: ## Build the bootloose base image for integration tests
-	docker build -t $(BOOTLOOSE_IMG) -f integration-test/ubuntu24.Dockerfile integration-test/
+
+.PHONY: build-integration-test-image
+build-integration-test-image: ## Build the bootloose worker image with kubectl
+	docker build \
+		--build-arg KUBE_VERSION=$(KUBE_VERSION) \
+		--build-arg TARGETARCH=$(ARCH) \
+		-t samaritano-integration-test:v1 \
+		integration-test
 
 .PHONY: integration-test
-integration-test: build-bootloose-image build-distro ## Build image and distro binary, then run integration tests
-	go test -v -timeout 30m ./integration-test/...
+integration-test: build-distro build-integration-test-image ## Build distro binary, set up kind cluster, run integration tests, tear down
+	.local/kind-with-registry.sh
+	go test -v -timeout 30m ./integration-test/...; rc=$$?; echo "abc"; exit $$rc
 
 .PHONY: download-worker-artifacts
 download-worker-artifacts: download-kubelet download-containerd download-runc download-crictl ## Download all worker node artifacts
