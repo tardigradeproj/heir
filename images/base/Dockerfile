@@ -14,6 +14,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl xz-utils c
 RUN mkdir -p \
     /etc/kubernetes/manifests \
     /etc/kubernetes/manifests.d \
+    /etc/s6-overlay/s6-rc.d/bootstrap-controller \
+    /etc/s6-overlay/s6-rc.d/bootstrap-controller-log \
+    /etc/s6-overlay/s6-rc.d/bootstrap-controller/dependencies.d \
     /etc/s6-overlay/s6-rc.d/kine/dependencies.d \
     /etc/s6-overlay/s6-rc.d/kine-log \
     /etc/s6-overlay/s6-rc.d/kube-apiserver/dependencies.d \

@@ -9,9 +9,14 @@ import (
 	"github.com/cloudflare/cfssl/csr"
 	"github.com/cloudflare/cfssl/helpers"
 	"github.com/cloudflare/cfssl/initca"
+	cfssllog "github.com/cloudflare/cfssl/log"
 	"github.com/cloudflare/cfssl/signer"
 	"github.com/cloudflare/cfssl/signer/local"
 )
+
+func init() {
+	cfssllog.Level = cfssllog.LevelError
+}
 
 type CSR struct {
 	Name      string

@@ -3,11 +3,20 @@ package main
 import (
 	"os"
 
+	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/tardigrade-runtime/samaritano/pkg/cmd/build"
 	"github.com/tardigrade-runtime/samaritano/pkg/cmd/provision"
 	"github.com/tardigrade-runtime/samaritano/pkg/cmd/token"
 )
+
+func init() {
+	log.SetFormatter(&log.TextFormatter{
+		ForceColors:     true,
+		FullTimestamp:   true,
+		TimestampFormat: "2006-01-02 15:04:05",
+	})
+}
 
 func main() {
 	root := &cobra.Command{

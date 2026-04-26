@@ -110,7 +110,7 @@ var _ = Describe("Runtime Controller Config", func() {
 					Spec: controlplanev1alpha1.RuntimeSpec{
 						ControlPlane: controlplanev1alpha1.ControlPlaneSpec{
 							Samaritano: controlplanev1alpha1.SamaritanoSpec{
-								Version: "v1.32.0",
+								Image: "v1.32.0",
 							},
 							Service: controlplanev1alpha1.ServiceSpec{
 								ServiceType: corev1.ServiceTypeClusterIP,
@@ -149,7 +149,6 @@ var _ = Describe("Runtime Controller Config", func() {
 			Expect(configMap.Data).To(HaveKey(layout.Config.APIServer.SecretKey))
 			Expect(configMap.Data).To(HaveKey(layout.Config.ControllerManager.SecretKey))
 			Expect(configMap.Data).To(HaveKey(layout.Config.Scheduler.SecretKey))
-			Expect(configMap.Data).To(HaveKey(layout.Config.Kine.SecretKey))
 		})
 	})
 })
@@ -177,7 +176,7 @@ var _ = Describe("Runtime Controller PKI", func() {
 					Spec: controlplanev1alpha1.RuntimeSpec{
 						ControlPlane: controlplanev1alpha1.ControlPlaneSpec{
 							Samaritano: controlplanev1alpha1.SamaritanoSpec{
-								Version: "v1.32.0",
+								Image: "v1.32.0",
 							},
 							Service: controlplanev1alpha1.ServiceSpec{
 								ServiceType: corev1.ServiceTypeClusterIP,
@@ -214,10 +213,10 @@ var _ = Describe("Runtime Controller PKI", func() {
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName})
 			Expect(err).NotTo(HaveOccurred())
 
-			By("validating the PKI secret exists and contains all expected keys")
+			By("validating the PKI auth secret exists and contains all expected keys")
 			pkiSecret := &corev1.Secret{}
 			Expect(k8sClient.Get(ctx, types.NamespacedName{
-				Name:      fmt.Sprintf("%s-pki", resourceName),
+				Name:      fmt.Sprintf("%s-pki-auth", resourceName),
 				Namespace: "default",
 			}, pkiSecret)).To(Succeed())
 
@@ -227,6 +226,9 @@ var _ = Describe("Runtime Controller PKI", func() {
 			Expect(pkiSecret.Data).To(HaveKey(layout.PKI.APIServerKey.SecretKey))
 			Expect(pkiSecret.Data).To(HaveKey(layout.PKI.ServiceAccountCert.SecretKey))
 			Expect(pkiSecret.Data).To(HaveKey(layout.PKI.ServiceAccountKey.SecretKey))
+			Expect(pkiSecret.Data).To(HaveKey(layout.Auth.AdminConf.SecretKey))
+			Expect(pkiSecret.Data).To(HaveKey(layout.Auth.ControllerManagerConf.SecretKey))
+			Expect(pkiSecret.Data).To(HaveKey(layout.Auth.SchedulerConf.SecretKey))
 
 			By("decoding the apiserver certificate and validating its SANs")
 			certPEM := pkiSecret.Data[layout.PKI.APIServerCert.SecretKey]
@@ -275,7 +277,7 @@ var _ = Describe("Runtime Controller Service", func() {
 				},
 				Spec: controlplanev1alpha1.RuntimeSpec{
 					ControlPlane: controlplanev1alpha1.ControlPlaneSpec{
-						Samaritano: controlplanev1alpha1.SamaritanoSpec{Version: "v1.32.0"},
+						Samaritano: controlplanev1alpha1.SamaritanoSpec{Image: "v1.32.0"},
 						Service:    svcSpec,
 					},
 				},

@@ -1,12 +1,19 @@
 ## Distro artifact targets — included by the root Makefile
 
+IMAGE_REGISTRY ?= ghcr.io/tardigrade
+IMAGE_NAME     ?= samaritano-base
+IMAGE_TAG      ?= latest
+
 ARCH               ?= arm64
 KUBE_VERSION       ?= v1.34.0
+KINE_VERSION       ?= v0.13.9
 CONTAINERD_VERSION ?= 2.1.0
 RUNC_VERSION       ?= v1.2.6
 CRICTL_VERSION     ?= v1.33.0
+CALICO_VERSION     ?= 3.31.4
 ARTIFACTS_DIR      ?= $(shell pwd)/artifacts
 WORKER_DIR         ?= $(ARTIFACTS_DIR)/worker
+INTEGRATION_TEST_DIR ?= $(shell pwd)/integration-test
 
 .PHONY: download-kubelet
 download-kubelet: ## Download kubelet binary for ARCH
@@ -55,6 +62,81 @@ download-crictl: ## Download crictl binary for ARCH
 	rm -rf "$$tmpdir"
 	@chmod +x "$(WORKER_DIR)/crictl"
 	@echo "crictl ready: $(WORKER_DIR)/crictl"
+
+.PHONY: download-calico
+download-calico: ## Download Calico manifests (operator-crds and tigera-operator) for the given CALICO_VERSION (default: 3.31.4)
+	@mkdir -p "$(ARTIFACTS_DIR)/manifests"
+	@echo "Downloading Calico v$(CALICO_VERSION) manifests..."
+	curl -fsSL "https://raw.githubusercontent.com/projectcalico/calico/v$(CALICO_VERSION)/manifests/operator-crds.yaml" \
+		-o "$(ARTIFACTS_DIR)/manifests/calico-operator-crds.yaml"
+	curl -fsSL "https://raw.githubusercontent.com/projectcalico/calico/v$(CALICO_VERSION)/manifests/tigera-operator.yaml" \
+		-o "$(ARTIFACTS_DIR)/manifests/calico-tigera-operator.yaml"
+	@echo "Calico manifests ready in $(ARTIFACTS_DIR)/manifests/"
+
+.PHONY: download-artifacts
+download-artifacts: ## Download Kubernetes server binaries and kine for ARCH, bundle kine into the kubernetes tarball
+	@mkdir -p "$(ARTIFACTS_DIR)"
+	@echo "Downloading Kubernetes $(KUBE_VERSION) for linux/$(ARCH)..."
+	curl -fsSL "https://dl.k8s.io/$(KUBE_VERSION)/kubernetes-server-linux-$(ARCH).tar.gz" \
+		-o "$(ARTIFACTS_DIR)/kubernetes-server-linux-$(ARCH).tar.gz"
+	@echo "Downloading kine $(KINE_VERSION) for $(ARCH)..."
+	curl -fsSL "https://github.com/k3s-io/kine/releases/download/$(KINE_VERSION)/kine-$(ARCH)" \
+		-o "$(ARTIFACTS_DIR)/kine"
+	@chmod +x "$(ARTIFACTS_DIR)/kine"
+	@echo "Injecting kine into kubernetes/server/bin/ ..."
+	@tmpdir=$$(mktemp -d); \
+	tar -xzf "$(ARTIFACTS_DIR)/kubernetes-server-linux-$(ARCH).tar.gz" -C "$$tmpdir"; \
+	cp "$(ARTIFACTS_DIR)/kine" "$$tmpdir/kubernetes/server/bin/kine"; \
+	tar -czf "$(ARTIFACTS_DIR)/kubernetes-server-linux-$(ARCH).tar.gz" -C "$$tmpdir" kubernetes; \
+	rm -rf "$$tmpdir"
+	@echo "Artifact ready: $(ARTIFACTS_DIR)/kubernetes-server-linux-$(ARCH).tar.gz"
+
+.PHONY: build-base
+build-base: ## Build the base container image
+	docker build \
+		-f images/base/Dockerfile \
+		-t $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG) \
+		images/base
+
+.PHONY: run-base
+run-base: ## Run the base container image with the privileges required by systemd
+	docker run -d \
+		--privileged \
+		--cgroupns=host \
+		-v /sys/fs/cgroup:/sys/fs/cgroup:rw \
+		$(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)
+
+.PHONY: run-controlplane-image
+run-controlplane-image: ## Run the base container image with the privileges required by systemd
+	docker run -d \
+		--privileged \
+		--cgroupns=host \
+		-v /sys/fs/cgroup:/sys/fs/cgroup:rw \
+		$(IMAGE_NAME):$(IMAGE_TAG)
+
+.PHONY: run-distro
+build-controlplane-image:
+	go run cmd/distro.go build control-plane-image --base-image $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG) --image=$(IMAGE_NAME):v3 --type=file $$(pwd)/artifacts/kubernetes-server-linux-arm64.tar.gz
+
+
+
+.PHONY: build-distro
+build-distro: ## Build cmd/distro for linux/ARCH and place the binary in integration-test/
+	GOOS=linux GOARCH=$(ARCH) go build -o $(INTEGRATION_TEST_DIR)/tardigrade ./cmd/distro.go
+
+
+.PHONY: build-integration-test-image
+build-integration-test-image: ## Build the bootloose worker image with kubectl
+	docker build \
+		--build-arg KUBE_VERSION=$(KUBE_VERSION) \
+		--build-arg TARGETARCH=$(ARCH) \
+		-t samaritano-integration-test:v1 \
+		integration-test
+
+.PHONY: integration-test
+integration-test: build-distro build-integration-test-image ## Build distro binary, set up kind cluster, run integration tests, tear down
+	.local/kind-with-registry.sh
+	go test -v -timeout 30m ./integration-test/...; rc=$$?; echo "abc"; exit $$rc
 
 .PHONY: download-worker-artifacts
 download-worker-artifacts: download-kubelet download-containerd download-runc download-crictl ## Download all worker node artifacts

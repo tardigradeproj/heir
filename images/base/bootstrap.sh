@@ -3,7 +3,7 @@
 set -euo pipefail
 
 export KUBECONFIG=/etc/kubernetes/admin.conf
-MANIFEST_DIR="/etc/kubernetes/manifests.d"
+MANIFEST_DIR="/etc/kubernetes/manifests/manifests.d"
 
 wait_for_apiserver() {
   # Use readyz and -f (fail silently on HTTP errors)

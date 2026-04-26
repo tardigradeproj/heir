@@ -23,5 +23,6 @@ func NewCommand() *cobra.Command {
 	// add subcommands
 	cmd.AddCommand(generate.NewCommand())
 	cmd.AddCommand(workerProvisionCommand())
+	cmd.AddCommand(controlplaneProvisionCommand())
 	return cmd
 }

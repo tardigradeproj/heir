@@ -6,12 +6,13 @@ metadata:
 spec:
   controlPlane:
     samaritano:
-      version: v1.32.0
+      image: samaritano-base:v3
     deployment:
       replicas: 1
       serviceAccountName: default
     service:
-      serviceType: ClusterIP
+      serviceType: NodePort
+
 
   upstreamCluster:
     apiServer:
@@ -22,10 +23,8 @@ spec:
       extraArgs: {}
     scheduler:
       extraArgs: {}
-    network:
-      podCIDR: 10.244.0.0/16
-      serviceCIDR: 10.96.0.0/16
+#    network: {}
     storage:
       type: kine
       kine:
-        dataSource: sqlite:///var/lib/kine/db.sqlite
+        dataSource: ""

@@ -1,4 +1,4 @@
-package provision
+package worker
 
 import (
 	"context"
@@ -159,11 +159,12 @@ logging:
 
 func saveContainerdConfig(dst string) error {
 	log.WithField("path", dst).Info("writing containerd config")
+	// #TODO: urgent snapshotter = "overlayfs"
 	content := fmt.Sprintf(`
 version = 2
 [plugins."io.containerd.grpc.v1.cri"]
   [plugins."io.containerd.grpc.v1.cri".containerd]
-    snapshotter = "overlayfs"
+    snapshotter = "native"
     default_runtime_name = "runc"
   [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
     runtime_type = "io.containerd.runc.v2"
@@ -172,6 +173,10 @@ version = 2
 [plugins."io.containerd.grpc.v1.cri".cni]
   bin_dir = "%s"
   conf_dir = "%s"
+[plugins."io.containerd.transfer.v1.local"]
+  [[plugins."io.containerd.transfer.v1.local".unpack_config]]
+    platform = "linux/arm64"
+    snapshotter = "native"
 `, cniBIn, cniConfiguration)
 
 	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {

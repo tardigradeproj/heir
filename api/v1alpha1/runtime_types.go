@@ -19,22 +19,31 @@ package v1alpha1
 import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
 // UpstreamCluster defines how UpstreamCluster components are configured
 type UpstreamCluster struct {
-	APIServer         APIServerSpec         `json:"apiServer,omitempty"`
-	ControllerManager ControllerManagerSpec `json:"controllerManager,omitempty"`
-	Scheduler         SchedulerSpec         `json:"scheduler,omitempty"`
-	Network           NetworkSpec           `json:"network,omitempty"`
-	Storage           StorageSpec           `json:"storage,omitempty"`
+	// +kubebuilder:default={}
+	APIServer APIServerSpec `json:"apiServer"`
+	// +kubebuilder:default={}
+	ControllerManager ControllerManagerSpec `json:"controllerManager"`
+	// +kubebuilder:default={}
+	Scheduler SchedulerSpec `json:"scheduler"`
+	// +kubebuilder:default={}
+	Network NetworkSpec `json:"network"`
+	// +kubebuilder:default={"type": "kine"}
+	Storage StorageSpec `json:"storage"`
+	// +kubebuilder:default={}
+	ExtraResources ExtraResourcesSpec `json:"extraResources"`
 }
 
 // APIServerSpec defines api-server configurations
 type APIServerSpec struct {
 	// If Samaritano controllers are running behind a loadbalancer provide the loadbalancer address here. This will configure all cluster
 	// components to connect to this address and also configures this address to be used when joining new nodes into the cluster.
+	// eg: https://my-cluster.io:9963
 	ExternalAddress string `json:"externalAddress,omitempty"`
 	// sans defines a List of additional addresses to push to API servers serving certificate
 	Sans []string `json:"sans,omitempty"`
@@ -57,25 +66,53 @@ type NetworkSpec struct {
 	// CIDR for Kubernetes Services: if empty, defaulted to 10.96.0.0/16.
 	//+kubebuilder:default="10.96.0.0/16"
 	//+kubebuilder:validation:Optional
+	// +optional
 	ServiceCIDR string `json:"serviceCIDR,omitempty"`
+	// CNI configuration
+	// +kubebuilder:default={}
+	CNI CNISpec `json:"cni,omitempty"`
+	// +kubebuilder:default={}
+	KubeProxy KubeProxySpec `json:"kubeProxy"`
+	// +kubebuilder:default={}
+	Coredns CorednsSpec `json:"coredns"`
+}
+type CNISpec struct {
+	// +kubebuilder:validation:Enum=calico;custom
+	//+kubebuilder:default="calico"
+	Supplier string `json:"supplier,omitempty"`
 }
 type StorageSpec struct {
 	// Type holds the type of storage to be used by APIServer
 	// +kubebuilder:validation:Enum=kine
 	//+kubebuilder:default="kine"
-	Type string `json:"type,omitempty"`
+	Type string `json:"type"`
 	// Kine holds kine configuration
-	Kine KineSpec `json:"kine,omitempty"`
+	Kine KineSpec `json:"kine"`
 }
 type KineSpec struct {
-	// DataSource holds the URL of the data source. Refer to: https://github.com/rancher/kine/
-	DataSource string `json:"dataSource,omitempty"`
+	// DataSourceRef points to a Secret containing the Kine data source URL.
+	// This prevents sensitive credentials from being exposed in plain text.
+	// If omitted, the system will default to the standard Kine storage mechanism.
+	// Refer to: https://github.com/rancher/kine/
+	// +optional
+	DataSourceRef *corev1.SecretKeySelector `json:"dataSourceRef,omitempty"`
+}
+
+// ExtraResourcesSpec holds a list of arbitrary Kubernetes objects to be applied
+// to the upstream cluster on startup.
+type ExtraResourcesSpec struct {
+	// Objects is a list of Kubernetes objects to apply on cluster startup.
+	// Any valid Kubernetes resource manifest is accepted.
+	// +optional
+	Objects []runtime.RawExtension `json:"objects,omitempty"`
 }
 
 // RuntimeSpec defines the desired state of Runtime
 type RuntimeSpec struct {
-	ControlPlane    ControlPlaneSpec `json:"controlPlane,omitempty"`
-	UpstreamCluster UpstreamCluster  `json:"upstreamCluster,omitempty"`
+	// +kubebuilder:default={}
+	ControlPlane ControlPlaneSpec `json:"controlPlane,omitempty"`
+	// +kubebuilder:default={}
+	UpstreamCluster UpstreamCluster `json:"upstreamCluster,omitempty"`
 }
 
 // ControlPlaneSpec defines how control plane must be created in the Admin UpstreamCluster,
@@ -91,14 +128,12 @@ type ControlPlaneSpec struct {
 	Service ServiceSpec  `json:"service,omitempty"`
 }
 type SamaritanoSpec struct {
-	Version string `json:"version"`
+	Image string `json:"image,omitempty"`
 }
 type IngressSpec struct {
 	AdditionalMetadata AdditionalMetadata `json:"additionalMetadata,omitempty"`
 	IngressClassName   string             `json:"ingressClassName,omitempty"`
-	// Hostname is an optional field which will be used as Ingress's Host. If it is not defined,
-	// Ingress's host will be "<tenant>.<namespace>.<domain>", where domain is specified under NetworkProfileSpec
-	Hostname string `json:"hostname,omitempty"`
+	Hostname           string             `json:"hostname,omitempty"`
 }
 type ServiceSpec struct {
 	AdditionalMetadata AdditionalMetadata `json:"additionalMetadata,omitempty"`
@@ -107,6 +142,9 @@ type ServiceSpec struct {
 	AdditionalPorts []AdditionalPort `json:"additionalPorts,omitempty"`
 	// ServiceType allows specifying how to expose the Control Plane.
 	ServiceType corev1.ServiceType `json:"serviceType"`
+	// ApiServer NodePort, only use this option when serviceType is NodePort
+	//+kubebuilder:default=30080
+	ApiServerNodePort int32 `json:"apiServerNodePort"`
 }
 type AdditionalPort struct {
 	// The name of this port within the Service created by tardigrade.
@@ -144,7 +182,7 @@ type DeploymentSpec struct {
 	// It could be used to point to a different container registry rather than the public one.
 	// +optional
 	RegistrySettings RegistrySettings `json:"registrySettings,omitempty"`
-	//+kubebuilder:default=2
+	//+kubebuilder:default=1
 	// +kubebuilder:validation:Minimum=1
 	Replicas *int32 `json:"replicas,omitempty"`
 	// RuntimeClassName refers to a RuntimeClass object in the node.k8s.io group, which should be used
@@ -162,10 +200,13 @@ type DeploymentSpec struct {
 	// ServiceAccountName allows to specify the service account to be mounted to the pods of the Control plane deployment
 	ServiceAccountName string `json:"serviceAccountName,omitempty"`
 }
+
+// #TODO: review
 type RegistrySettings struct {
-	Registry string `json:"registry,omitempty"`
-	// +kubebuilder:default="tardigrade/samaritano"
-	Image string `json:"image,omitempty"`
+	//+kubebuilder:default="registry.k8s.io"
+	Registry   string            `json:"registry,omitempty"`
+	Image      string            `json:"image,omitempty"`
+	PullPolicy corev1.PullPolicy `json:"pullPolicy,omitempty"`
 }
 
 // RuntimeStatus defines the observed state of Runtime.
