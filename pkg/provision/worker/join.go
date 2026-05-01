@@ -10,6 +10,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 	"github.com/tardigrade-runtime/samaritano/artifacts"
+	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/typ"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
@@ -31,10 +32,9 @@ var (
 	cniConfiguration           = "/etc/cni/net.d"
 )
 
-func Join(ctx context.Context, token string, opts ...Option) error {
-	jointCtx := &joinContext{
-		token: token,
-	}
+func Join(ctx context.Context, token string, opts ...typ.Option) error {
+	jointCtx := typ.NewWorkerContextWithDefaults("")
+	jointCtx.Token = token
 	for _, opt := range opts {
 		opt(jointCtx)
 	}
@@ -53,10 +53,7 @@ func Join(ctx context.Context, token string, opts ...Option) error {
 			return fmt.Errorf("failed to extract %s: %w", b.src, err)
 		}
 	}
-	log.Info("saving bootstrap kubeconfig")
-	if err := saveBootstrapKubeconfig(jointCtx.token, kubeletBootstrapKubeconfig); err != nil {
-		return fmt.Errorf("failed to save bootstrap kubeconfig: %w", err)
-	}
+
 	log.Info("saving kubelet config")
 	if err := saveKubeletConfig(kubeletConfigFile); err != nil {
 		return fmt.Errorf("failed to save kubelet config: %w", err)

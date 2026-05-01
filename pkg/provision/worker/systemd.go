@@ -10,6 +10,7 @@ import (
 	"github.com/coreos/go-systemd/v22/dbus"
 	"github.com/coreos/go-systemd/v22/unit"
 	log "github.com/sirupsen/logrus"
+	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/typ"
 )
 
 type systemdService struct {
@@ -54,14 +55,14 @@ func services() map[string]systemdService {
 
 // setupUnits writes the unit files for containerd and kubelet, reloads the
 // systemd daemon, enables both units, then starts containerd followed by kubelet.
-func setupUnits(ctx context.Context, jctx *joinContext) error {
+func setupUnits(ctx context.Context, jctx *typ.WorkerContext) error {
 	conn, err := dbus.NewSystemConnectionContext(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to connect to systemd: %w", err)
 	}
 	defer conn.Close()
 
-	kubeletArgs := jctx.kubeletExtraArgs
+	kubeletArgs := jctx.KubeletExtraArgs
 	kubeletArgs["config"] = kubeletConfigFile
 	kubeletArgs["bootstrap-kubeconfig"] = kubeletBootstrapKubeconfig
 	kubeletArgs["cert-dir"] = kubeletCertDir
