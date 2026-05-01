@@ -6,23 +6,26 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"time"
 
 	"github.com/BurntSushi/toml"
 	"github.com/containerd/containerd"
 	criconfig "github.com/containerd/containerd/pkg/cri/config"
-	"github.com/coreos/go-systemd/v22/unit"
 	log "github.com/sirupsen/logrus"
 	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/systemd"
 	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/typ"
 )
 
 type Containerd struct {
-	wrkCtx typ.WorkerContext
+	wrkCtx    typ.WorkerContext
+	component *systemd.Component
+	cancel    context.CancelFunc
 }
 
 func NewContainerd(wrkCtx typ.WorkerContext) *Containerd {
 	return &Containerd{wrkCtx: wrkCtx}
 }
+
 func (c *Containerd) Setup() error {
 	binaries := []struct{ src, dst string }{
 		{"worker/containerd", path.Join(c.wrkCtx.BinDir, "containerd")},
@@ -48,78 +51,80 @@ func (c *Containerd) Setup() error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal cri config: %w", err)
 	}
+	if err := os.MkdirAll(path.Dir(c.wrkCtx.ContainerdConfig), 0755); err != nil {
+		return fmt.Errorf("failed to create containerd config dir: %w", err)
+	}
 	if err := os.WriteFile(c.wrkCtx.ContainerdConfig, containerdConf, 0644); err != nil {
 		return fmt.Errorf("failed to write containerd config: %w", err)
 	}
 	return nil
 }
 
-const containerdUnit = "containerd.service"
-
 func (c *Containerd) Run(ctx context.Context) error {
-
-	sys, err := systemd.NewRunner(ctx, containerdUnit)
-	if err != nil {
-		log.WithError(err).Error("failed to establish systemd connection")
-		return err
-	}
-	defer sys.Close()
-	// Write the unit file. Overwriting on every call is safe and keeps the
-	// configuration in sync with the current WorkerContext values.
-	containerdBin := path.Join(c.wrkCtx.BinDir, "containerd")
-	execStart := fmt.Sprintf(
-		"%s --state=%s --root=%s --address=%s --config=%s",
-		containerdBin,
+	for _, dir := range []string{
 		c.wrkCtx.ContainerdState,
 		c.wrkCtx.ContainerdRoot,
-		c.wrkCtx.ContainerdAddress,
-		c.wrkCtx.ContainerdConfig,
-	)
-	// Prepend BinDir to PATH so containerd can resolve containerd-shim-runc-v2
-	// and runc without requiring them to be in the system PATH.
-	envPath := fmt.Sprintf("PATH=%s:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", c.wrkCtx.BinDir)
-
-	unitOptions := []*unit.UnitOption{
-		{Section: "Unit", Name: "Description", Value: "containerd container runtime"},
-		{Section: "Unit", Name: "Documentation", Value: "https://containerd.io"},
-		{Section: "Unit", Name: "After", Value: "network.target"},
-		{Section: "Service", Name: "Environment", Value: envPath},
-		{Section: "Service", Name: "ExecStart", Value: execStart},
-		{Section: "Service", Name: "Restart", Value: "always"},
-		{Section: "Service", Name: "RestartSec", Value: "5"},
-		{Section: "Install", Name: "WantedBy", Value: "multi-user.target"},
-	}
-	if err := sys.SaveUnit(unitOptions); err != nil {
-		log.WithError(err).Error("failed to write containerd unit")
-		return err
+		path.Dir(c.wrkCtx.ContainerdAddress),
+	} {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return fmt.Errorf("failed to create directory %s: %w", dir, err)
+		}
 	}
 
-	if err := sys.Run(ctx); err != nil {
-		return fmt.Errorf("failed to setup systemd daemon: %w", err)
+	c.component = &systemd.Component{
+		Name:        "containerd",
+		BinPath:     path.Join(c.wrkCtx.BinDir, "containerd"),
+		LogLevel:    c.wrkCtx.LogLevel,
+		LogFilePath: c.wrkCtx.ContainerdLogFile,
+		Args: []string{
+			"--state=" + c.wrkCtx.ContainerdState,
+			"--root=" + c.wrkCtx.ContainerdRoot,
+			"--address=" + c.wrkCtx.ContainerdAddress,
+			"--config=" + c.wrkCtx.ContainerdConfig,
+		},
+		// Prepend BinDir to PATH so containerd can resolve containerd-shim-runc-v2
+		// and runc without requiring them to be in the system PATH.
+		Env: []string{
+			fmt.Sprintf("PATH=%s:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", c.wrkCtx.BinDir),
+		},
+		MaxRetries:     5,
+		InitialBackoff: time.Second,
+		MaxBackoff:     30 * time.Second,
+		StopTimeout:    10 * time.Second,
 	}
 
-	// Wait until the containerd socket is accepting connections.
-	waitCtx, cancel := context.WithTimeout(ctx, c.wrkCtx.ContainerdStartupTimeout)
-	defer cancel()
+	runCtx, cancel := context.WithCancel(ctx)
+	c.cancel = cancel
+
+	go func() {
+		if err := c.component.Run(runCtx); err != nil {
+			log.WithField("component", "containerd").WithError(err).Error("containerd exited")
+		}
+	}()
+
+	waitCtx, waitCancel := context.WithTimeout(ctx, c.wrkCtx.ContainerdStartupTimeout)
+	defer waitCancel()
 	log.WithField("address", c.wrkCtx.ContainerdAddress).Info("waiting for containerd socket")
 	return waitForContainerdSocket(waitCtx, c.wrkCtx.ContainerdAddress)
 }
 
-// Cleanup stops and disables the containerd service, removes the unit file
-// via the systemd runner, then removes every file and directory that was
-// created by Setup and Run.
-// All errors are collected and returned together via errors.Join.
+func (c *Containerd) Teardown(ctx context.Context) error {
+	if c.cancel != nil {
+		c.cancel()
+	}
+	if c.component == nil {
+		return nil
+	}
+	return c.component.Teardown(ctx)
+}
+
+// Cleanup tears down the running process then removes every file and directory
+// created by Setup and Run. All errors are collected via errors.Join.
 func (c *Containerd) Cleanup(ctx context.Context) error {
 	var errs []error
 
-	sys, err := systemd.NewRunner(ctx, containerdUnit)
-	if err != nil {
-		errs = append(errs, fmt.Errorf("failed to establish systemd connection: %w", err))
-	} else {
-		defer sys.Close()
-		if err := sys.Cleanup(ctx); err != nil {
-			errs = append(errs, fmt.Errorf("failed to cleanup containerd systemd unit: %w", err))
-		}
+	if err := c.Teardown(ctx); err != nil {
+		errs = append(errs, fmt.Errorf("teardown failed: %w", err))
 	}
 
 	// Remove the binaries extracted by Setup.
@@ -162,20 +167,6 @@ func (c *Containerd) Cleanup(ctx context.Context) error {
 	}
 
 	return errors.Join(errs...)
-}
-
-func (c *Containerd) Teardown(ctx context.Context) error {
-	sys, err := systemd.NewRunner(ctx, containerdUnit)
-	if err != nil {
-		log.WithError(err).Error("failed to establish systemd connection")
-		return err
-	}
-	defer sys.Close()
-	if err := sys.Stop(ctx); err != nil {
-		log.WithError(err).Error("failed to stop systemd daemon")
-		return fmt.Errorf("failed to stop containerd systemd daemon: %w", err)
-	}
-	return nil
 }
 
 // waitForContainerdSocket polls the containerd unix socket until it accepts a

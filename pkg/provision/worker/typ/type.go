@@ -4,11 +4,14 @@ import (
 	"path/filepath"
 	"reflect"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type Option func(*WorkerContext)
 
 type WorkerContext struct {
+	LogLevel                       log.Level
 	Token                          string
 	NodeLabels                     map[string]string
 	KubeletExtraArgs               map[string]string
@@ -23,6 +26,7 @@ type WorkerContext struct {
 	ContainerdState          string        `default:"/run/samaritano/containerd"`
 	ContainerdRoot           string        `default:"/var/lib/samaritano/containerd"`
 	ContainerdConfig         string        `default:"/etc/lib/samaritano/containerd/config.toml"`
+	ContainerdLogFile        string        `json:"containerd-log-file"`
 	ContainerdStartupTimeout time.Duration // default: 90s, set in NewWorkerContextWithDefaults
 }
 

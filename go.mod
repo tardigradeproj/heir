@@ -5,6 +5,7 @@ go 1.26.0
 require (
 	al.essio.dev/pkg/shellescape v1.6.0
 	github.com/BurntSushi/toml v1.4.1-0.20240526193622-a339e1f7089c
+	github.com/DeRuina/timberjack v1.4.2
 	github.com/avast/retry-go v3.0.0+incompatible
 	github.com/cloudflare/cfssl v1.6.5
 	github.com/containerd/containerd v1.6.36
