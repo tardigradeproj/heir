@@ -12,13 +12,13 @@ import (
 	"github.com/containerd/containerd"
 	criconfig "github.com/containerd/containerd/pkg/cri/config"
 	log "github.com/sirupsen/logrus"
-	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/systemd"
+	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/procmgr"
 	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/typ"
 )
 
 type Containerd struct {
 	wrkCtx    typ.WorkerContext
-	component *systemd.Component
+	component *procmgr.Component
 	cancel    context.CancelFunc
 }
 
@@ -71,7 +71,7 @@ func (c *Containerd) Run(ctx context.Context) error {
 		}
 	}
 
-	c.component = &systemd.Component{
+	c.component = &procmgr.Component{
 		Name:        "containerd",
 		BinPath:     path.Join(c.wrkCtx.BinDir, "containerd"),
 		LogLevel:    c.wrkCtx.LogLevel,

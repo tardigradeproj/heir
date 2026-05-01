@@ -1,6 +1,6 @@
 //go:build linux
 
-package systemd
+package procmgr
 
 import (
 	"context"
@@ -18,7 +18,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// Component represents a long-running process managed by the supervisor.
+// Component represents a long-running process.
 type Component struct {
 	LogLevel    log.Level
 	LogFilePath string

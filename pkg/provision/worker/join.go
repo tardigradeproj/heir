@@ -62,9 +62,9 @@ func Join(ctx context.Context, token string, opts ...typ.Option) error {
 	if err := saveContainerdConfig(containerdConfiguration); err != nil {
 		return fmt.Errorf("failed to save containerd config: %w", err)
 	}
-	log.Info("setting up systemd units")
+	log.Info("setting up procmgr units")
 	if err := setupUnits(ctx, jointCtx); err != nil {
-		return fmt.Errorf("failed to setup systemd units: %w", err)
+		return fmt.Errorf("failed to setup procmgr units: %w", err)
 	}
 	log.Info("worker node provisioning complete")
 	return nil
@@ -128,7 +128,7 @@ authentication:
     clientCAFile: "%s/ca.crt"
 authorization:
   mode: Webhook
-cgroupDriver: systemd
+cgroupDriver: procmgr
 clusterDNS:
 - 10.96.0.10
 clusterDomain: cluster.local

@@ -54,11 +54,11 @@ func services() map[string]systemdService {
 }
 
 // setupUnits writes the unit files for containerd and kubelet, reloads the
-// systemd daemon, enables both units, then starts containerd followed by kubelet.
+// procmgr daemon, enables both units, then starts containerd followed by kubelet.
 func setupUnits(ctx context.Context, jctx *typ.WorkerContext) error {
 	conn, err := dbus.NewSystemConnectionContext(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to connect to systemd: %w", err)
+		return fmt.Errorf("failed to connect to procmgr: %w", err)
 	}
 	defer conn.Close()
 
@@ -81,14 +81,14 @@ func setupUnits(ctx context.Context, jctx *typ.WorkerContext) error {
 		if err != nil {
 			return fmt.Errorf("failed to serialize %s: %w", name, err)
 		}
-		if err := os.WriteFile("/etc/systemd/system/"+name, content, 0644); err != nil {
+		if err := os.WriteFile("/etc/procmgr/system/"+name, content, 0644); err != nil {
 			return fmt.Errorf("failed to write %s unit file: %w", name, err)
 		}
 	}
 
-	log.Info("reloading systemd daemon")
+	log.Info("reloading procmgr daemon")
 	if err := conn.ReloadContext(ctx); err != nil {
-		return fmt.Errorf("failed to reload systemd daemon: %w", err)
+		return fmt.Errorf("failed to reload procmgr daemon: %w", err)
 	}
 
 	unitNames := []string{"containerd.service", "kubelet.service"}
