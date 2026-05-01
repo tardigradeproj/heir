@@ -17,12 +17,12 @@ import (
 )
 
 type Containerd struct {
-	wrkCtx    typ.WorkerContext
+	wrkCtx    *typ.WorkerContext
 	component *procmgr.Component
 	cancel    context.CancelFunc
 }
 
-func NewContainerd(wrkCtx typ.WorkerContext) *Containerd {
+func NewContainerd(wrkCtx *typ.WorkerContext) *Containerd {
 	return &Containerd{wrkCtx: wrkCtx}
 }
 
@@ -95,17 +95,10 @@ func (c *Containerd) Run(ctx context.Context) error {
 
 	runCtx, cancel := context.WithCancel(ctx)
 	c.cancel = cancel
-
-	go func() {
-		if err := c.component.Run(runCtx); err != nil {
-			log.WithField("component", "containerd").WithError(err).Error("containerd exited")
-		}
-	}()
-
-	waitCtx, waitCancel := context.WithTimeout(ctx, c.wrkCtx.ContainerdStartupTimeout)
-	defer waitCancel()
-	log.WithField("address", c.wrkCtx.ContainerdAddress).Info("waiting for containerd socket")
-	return waitForContainerdSocket(waitCtx, c.wrkCtx.ContainerdAddress)
+	if err := c.component.Run(runCtx); err != nil {
+		log.WithField("component", "containerd").WithError(err).Error("containerd exited")
+	}
+	return nil
 }
 
 func (c *Containerd) Teardown(ctx context.Context) error {

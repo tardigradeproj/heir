@@ -1,7 +1,6 @@
 package typ
 
 import (
-	"path/filepath"
 	"reflect"
 	"time"
 
@@ -11,26 +10,28 @@ import (
 type Option func(*WorkerContext)
 
 type WorkerContext struct {
-	LogLevel                       log.Level
-	Token                          string
-	NodeLabels                     map[string]string
-	KubeletExtraArgs               map[string]string
-	KubeProxyExtraArgs             map[string]string
-	BinDir                         string `default:"/var/lib/samaritano/bin/"`
+	LogLevel                   log.Level
+	Token                      string
+	WorkerProfileConfigMapName string `default:"worker-profile"`
+	BinDir                     string `default:"/var/lib/samaritano/bin/"`
+
 	KubeletStateDir                string `default:"/etc/samaritano/kubelet"`
-	KubeletBootstrapKubeconfigPath string `default:"/bootstrap-kubeconfig.conf"`
-	KubeletKubeConfigPath          string `default:"/config.yaml"`
-	KubeletPKIPath                 string `default:"/pki"`
+	KubeletBootstrapKubeconfigPath string `default:"/etc/samaritano/kubelet/bootstrap-kubeconfig.conf"`
+	KubeletKubeConfigPath          string `default:"/etc/samaritano/kubelet/config.yaml"`
+	KubeletPKIPath                 string `default:"/etc/samaritano/kubelet/pki"`
+	KubeletExtraArgs               map[string]string
+	KubeletConfigFile              string `default:"/var/lib/samaritano/kubelet/config.yaml"`
+	KubeletLogFile                 string `default:"/var/log/samaritano/kubelet.log"`
 
 	ContainerdAddress        string        `default:"/run/samaritano/containerd.sock"`
 	ContainerdState          string        `default:"/run/samaritano/containerd"`
 	ContainerdRoot           string        `default:"/var/lib/samaritano/containerd"`
 	ContainerdConfig         string        `default:"/etc/lib/samaritano/containerd/config.toml"`
-	ContainerdLogFile        string        `json:"containerd-log-file"`
+	ContainerdLogFile        string        `json:"/var/log/samaritano/containerd.log"`
 	ContainerdStartupTimeout time.Duration // default: 90s, set in NewWorkerContextWithDefaults
 }
 
-func NewWorkerContextWithDefaults(kubeletStateDir string) *WorkerContext {
+func NewWorkerContextWithDefaults() *WorkerContext {
 	wc := &WorkerContext{}
 
 	// Populate string fields from their `default` struct tags.
@@ -42,14 +43,6 @@ func NewWorkerContextWithDefaults(kubeletStateDir string) *WorkerContext {
 		}
 	}
 
-	if kubeletStateDir != "" {
-		wc.KubeletStateDir = kubeletStateDir
-	}
-
-	wc.KubeletBootstrapKubeconfigPath = filepath.Join(wc.KubeletStateDir, wc.KubeletBootstrapKubeconfigPath)
-	wc.KubeletKubeConfigPath = filepath.Join(wc.KubeletStateDir, wc.KubeletKubeConfigPath)
-	wc.KubeletPKIPath = filepath.Join(wc.KubeletStateDir, wc.KubeletPKIPath)
-
 	wc.ContainerdStartupTimeout = 90 * time.Second
 
 	return wc
@@ -58,17 +51,5 @@ func NewWorkerContextWithDefaults(kubeletStateDir string) *WorkerContext {
 func WithKubeletExtraArgs(t map[string]string) Option {
 	return func(j *WorkerContext) {
 		j.KubeletExtraArgs = t
-	}
-}
-
-func WithKubeProxyExtraArgs(t map[string]string) Option {
-	return func(j *WorkerContext) {
-		j.KubeProxyExtraArgs = t
-	}
-}
-
-func WithNodeLabels(t map[string]string) Option {
-	return func(j *WorkerContext) {
-		j.NodeLabels = t
 	}
 }
