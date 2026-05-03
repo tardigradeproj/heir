@@ -2,7 +2,6 @@ package worker
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"io"
 	"os"
@@ -11,7 +10,6 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/tardigrade-runtime/samaritano/artifacts"
 	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/typ"
-	"k8s.io/client-go/tools/clientcmd"
 )
 
 var (
@@ -33,87 +31,18 @@ var (
 )
 
 func Join(ctx context.Context, token string, opts ...typ.Option) error {
-	jointCtx := typ.NewWorkerContextWithDefaults("")
+	jointCtx := typ.NewWorkerContextWithDefaults()
 	jointCtx.Token = token
 	for _, opt := range opts {
 		opt(jointCtx)
 	}
 
-	binaries := []struct{ src, dst string }{
-		{"worker/kubelet", kubeletBin},
-		{"worker/containerd", containerdBin},
-		{"worker/containerd-shim-runc-v2", containerdShimRunc},
-		{"worker/runc", runc},
-		{"worker/crictl", crictlBin},
-		{"worker/ctr", ctrBin},
-	}
-	for _, b := range binaries {
-		log.WithField("dst", b.dst).Info("extracting binary")
-		if err := extractStreamed(b.src, b.dst); err != nil {
-			return fmt.Errorf("failed to extract %s: %w", b.src, err)
-		}
-	}
-
-	log.Info("saving kubelet config")
-	if err := saveKubeletConfig(kubeletConfigFile); err != nil {
-		return fmt.Errorf("failed to save kubelet config: %w", err)
-	}
-	log.Info("saving containerd config")
-	if err := saveContainerdConfig(containerdConfiguration); err != nil {
-		return fmt.Errorf("failed to save containerd config: %w", err)
-	}
-	log.Info("setting up procmgr units")
-	if err := setupUnits(ctx, jointCtx); err != nil {
-		return fmt.Errorf("failed to setup procmgr units: %w", err)
-	}
-	log.Info("worker node provisioning complete")
 	return nil
 }
 
 // saveBootstrapKubeconfig decodes the base64-encoded kubeconfig, validates it,
 // writes it to dst, and extracts the cluster CA certificate into kubeletPKI/ca.crt
 // so kubelet can verify the API server when it rotates its own credentials.
-func saveBootstrapKubeconfig(b64Kubeconfig string, dst string) error {
-	raw, err := base64.StdEncoding.DecodeString(b64Kubeconfig)
-	if err != nil {
-		return fmt.Errorf("failed to decode bootstrap kubeconfig: %w", err)
-	}
-
-	cfg, err := clientcmd.Load(raw)
-	if err != nil {
-		return fmt.Errorf("invalid bootstrap kubeconfig: %w", err)
-	}
-
-	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
-		return fmt.Errorf("failed to create kubeconfig directory: %w", err)
-	}
-	if err := os.WriteFile(dst, raw, 0600); err != nil {
-		return fmt.Errorf("failed to write bootstrap kubeconfig: %w", err)
-	}
-	log.WithField("path", dst).Info("bootstrap kubeconfig written")
-
-	// Extract the cluster CA from the kubeconfig and write it to the PKI directory
-	// so kubelet can use it to verify the API server during certificate rotation.
-	ctx := cfg.Contexts[cfg.CurrentContext]
-	if ctx == nil {
-		return fmt.Errorf("bootstrap kubeconfig has no current context")
-	}
-	cluster := cfg.Clusters[ctx.Cluster]
-	if cluster == nil || len(cluster.CertificateAuthorityData) == 0 {
-		return fmt.Errorf("bootstrap kubeconfig cluster %q has no CA data", ctx.Cluster)
-	}
-
-	if err := os.MkdirAll(kubernetesPKI, 0755); err != nil {
-		return fmt.Errorf("failed to create kubelet PKI directory: %w", err)
-	}
-	caCertPath := filepath.Join(kubernetesPKI, "ca.crt")
-	if err := os.WriteFile(caCertPath, cluster.CertificateAuthorityData, 0644); err != nil {
-		return fmt.Errorf("failed to write CA certificate: %w", err)
-	}
-	log.WithField("path", caCertPath).Info("cluster CA certificate written")
-
-	return nil
-}
 
 func saveKubeletConfig(dst string) error {
 	log.WithField("path", dst).Info("writing kubelet config")

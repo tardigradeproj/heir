@@ -1,9 +1,10 @@
 package worker
 
-import "github.com/tardigrade-runtime/samaritano/pkg/provision/worker/typ"
+import "context"
 
 type Runner interface {
-	Setup(wrkCtx typ.WorkerContext) error
-	Start() error
-	Stop() error
+	Setup() error
+	Run(ctx context.Context) error
+	Cleanup(ctx context.Context) error
+	Teardown(ctx context.Context) error
 }

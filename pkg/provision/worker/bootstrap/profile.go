@@ -1,4 +1,4 @@
-package worker
+package bootstrap
 
 import (
 	"context"
@@ -26,7 +26,7 @@ type Profile struct {
 	KubeletConfiguration []byte
 }
 
-func ReadWorkerNodeProfile(ctx context.Context, wrkCtx typ.WorkerContext) (*Profile, error) {
+func ReadWorkerNodeProfile(ctx context.Context, wrkCtx *typ.WorkerContext) (*Profile, error) {
 	restCfg, err := clientcmd.BuildConfigFromFlags("", wrkCtx.KubeletKubeConfigPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load kubeconfig from %s: %w", wrkCtx.KubeletKubeConfigPath, err)

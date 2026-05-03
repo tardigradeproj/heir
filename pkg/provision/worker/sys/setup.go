@@ -1,5 +1,5 @@
 // cgroup validation
-package worker
+package sys
 
 import (
 	"os"

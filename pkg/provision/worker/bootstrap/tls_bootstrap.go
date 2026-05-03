@@ -1,4 +1,4 @@
-package worker
+package bootstrap
 
 import (
 	"context"
@@ -31,7 +31,7 @@ import (
 )
 
 func BootstrapKubeletClientConfig(ctx context.Context, wrkCtx *typ.WorkerContext, nodeName string) error {
-	log := logrus.WithFields(logrus.Fields{"component": "bootstrap-kubelet", "node_name": nodeName})
+	log := logrus.WithFields(logrus.Fields{"component": "tls-bootstrap", "node_name": nodeName})
 
 	switch {
 	// 1: Regular kubelet kubeconfig file exists.
@@ -47,7 +47,7 @@ func BootstrapKubeletClientConfig(ctx context.Context, wrkCtx *typ.WorkerContext
 	// 3: A bootstrap kubeconfig can be created (usually via a join token).
 	// Bootstrap the kubelet kubeconfig via a temporary bootstrap config file.
 	case wrkCtx.Token != "":
-		if err := saveBootstrapKubeconfig(wrkCtx.Token, kubeletBootstrapKubeconfig); err != nil {
+		if err := SaveBootstrapKubeconfig(wrkCtx.Token, wrkCtx.KubeletBootstrapKubeconfigPath, wrkCtx.KubeletPKIPath); err != nil {
 			return fmt.Errorf("failed to save bootstrap kubeconfig: %w", err)
 		}
 		log.Debug("Wrote bootstrap kubeconfig file: ", wrkCtx.KubeletBootstrapKubeconfigPath)
@@ -263,4 +263,50 @@ func writeKubeconfigFromBootstrapping(bootstrapClientConfig *restclient.Config, 
 
 	// Marshal to disk
 	return clientcmd.WriteToFile(kubeconfigData, kubeconfigPath)
+}
+
+// SaveBootstrapKubeconfig decodes the base64-encoded kubeconfig, validates it,
+// writes it to dst, and extracts the cluster CA certificate into kubeletPKI/ca.crt
+// so kubelet can verify the API server when it rotates its own credentials.
+func SaveBootstrapKubeconfig(b64Kubeconfig, dst, kubernetesPKI string) error {
+	log := logrus.WithField("path", dst)
+	raw, err := base64.StdEncoding.DecodeString(b64Kubeconfig)
+	if err != nil {
+		return fmt.Errorf("failed to decode bootstrap kubeconfig: %w", err)
+	}
+
+	cfg, err := clientcmd.Load(raw)
+	if err != nil {
+		return fmt.Errorf("invalid bootstrap kubeconfig: %w", err)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		return fmt.Errorf("failed to create kubeconfig directory: %w", err)
+	}
+	if err := os.WriteFile(dst, raw, 0600); err != nil {
+		return fmt.Errorf("failed to write bootstrap kubeconfig: %w", err)
+	}
+	log.Info("bootstrap kubeconfig written")
+
+	// Extract the cluster CA from the kubeconfig and write it to the PKI directory
+	// so kubelet can use it to verify the API server during certificate rotation.
+	ctx := cfg.Contexts[cfg.CurrentContext]
+	if ctx == nil {
+		return fmt.Errorf("bootstrap kubeconfig has no current context")
+	}
+	cluster := cfg.Clusters[ctx.Cluster]
+	if cluster == nil || len(cluster.CertificateAuthorityData) == 0 {
+		return fmt.Errorf("bootstrap kubeconfig cluster %q has no CA data", ctx.Cluster)
+	}
+
+	if err := os.MkdirAll(kubernetesPKI, 0755); err != nil {
+		return fmt.Errorf("failed to create kubelet PKI directory: %w", err)
+	}
+	caCertPath := filepath.Join(kubernetesPKI, "ca.crt")
+	if err := os.WriteFile(caCertPath, cluster.CertificateAuthorityData, 0644); err != nil {
+		return fmt.Errorf("failed to write CA certificate: %w", err)
+	}
+	log.WithField("path", caCertPath).Info("cluster CA certificate written")
+
+	return nil
 }
