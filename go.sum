@@ -1344,6 +1344,8 @@ k8s.io/component-base v0.20.4/go.mod h1:t4p9EdiagbVCJKrQ1RsA5/V4rFQNDfRlevJajlGw
 k8s.io/component-base v0.20.6/go.mod h1:6f1MPBAeI+mvuts3sIdtpjljHWBQ2cIy38oBIWMYnrM=
 k8s.io/component-base v0.35.0 h1:+yBrOhzri2S1BVqyVSvcM3PtPyx5GUxCK2tinZz1G94=
 k8s.io/component-base v0.35.0/go.mod h1:85SCX4UCa6SCFt6p3IKAPej7jSnF3L8EbfSyMZayJR0=
+k8s.io/component-base v0.36.0 h1:hFjEktssxiJhrK1zfybkH4kJOi8iZuF+mIDCqS5+jRo=
+k8s.io/component-base v0.36.0/go.mod h1:JZvIfcNHk+uck+8LhJzhSBtydWXaZNQwX2OdL+Mnwsk=
 k8s.io/component-helpers v0.36.0 h1:KznLAOD7oPxjaeheW4SOQijz9UtMO8Nvp89+lR8FYks=
 k8s.io/component-helpers v0.36.0/go.mod h1:BqZG+01Z97KR8GN9Stb8SiRmtn/EpZogriuQtpMCsLg=
 k8s.io/cri-api v0.17.3/go.mod h1:X1sbHmuXhwaHs9xxYffLqJogVsnI+f6cPRcgPel7ywM=
@@ -1364,6 +1366,8 @@ k8s.io/kube-openapi v0.0.0-20200805222855-6aeccd4b50c6/go.mod h1:UuqjUnNftUyPE5H
 k8s.io/kube-openapi v0.0.0-20201113171705-d219536bb9fd/go.mod h1:WOJ3KddDSol4tAGcJo0Tvi+dK12EcqSLqcWsryKMpfM=
 k8s.io/kube-openapi v0.0.0-20260317180543-43fb72c5454a h1:xCeOEAOoGYl2jnJoHkC3hkbPJgdATINPMAxaynU2Ovg=
 k8s.io/kube-openapi v0.0.0-20260317180543-43fb72c5454a/go.mod h1:uGBT7iTA6c6MvqUvSXIaYZo9ukscABYi2btjhvgKGZ0=
+k8s.io/kubelet v0.36.0 h1:zWeevZeGl80DInNU6WUo13yWmgbEajkRaBFqeKqkweA=
+k8s.io/kubelet v0.36.0/go.mod h1:PLROV2RwWJkSbAkdZ8HeJWsbsjEEEMlhRIEzAwGeU9c=
 k8s.io/kubernetes v1.13.0/go.mod h1:ocZa8+6APFNC2tX1DZASIbocyYT5jHzqFVsY5aoB7Jk=
 k8s.io/streaming v0.36.0 h1:agnTxU+NFulUrtYzXUGKO3ndEa8jKwht1Kwn9nu9x+4=
 k8s.io/streaming v0.36.0/go.mod h1:z6fV3D+NVkoeqRMtWwlUZK6U17SY/LqNzOxWL6GyR/s=
