@@ -18,8 +18,8 @@ import (
 // A ConfigMap in kube-system that contains the full configuration the worker node should use. The profile contains kubelet and containerd mirrors configuration.
 
 const (
-	profileNamespace  = "kube-system"
-	profileKubeletKey = "kubelet"
+	profileNamespace               = "kube-system"
+	profileKubeletConfigurationKey = "kubelet.configuration"
 )
 
 type Profile struct {
@@ -44,10 +44,10 @@ func ReadWorkerNodeProfile(ctx context.Context, wrkCtx *typ.WorkerContext) (*Pro
 			if err != nil {
 				return fmt.Errorf("failed to get worker profile configmap %q: %w", wrkCtx.WorkerProfileConfigMapName, err)
 			}
-			kubeletConfig, ok := cm.Data[profileKubeletKey]
+			kubeletConfig, ok := cm.Data[profileKubeletConfigurationKey]
 			if !ok {
 				// The ConfigMap exists but the key is missing — retrying won't help.
-				return retry.Unrecoverable(fmt.Errorf("worker profile configmap %q has no %q key", wrkCtx.WorkerProfileConfigMapName, profileKubeletKey))
+				return retry.Unrecoverable(fmt.Errorf("worker profile configmap %q has no %q key", wrkCtx.WorkerProfileConfigMapName, profileKubeletConfigurationKey))
 			}
 			profile = &Profile{KubeletConfiguration: []byte(kubeletConfig)}
 			return nil
@@ -59,7 +59,7 @@ func ReadWorkerNodeProfile(ctx context.Context, wrkCtx *typ.WorkerContext) (*Pro
 		retry.OnRetry(func(n uint, err error) {
 			log.WithError(err).
 				WithField("attempt", n).
-				WithField("kubelet.config.key", profileKubeletKey).
+				WithField("kubelet.config.key", profileKubeletConfigurationKey).
 				WithField("configmap.name", wrkCtx.WorkerProfileConfigMapName).
 				Error("retrying worker profile reading")
 		}),
