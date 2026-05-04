@@ -19,9 +19,11 @@ type WorkerContext struct {
 	KubeletBootstrapKubeconfigPath string `default:"/etc/samaritano/kubelet/bootstrap-kubeconfig.conf"`
 	KubeletKubeConfigPath          string `default:"/etc/samaritano/kubelet/config.yaml"`
 	KubeletPKIPath                 string `default:"/etc/samaritano/kubelet/pki"`
+	KubeletPKICaCertPath           string `default:"/etc/samaritano/kubelet/pki/ca.crt"`
 	KubeletExtraArgs               map[string]string
 	KubeletConfigFile              string `default:"/var/lib/samaritano/kubelet/config.yaml"`
 	KubeletLogFile                 string `default:"/var/log/samaritano/kubelet.log"`
+	KubeletStaticPodPath           string `default:"/etc/samaritano/manifests"`
 
 	ContainerdAddress        string        `default:"/run/samaritano/containerd.sock"`
 	ContainerdState          string        `default:"/run/samaritano/containerd"`
