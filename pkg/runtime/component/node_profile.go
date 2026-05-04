@@ -11,6 +11,7 @@ import (
 
 func CreateKubeletManifest(wrkCtx *typ.WorkerContext, runtime *controlplanev1alpha1.Runtime) ([]byte, error) {
 	cfg := getNodeProfileConfig(wrkCtx, runtime)
+	kubeletConfigPatch := runtime.Spec.UpstreamCluster.Kubelet.ConfigPatches
 	var buf bytes.Buffer
 	if err := (&templatewriter.TemplateWriter{
 		Name:     "node-profile",

@@ -21,7 +21,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	kubeletconfigv1beta1 "k8s.io/kubelet/config/v1beta1"
 )
 
 // #TODO:  create property for clusterDomain (default: cluster.local)
@@ -46,10 +45,10 @@ type UpstreamCluster struct {
 type KubeletSpec struct {
 	// extraArgs defines a Map of key-values (strings) for any extra arguments you wish to pass down to kubelet
 	ExtraArgs map[string]string `json:"extraArgs,omitempty"`
-	// configuration holds the official Kubernetes KubeletConfiguration rendered into
+	// configuration holds KubeletConfiguration. The configuration provided patches the default kubelet configuration
 	// the kubelet config file on worker nodes.
 	// +optional
-	Configuration *kubeletconfigv1beta1.KubeletConfiguration `json:"configuration,omitempty"`
+	ConfigPatches string `json:"configPatches,omitempty"`
 }
 
 // APIServerSpec defines api-server configurations
