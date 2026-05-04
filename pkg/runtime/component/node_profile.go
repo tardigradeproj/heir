@@ -7,11 +7,16 @@ import (
 	controlplanev1alpha1 "github.com/tardigrade-runtime/samaritano/api/v1alpha1"
 	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/typ"
 	"github.com/tardigrade-runtime/samaritano/pkg/templatewriter"
+	"sigs.k8s.io/yaml"
 )
 
-func CreateKubeletManifest(wrkCtx *typ.WorkerContext, runtime *controlplanev1alpha1.Runtime) ([]byte, error) {
-	cfg := getNodeProfileConfig(wrkCtx, runtime)
-	kubeletConfigPatch := runtime.Spec.UpstreamCluster.Kubelet.ConfigPatches
+func CreateNodeProfileManifest(wrkCtx *typ.WorkerContext, runtime *controlplanev1alpha1.Runtime) ([]byte, error) {
+	cfg, err := getNodeProfileConfig(wrkCtx, runtime)
+	if err != nil {
+		return nil, err
+	}
+	kubelet := runtime.Spec.UpstreamCluster.Kubelet
+
 	var buf bytes.Buffer
 	if err := (&templatewriter.TemplateWriter{
 		Name:     "node-profile",
@@ -20,18 +25,48 @@ func CreateKubeletManifest(wrkCtx *typ.WorkerContext, runtime *controlplanev1alp
 	}).WriteToBuffer(&buf); err != nil {
 		return nil, fmt.Errorf("failed to write kubelet template: %w", err)
 	}
-	return buf.Bytes(), nil
+
+	var cm map[string]interface{}
+	if err := yaml.Unmarshal(buf.Bytes(), &cm); err != nil {
+		return nil, err
+	}
+	data := cm["data"].(map[string]interface{})
+
+	if kubelet.ConfigPatches != "" {
+		kubeletCfgStr := data[wrkCtx.KubeletConfigurationNodeProfileConfigmapKey].(string)
+		patched, err := configPatch([]byte(kubeletCfgStr), kubelet.ConfigPatches)
+		if err != nil {
+			return nil, fmt.Errorf("failed to apply kubelet config patch: %w", err)
+		}
+		data[wrkCtx.KubeletConfigurationNodeProfileConfigmapKey] = string(patched)
+	}
+
+	return yaml.Marshal(cm)
 }
 
-func getNodeProfileConfig(wrkCtx *typ.WorkerContext, runtime *controlplanev1alpha1.Runtime) *NodeProfileConfig {
+func getNodeProfileConfig(wrkCtx *typ.WorkerContext, runtime *controlplanev1alpha1.Runtime) (*NodeProfileConfig, error) {
 	coredns := runtime.Spec.UpstreamCluster.Network.Coredns
+	kubelet := runtime.Spec.UpstreamCluster.Kubelet
+
+	extraArgs := kubelet.ExtraArgs
+	if extraArgs == nil {
+		extraArgs = map[string]string{}
+	}
+	extraArgsYAML, err := yaml.Marshal(extraArgs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal kubelet extra args: %w", err)
+	}
+
 	return &NodeProfileConfig{
 		NodeProfileConfigMapName: wrkCtx.WorkerProfileConfigMapName,
 		ClientCAFile:             wrkCtx.KubeletPKICaCertPath,
 		ClusterDNS:               coredns.ClusterDNSIP,
 		ContainerRuntimeEndpoint: wrkCtx.ContainerdAddress,
 		KubeletStaticPodPath:     wrkCtx.KubeletStaticPodPath,
-	}
+		KubeletConfigurationKey:  wrkCtx.KubeletConfigurationNodeProfileConfigmapKey,
+		KubeletExtraArgsKey:      wrkCtx.KubeletExtraArgsNodeProfileConfigmapKey,
+		KubeletExtraArgs:         string(extraArgsYAML),
+	}, nil
 }
 
 type NodeProfileConfig struct {
@@ -40,69 +75,49 @@ type NodeProfileConfig struct {
 	ClusterDNS               string
 	ContainerRuntimeEndpoint string
 	KubeletStaticPodPath     string
+	KubeletConfigurationKey  string
+	KubeletExtraArgsKey      string
+	KubeletExtraArgs         string
 }
 
-const NodeProfileTemplate = `
-apiVersion: v1
+const NodeProfileTemplate = `apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {{ .NodeProfileConfigMapName }}
   namespace: kube-system
 data:
-  kubelet.configuration: |
-	apiVersion: kubelet.config.k8s.io/v1beta1
-	authentication:
-	  anonymous:
-		enabled: false
-	  webhook:
-		cacheTTL: 0s
-		enabled: true
-	  x509:
-		clientCAFile: {{ .ClientCAFile }}
-	authorization:
-	  mode: Webhook
-	  webhook:
-		cacheAuthorizedTTL: 0s
-		cacheUnauthorizedTTL: 0s
-	cgroupDriver: systemd
-	cgroupRoot: /kubelet
-	clusterDNS:
-	- {{ .ClusterDNS }}
-	clusterDomain: cluster.local
-	containerRuntimeEndpoint: {{ .ContainerRuntimeEndpoint }}
-	cpuManagerReconcilePeriod: 0s
-	crashLoopBackOff: {}
-	evictionHard:
-	  imagefs.available: 0%
-	  nodefs.available: 0%
-	  nodefs.inodesFree: 0%
-	evictionPressureTransitionPeriod: 0s
-	failSwapOn: false
-	fileCheckFrequency: 0s
-	healthzBindAddress: 0.0.0.0
-	healthzPort: 10248
-	httpCheckFrequency: 0s
-	imageGCHighThresholdPercent: 100
-	imageMaximumGCAge: 0s
-	imageMinimumGCAge: 0s
-	kind: KubeletConfiguration
-	logging:
-	  flushFrequency: 0
-	  options:
-		json:
-		  infoBufferSize: "0"
-		text:
-		  infoBufferSize: "0"
-	  verbosity: 0
-	memorySwap: {}
-	nodeStatusReportFrequency: 0s
-	nodeStatusUpdateFrequency: 0s
-	rotateCertificates: true
-	runtimeRequestTimeout: 0s
-	shutdownGracePeriod: 0s
-	shutdownGracePeriodCriticalPods: 0s
-	staticPodPath: {{ .KubeletStaticPodPath }}
-	streamingConnectionIdleTimeout: 0s
-	syncFrequency: 0s
-	volumeStatsAggPeriod: 0s	
+  {{ .KubeletConfigurationKey }}: |
+    apiVersion: kubelet.config.k8s.io/v1beta1
+    authentication:
+      anonymous:
+        enabled: false
+      webhook:
+        cacheTTL: 0s
+        enabled: true
+      x509:
+        clientCAFile: {{ .ClientCAFile }}
+    authorization:
+      mode: Webhook
+      webhook:
+        cacheAuthorizedTTL: 0s
+        cacheUnauthorizedTTL: 0s
+    cgroupDriver: systemd
+    cgroupRoot: /kubelet
+    clusterDNS:
+    - {{ .ClusterDNS }}
+    clusterDomain: cluster.local
+    containerRuntimeEndpoint: {{ .ContainerRuntimeEndpoint }}
+    evictionHard:
+      imagefs.available: 0%
+      nodefs.available: 0%
+      nodefs.inodesFree: 0%
+    failSwapOn: false
+    healthzBindAddress: 0.0.0.0
+    healthzPort: 10248
+    imageGCHighThresholdPercent: 100
+    kind: KubeletConfiguration
+    rotateCertificates: true
+    staticPodPath: {{ .KubeletStaticPodPath }}
+  {{ .KubeletExtraArgsKey }}: |
+{{ .KubeletExtraArgs | indent 4 -}}
 `
