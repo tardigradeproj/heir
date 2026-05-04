@@ -91,6 +91,7 @@ func GenerateDeployment(runtime *controlplanev1alpha1.Runtime, layout ControlPla
 		{Name: "static-config", MountPath: layout.StaticManifest.Bootstrap.MountPath, SubPath: layout.StaticManifest.Bootstrap.SecretKey, ReadOnly: true},
 		{Name: "static-config", MountPath: layout.StaticManifest.KubeProxy.MountPath, SubPath: layout.StaticManifest.KubeProxy.SecretKey, ReadOnly: true},
 		{Name: "static-config", MountPath: layout.StaticManifest.Coredns.MountPath, SubPath: layout.StaticManifest.Coredns.SecretKey, ReadOnly: true},
+		{Name: "static-config", MountPath: layout.StaticManifest.NodeProfile.MountPath, SubPath: layout.StaticManifest.NodeProfile.SecretKey, ReadOnly: true},
 	}
 
 	var runtimeClassName *string

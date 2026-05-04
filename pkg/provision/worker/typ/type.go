@@ -15,15 +15,17 @@ type WorkerContext struct {
 	WorkerProfileConfigMapName string `default:"worker-profile"`
 	BinDir                     string `default:"/var/lib/samaritano/bin/"`
 
-	KubeletStateDir                string `default:"/etc/samaritano/kubelet"`
-	KubeletBootstrapKubeconfigPath string `default:"/etc/samaritano/kubelet/bootstrap-kubeconfig.conf"`
-	KubeletKubeConfigPath          string `default:"/etc/samaritano/kubelet/config.yaml"`
-	KubeletPKIPath                 string `default:"/etc/samaritano/kubelet/pki"`
-	KubeletPKICaCertPath           string `default:"/etc/samaritano/kubelet/pki/ca.crt"`
-	KubeletExtraArgs               map[string]string
-	KubeletConfigFile              string `default:"/var/lib/samaritano/kubelet/config.yaml"`
-	KubeletLogFile                 string `default:"/var/log/samaritano/kubelet.log"`
-	KubeletStaticPodPath           string `default:"/etc/samaritano/manifests"`
+	KubeletStateDir                             string `default:"/etc/samaritano/kubelet"`
+	KubeletBootstrapKubeconfigPath              string `default:"/etc/samaritano/kubelet/bootstrap-kubeconfig.conf"`
+	KubeletKubeConfigPath                       string `default:"/etc/samaritano/kubelet/config.yaml"`
+	KubeletPKIPath                              string `default:"/etc/samaritano/kubelet/pki"`
+	KubeletPKICaCertPath                        string `default:"/etc/samaritano/kubelet/pki/ca.crt"`
+	KubeletExtraArgs                            map[string]string
+	KubeletConfigFile                           string `default:"/var/lib/samaritano/kubelet/config.yaml"`
+	KubeletLogFile                              string `default:"/var/log/samaritano/kubelet.log"`
+	KubeletStaticPodPath                        string `default:"/etc/samaritano/manifests"`
+	KubeletConfigurationNodeProfileConfigmapKey string `default:"kubelet.configuration"`
+	KubeletExtraArgsNodeProfileConfigmapKey     string `default:"kubelet.extraArgs"`
 
 	ContainerdAddress        string        `default:"/run/samaritano/containerd.sock"`
 	ContainerdState          string        `default:"/run/samaritano/containerd"`

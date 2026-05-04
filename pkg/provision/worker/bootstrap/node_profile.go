@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -18,12 +19,12 @@ import (
 // A ConfigMap in kube-system that contains the full configuration the worker node should use. The profile contains kubelet and containerd mirrors configuration.
 
 const (
-	profileNamespace               = "kube-system"
-	profileKubeletConfigurationKey = "kubelet.configuration"
+	profileNamespace = "kube-system"
 )
 
 type Profile struct {
 	KubeletConfiguration []byte
+	KubeletExtraArgs     map[string]string
 }
 
 func ReadWorkerNodeProfile(ctx context.Context, wrkCtx *typ.WorkerContext) (*Profile, error) {
@@ -36,7 +37,7 @@ func ReadWorkerNodeProfile(ctx context.Context, wrkCtx *typ.WorkerContext) (*Pro
 	if err != nil {
 		return nil, fmt.Errorf("failed to build kubernetes client: %w", err)
 	}
-
+	profileKubeletConfigurationKey := wrkCtx.KubeletConfigurationNodeProfileConfigmapKey
 	var profile *Profile
 	err = retry.Do(
 		func() error {
@@ -49,7 +50,15 @@ func ReadWorkerNodeProfile(ctx context.Context, wrkCtx *typ.WorkerContext) (*Pro
 				// The ConfigMap exists but the key is missing — retrying won't help.
 				return retry.Unrecoverable(fmt.Errorf("worker profile configmap %q has no %q key", wrkCtx.WorkerProfileConfigMapName, profileKubeletConfigurationKey))
 			}
-			profile = &Profile{KubeletConfiguration: []byte(kubeletConfig)}
+			kubeletExtraArgs, ok := cm.Data[wrkCtx.KubeletExtraArgsNodeProfileConfigmapKey]
+			if !ok {
+				return retry.Unrecoverable(fmt.Errorf("worker profile configmap %q has no %q key", wrkCtx.WorkerProfileConfigMapName, wrkCtx.KubeletExtraArgsNodeProfileConfigmapKey))
+			}
+			extraArgs := map[string]string{}
+			if err = json.Unmarshal([]byte(kubeletExtraArgs), &extraArgs); err != nil {
+				log.WithError(err).Errorf("failed to unmarshal kubelet extra args content: %w", err)
+			}
+			profile = &Profile{KubeletConfiguration: []byte(kubeletConfig), KubeletExtraArgs: extraArgs}
 			return nil
 		},
 		retry.Attempts(10),
