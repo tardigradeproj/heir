@@ -22,12 +22,7 @@ const (
 	profileNamespace = "kube-system"
 )
 
-type Profile struct {
-	KubeletConfiguration []byte
-	KubeletExtraArgs     map[string]string
-}
-
-func ReadWorkerNodeProfile(ctx context.Context, wrkCtx *typ.WorkerContext) (*Profile, error) {
+func ReadWorkerNodeProfile(ctx context.Context, wrkCtx *typ.WorkerContext) (*typ.NodeProfile, error) {
 	restCfg, err := clientcmd.BuildConfigFromFlags("", wrkCtx.KubeletKubeConfigPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load kubeconfig from %s: %w", wrkCtx.KubeletKubeConfigPath, err)
@@ -38,7 +33,7 @@ func ReadWorkerNodeProfile(ctx context.Context, wrkCtx *typ.WorkerContext) (*Pro
 		return nil, fmt.Errorf("failed to build kubernetes client: %w", err)
 	}
 	profileKubeletConfigurationKey := wrkCtx.KubeletConfigurationNodeProfileConfigmapKey
-	var profile *Profile
+	var profile *typ.NodeProfile
 	err = retry.Do(
 		func() error {
 			cm, err := client.CoreV1().ConfigMaps(profileNamespace).Get(ctx, wrkCtx.WorkerProfileConfigMapName, metav1.GetOptions{})
@@ -58,7 +53,7 @@ func ReadWorkerNodeProfile(ctx context.Context, wrkCtx *typ.WorkerContext) (*Pro
 			if err = json.Unmarshal([]byte(kubeletExtraArgs), &extraArgs); err != nil {
 				log.WithError(err).Errorf("failed to unmarshal kubelet extra args content: %w", err)
 			}
-			profile = &Profile{KubeletConfiguration: []byte(kubeletConfig), KubeletExtraArgs: extraArgs}
+			profile = &typ.NodeProfile{KubeletConfiguration: []byte(kubeletConfig), KubeletExtraArgs: extraArgs}
 			return nil
 		},
 		retry.Attempts(10),

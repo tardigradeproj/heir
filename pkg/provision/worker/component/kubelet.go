@@ -14,15 +14,15 @@ import (
 )
 
 type Kubelet struct {
-	wrkCtx        *typ.WorkerContext
-	component     *procmgr.Component
-	cancel        context.CancelFunc
-	kubeletConfig []byte
-	hostname      string
+	wrkCtx      *typ.WorkerContext
+	component   *procmgr.Component
+	cancel      context.CancelFunc
+	nodeProfile *typ.NodeProfile
+	hostname    string
 }
 
-func NewKubelet(wrkCtx *typ.WorkerContext, kubeletConfig []byte, hostname string) *Kubelet {
-	return &Kubelet{wrkCtx: wrkCtx, kubeletConfig: kubeletConfig, hostname: hostname}
+func NewKubelet(wrkCtx *typ.WorkerContext, nodeProfile *typ.NodeProfile, hostname string) *Kubelet {
+	return &Kubelet{wrkCtx: wrkCtx, nodeProfile: nodeProfile, hostname: hostname}
 }
 
 func (k *Kubelet) Setup() error {
@@ -37,7 +37,7 @@ func (k *Kubelet) Setup() error {
 	}
 
 	// saving kubeletConfig
-	if err := os.WriteFile(k.wrkCtx.KubeletConfigFile, k.kubeletConfig, 0644); err != nil {
+	if err := os.WriteFile(k.wrkCtx.KubeletConfigFile, k.nodeProfile.KubeletConfiguration, 0644); err != nil {
 		return fmt.Errorf("failed to write containerd config: %w", err)
 	}
 
@@ -61,6 +61,10 @@ func (k *Kubelet) Run(ctx context.Context) error {
 		"cert-dir":        k.wrkCtx.KubeletPKIPath,
 		"runtime-cgroups": "/system.slice/containerd.service",
 		"v":               "2",
+	}
+	// start with control plane KubeletExtraArgs since they don't have priority over CLI
+	for k, v := range k.nodeProfile.KubeletExtraArgs {
+		defaultArgs[k] = v
 	}
 	for k, v := range k.wrkCtx.KubeletExtraArgs {
 		defaultArgs[k] = v

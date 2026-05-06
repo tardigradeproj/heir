@@ -7,6 +7,10 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+type NodeProfile struct {
+	KubeletConfiguration []byte
+	KubeletExtraArgs     map[string]string
+}
 type Option func(*WorkerContext)
 
 type WorkerContext struct {

@@ -28,6 +28,7 @@ func main() {
 	root.AddCommand(build.NewCommand())
 	root.AddCommand(token.NewCommand())
 	root.AddCommand(provision.NewCommand())
+	root.AddCommand(provision.WorkerRunCommand())
 
 	if err := root.Execute(); err != nil {
 		os.Exit(1)

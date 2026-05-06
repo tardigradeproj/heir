@@ -15,7 +15,7 @@ import (
 	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/typ"
 )
 
-func Worker(ctx context.Context, opts ...typ.Option) error {
+func Run(ctx context.Context, opts ...typ.Option) error {
 	workerCtx := typ.NewWorkerContextWithDefaults()
 	for _, opt := range opts {
 		opt(workerCtx)
@@ -41,7 +41,7 @@ func Worker(ctx context.Context, opts ...typ.Option) error {
 
 	runners := []Runner{
 		component.NewContainerd(workerCtx),
-		component.NewKubelet(workerCtx, profile.KubeletConfiguration, hostname),
+		component.NewKubelet(workerCtx, profile, hostname),
 	}
 
 	log.Debug("setting up components")
