@@ -10,6 +10,7 @@ KINE_VERSION       ?= v0.13.9
 CONTAINERD_VERSION ?= 2.1.0
 RUNC_VERSION       ?= v1.2.6
 CRICTL_VERSION     ?= v1.33.0
+CNI_VERSION        ?= v1.9.1
 CALICO_VERSION     ?= 3.31.4
 ARTIFACTS_DIR      ?= $(shell pwd)/artifacts
 WORKER_DIR         ?= $(ARTIFACTS_DIR)/worker
@@ -138,8 +139,20 @@ integration-test: build-distro build-integration-test-image ## Build distro bina
 	.local/kind-with-registry.sh
 	go test -v -timeout 30m ./integration-test/...; rc=$$?; echo "abc"; exit $$rc
 
+.PHONY: download-cni-plugins
+download-cni-plugins: ## Download CNI plugins for ARCH
+	@mkdir -p "$(WORKER_DIR)/cni"
+	@echo "Downloading CNI plugins $(CNI_VERSION) for linux/$(ARCH)..."
+	@tmpdir=$$(mktemp -d); \
+	curl -fsSL "https://github.com/containernetworking/plugins/releases/download/$(CNI_VERSION)/cni-plugins-linux-$(ARCH)-$(CNI_VERSION).tgz" \
+		-o "$$tmpdir/cni-plugins.tgz"; \
+	tar -xzf "$$tmpdir/cni-plugins.tgz" -C "$(WORKER_DIR)/cni"; \
+	rm -rf "$$tmpdir"
+	@chmod +x "$(WORKER_DIR)/cni/"*
+	@echo "CNI plugins ready: $(WORKER_DIR)/cni/"
+
 .PHONY: download-worker-artifacts
-download-worker-artifacts: download-kubelet download-containerd download-runc download-crictl ## Download all worker node artifacts
+download-worker-artifacts: download-kubelet download-containerd download-runc download-crictl download-cni-plugins ## Download all worker node artifacts
 
 .PHONY: vagrant-up
 vagrant-up: ## Start and provision the Vagrant VM

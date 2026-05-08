@@ -8,6 +8,10 @@ import (
 )
 
 func extractStreamed(src string, dst string) error {
+	if _, err := os.Stat(dst); err == nil {
+		return nil
+	}
+
 	// Open the embedded file as a stream
 	source, err := artifact.FS.Open(src)
 	if err != nil {
@@ -20,8 +24,9 @@ func extractStreamed(src string, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer dest.Close()
-	// RAM usage remains tiny and flat.
-	_, err = io.Copy(dest, source)
-	return err
+	if _, err := io.Copy(dest, source); err != nil {
+		dest.Close()
+		return err
+	}
+	return dest.Close()
 }

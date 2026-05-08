@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -23,6 +24,11 @@ func Run(ctx context.Context, opts ...typ.Option) error {
 	log := logrus.WithField("hostname", hostname)
 	log.Info("starting worker node provisioning")
 
+	log.Debug("creating required directories")
+	if err := createDirectories(workerCtx); err != nil {
+		return fmt.Errorf("failed to create config directories: %w", err)
+	}
+
 	log.Debug("configuring host system")
 	if err := sys.Configure(); err != nil {
 		return fmt.Errorf("failed to setup host: %w", err)
@@ -38,6 +44,11 @@ func Run(ctx context.Context, opts ...typ.Option) error {
 	if err != nil {
 		return fmt.Errorf("failed to read worker node profile: %w", err)
 	}
+
+	// starting node proxy
+	//ctx = context.WithCancel(ctx)
+	//// #TODO
+	//apiServerProxy := proxy.New([]string{""})
 
 	runners := []Runner{
 		component.NewContainerd(workerCtx),
@@ -85,4 +96,26 @@ func Run(ctx context.Context, opts ...typ.Option) error {
 
 	log.Info("worker node shut down")
 	return runErr
+}
+
+func createDirectories(workerCtx *typ.WorkerContext) error {
+	dirs := []string{
+		workerCtx.BinDir,
+		workerCtx.KubeletStateDir,
+		workerCtx.KubeletPKIPath,
+		workerCtx.KubeletStaticPodPath,
+		workerCtx.ContainerdState,
+		workerCtx.ContainerdRoot,
+		filepath.Dir(workerCtx.KubeletPKICaCertPath),
+		filepath.Dir(workerCtx.KubeletConfigFile),
+		filepath.Dir(workerCtx.KubeletLogFile),
+		filepath.Dir(workerCtx.ContainerdConfig),
+		filepath.Dir(workerCtx.ContainerdAddress),
+	}
+	for _, dir := range dirs {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return fmt.Errorf("failed to create directory %s: %w", dir, err)
+		}
+	}
+	return nil
 }

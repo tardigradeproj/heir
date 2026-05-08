@@ -65,6 +65,7 @@ func BootstrapKubeletClientConfig(ctx context.Context, wrkCtx *typ.WorkerContext
 		},
 		retry.Context(ctx),
 		retry.LastErrorOnly(true),
+		retry.Attempts(4),
 		retry.Delay(1*time.Second),
 		retry.OnRetry(func(attempt uint, err error) {
 			log.WithError(err).WithField("attempt", attempt+1).Debug("Failed to bootstrap client configuration, retrying after backoff")
@@ -159,6 +160,7 @@ func requestNodeCertificate(ctx context.Context, client clientset.Interface, pri
 	subject := &pkix.Name{
 		Organization: []string{"system:nodes"},
 		CommonName:   "system:node:" + string(nodeName),
+		//CommonName: "system:bootstrappers:worker",
 	}
 
 	privateKey, err := keyutil.ParsePrivateKeyPEM(privateKeyData)

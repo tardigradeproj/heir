@@ -31,6 +31,7 @@ type StaticManifest struct {
 	KubeProxy   MountEntry
 	Bootstrap   MountEntry
 	NodeProfile MountEntry
+	FlannelCNI  MountEntry
 }
 
 // ConfigLayout describes the s6-overlay run-script entries stored in the <name>-config ConfigMap.
@@ -79,6 +80,7 @@ func NewControlPlaneLayout() ControlPlaneLayout {
 			KubeProxy:   MountEntry{SecretKey: "kubeproxy.yaml", MountPath: "/etc/kubernetes/manifests/manifests.d/kubeproxy.yaml"},
 			Bootstrap:   MountEntry{SecretKey: "tlsbootstrap.yaml", MountPath: "/etc/kubernetes/manifests/manifests.d/tlsbootstrap.yaml"},
 			NodeProfile: MountEntry{SecretKey: "nodeprofile.yaml", MountPath: "/etc/kubernetes/manifests/manifests.d/nodeprofile.yaml"},
+			FlannelCNI:  MountEntry{SecretKey: "flannelcni.yaml", MountPath: "/etc/kubernetes/manifests/manifests.d/flannelcni.yaml"},
 		},
 		Config: ConfigLayout{
 			APIServer:         MountEntry{SecretKey: "kube-apiserver.sh", MountPath: "/etc/kubernetes/manifests/kube-apiserver.sh"},

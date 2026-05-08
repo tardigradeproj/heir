@@ -53,8 +53,13 @@ func GenerateControlPlaneConfig(runtime *controlplanev1alpha1.Runtime, layout Co
 	if err != nil {
 		return nil, "", err
 	}
+	flannelConfig, err := component.CreateCNIManifest(runtime)
+	if err != nil {
+		return nil, "", err
+	}
 	apiserverScript := RenderRunScript("/usr/local/bin/kube-apiserver",
 		MergeArgs(map[string]string{
+			"advertise-address":                "",
 			"allow-privileged":                 "true",
 			"authorization-mode":               "Node,RBAC",
 			"bind-address":                     "0.0.0.0",
@@ -112,6 +117,7 @@ func GenerateControlPlaneConfig(runtime *controlplanev1alpha1.Runtime, layout Co
 		layout.Config.Scheduler.SecretKey:           schedulerScript,
 		layout.StaticManifest.Bootstrap.SecretKey:   string(tlsbootstrap),
 		layout.StaticManifest.NodeProfile.SecretKey: string(nodeProfile),
+		layout.StaticManifest.FlannelCNI.SecretKey:  string(flannelConfig),
 		layout.StaticManifest.Coredns.SecretKey:     string(coredns),
 		layout.StaticManifest.KubeProxy.SecretKey:   string(kubeproxy),
 	}

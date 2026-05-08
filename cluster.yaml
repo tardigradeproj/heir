@@ -16,3 +16,8 @@ kubeadmConfigPatches:
         - "10.96.0.1"
         - "172.19.0.2"
         - "127.0.0.1"
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - containerPort: 30080
+        hostPort: 30080

@@ -31,6 +31,8 @@ func (c *Containerd) Setup() error {
 		{"worker/containerd", path.Join(c.wrkCtx.BinDir, "containerd")},
 		{"worker/containerd-shim-runc-v2", path.Join(c.wrkCtx.BinDir, "containerd-shim-runc-v2")},
 		{"worker/runc", path.Join(c.wrkCtx.BinDir, "runc")},
+		// #TODO: remove this
+		{"worker/crictl", path.Join(c.wrkCtx.BinDir, "crictl")},
 	}
 	for _, b := range binaries {
 		log.WithField("dst", b.dst).Info("extracting binary")
@@ -39,6 +41,15 @@ func (c *Containerd) Setup() error {
 		}
 	}
 	criPluginConfig := criconfig.DefaultConfig()
+	if criPluginConfig.ContainerdConfig.Runtimes == nil {
+		criPluginConfig.ContainerdConfig.Runtimes = make(map[string]criconfig.Runtime)
+	}
+	criPluginConfig.ContainerdConfig.Runtimes["runc"] = criconfig.Runtime{
+		Type: "io.containerd.runc.v2",
+		Options: map[string]any{
+			"SystemdCgroup": true,
+		},
+	}
 	// Set pause image
 	// #TOOD: sandboxContainerImage
 	// criPluginConfig.SandboxImage = "custom-image"
@@ -51,9 +62,6 @@ func (c *Containerd) Setup() error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal cri config: %w", err)
 	}
-	if err := os.MkdirAll(path.Dir(c.wrkCtx.ContainerdConfig), 0755); err != nil {
-		return fmt.Errorf("failed to create containerd config dir: %w", err)
-	}
 	if err := os.WriteFile(c.wrkCtx.ContainerdConfig, containerdConf, 0644); err != nil {
 		return fmt.Errorf("failed to write containerd config: %w", err)
 	}
@@ -61,16 +69,6 @@ func (c *Containerd) Setup() error {
 }
 
 func (c *Containerd) Run(ctx context.Context) error {
-	for _, dir := range []string{
-		c.wrkCtx.ContainerdState,
-		c.wrkCtx.ContainerdRoot,
-		path.Dir(c.wrkCtx.ContainerdAddress),
-	} {
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return fmt.Errorf("failed to create directory %s: %w", dir, err)
-		}
-	}
-
 	c.component = &procmgr.Component{
 		Name:        "containerd",
 		BinPath:     path.Join(c.wrkCtx.BinDir, "containerd"),

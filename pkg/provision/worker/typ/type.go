@@ -23,7 +23,7 @@ type WorkerContext struct {
 	KubeletBootstrapKubeconfigPath              string `default:"/etc/samaritano/kubelet/bootstrap-kubeconfig.conf"`
 	KubeletKubeConfigPath                       string `default:"/etc/samaritano/kubelet/config.yaml"`
 	KubeletPKIPath                              string `default:"/etc/samaritano/kubelet/pki"`
-	KubeletPKICaCertPath                        string `default:"/etc/samaritano/kubelet/pki/ca.crt"`
+	KubeletPKICaCertPath                        string `default:"/etc/samaritano/pki/ca.crt"`
 	KubeletExtraArgs                            map[string]string
 	KubeletConfigFile                           string `default:"/var/lib/samaritano/kubelet/config.yaml"`
 	KubeletLogFile                              string `default:"/var/log/samaritano/kubelet.log"`
@@ -37,6 +37,8 @@ type WorkerContext struct {
 	ContainerdConfig         string        `default:"/etc/lib/samaritano/containerd/config.toml"`
 	ContainerdLogFile        string        `json:"/var/log/samaritano/containerd.log"`
 	ContainerdStartupTimeout time.Duration // default: 90s, set in NewWorkerContextWithDefaults
+
+	ExternalAddressNodeProfileConfigmapKey []string `default:"externalAddress"`
 }
 
 func NewWorkerContextWithDefaults() *WorkerContext {

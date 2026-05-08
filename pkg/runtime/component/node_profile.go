@@ -85,6 +85,8 @@ kind: ConfigMap
 metadata:
   name: {{ .NodeProfileConfigMapName }}
   namespace: kube-system
+  labels:
+    managed-by: bootstrap
 data:
   {{ .KubeletConfigurationKey }}: |
     apiVersion: kubelet.config.k8s.io/v1beta1
@@ -102,7 +104,7 @@ data:
         cacheAuthorizedTTL: 0s
         cacheUnauthorizedTTL: 0s
     cgroupDriver: systemd
-    cgroupRoot: /kubelet
+    enforceNodeAllocatable: []
     clusterDNS:
     - {{ .ClusterDNS }}
     clusterDomain: cluster.local

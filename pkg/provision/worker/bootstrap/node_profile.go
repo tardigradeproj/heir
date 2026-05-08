@@ -56,7 +56,7 @@ func ReadWorkerNodeProfile(ctx context.Context, wrkCtx *typ.WorkerContext) (*typ
 			profile = &typ.NodeProfile{KubeletConfiguration: []byte(kubeletConfig), KubeletExtraArgs: extraArgs}
 			return nil
 		},
-		retry.Attempts(10),
+		retry.Attempts(4),
 		retry.Delay(3*time.Second),
 		retry.MaxDelay(30*time.Second),
 		retry.DelayType(retry.BackOffDelay),
