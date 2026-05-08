@@ -51,7 +51,7 @@ func ReadWorkerNodeProfile(ctx context.Context, wrkCtx *typ.WorkerContext) (*typ
 			}
 			extraArgs := map[string]string{}
 			if err = json.Unmarshal([]byte(kubeletExtraArgs), &extraArgs); err != nil {
-				log.WithError(err).Errorf("failed to unmarshal kubelet extra args content: %w", err)
+				log.WithError(err).Errorf("failed to unmarshal kubelet extra args content: %v", err)
 			}
 			profile = &typ.NodeProfile{KubeletConfiguration: []byte(kubeletConfig), KubeletExtraArgs: extraArgs}
 			return nil

@@ -81,7 +81,7 @@ func TestCreateNodeProfileManifest(t *testing.T) {
 
 				auth, _ := kubeletCfg["authentication"].(map[string]interface{})
 				x509, _ := auth["x509"].(map[string]interface{})
-				assert.Equal(t, "/etc/samaritano/kubelet/pki/ca.crt", x509["clientCAFile"])
+				assert.Equal(t, "/etc/samaritano/pki/ca.crt", x509["clientCAFile"])
 				assert.Equal(t, "/run/samaritano/containerd.sock", kubeletCfg["containerRuntimeEndpoint"])
 				assert.Equal(t, "/etc/samaritano/manifests", kubeletCfg["staticPodPath"])
 

@@ -47,7 +47,7 @@ func kubeProxyRuntime(spec controlplanev1alpha1.KubeProxySpec) *controlplanev1al
 		Spec: controlplanev1alpha1.RuntimeSpec{
 			UpstreamCluster: controlplanev1alpha1.UpstreamCluster{
 				APIServer: controlplanev1alpha1.APIServerSpec{
-					ExternalAddress: "https://api.example.com:6443",
+					ExternalAddresses: []string{"https://api.example.com:6443"},
 				},
 				Network: controlplanev1alpha1.NetworkSpec{
 					PodCIDR:   "10.244.0.0/16",
@@ -84,7 +84,7 @@ func TestGetConfig_BasicFields(t *testing.T) {
 	assert.True(t, cfg.Enabled)
 	assert.False(t, cfg.DualStack)
 	assert.Equal(t, "10.244.0.0/16", cfg.ClusterCIDR)
-	assert.Equal(t, "https://api.example.com:6443", cfg.ControlPlaneEndpoint)
+	assert.Equal(t, "https://127.0.0.1:6443", cfg.ControlPlaneEndpoint)
 	assert.Equal(t, "registry.k8s.io/kube-proxy:v1.34.0", cfg.Image)
 	assert.Equal(t, string(corev1.PullIfNotPresent), cfg.PullPolicy)
 	assert.Equal(t, "iptables", cfg.Mode)
@@ -224,7 +224,7 @@ func TestCreateManifest(t *testing.T) {
 				var cm corev1.ConfigMap
 				require.NoError(t, sigsyaml.Unmarshal(resources["ConfigMap/kube-proxy"], &cm))
 				assert.Contains(t, cm.Data["config.conf"], "clusterCIDR: 10.244.0.0/16")
-				assert.Contains(t, cm.Data["kubeconfig.conf"], "server: https://api.example.com:6443")
+				assert.Contains(t, cm.Data["kubeconfig.conf"], "server: https://127.0.0.1:6443")
 			},
 		},
 		{

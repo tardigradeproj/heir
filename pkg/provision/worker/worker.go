@@ -1,3 +1,5 @@
+//go:build linux
+
 package worker
 
 import (
@@ -33,6 +35,8 @@ func Run(ctx context.Context, opts ...typ.Option) error {
 	if err := sys.Configure(); err != nil {
 		return fmt.Errorf("failed to setup host: %w", err)
 	}
+	// read node profile file content
+	// if it exists, start APIServer proxy, otherwise
 
 	log.Debug("performing TLS bootstrap")
 	if err := btsp.BootstrapKubeletClientConfig(ctx, workerCtx, hostname); err != nil {

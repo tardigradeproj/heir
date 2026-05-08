@@ -55,8 +55,7 @@ type KubeletSpec struct {
 type APIServerSpec struct {
 	// If Samaritano controllers are running behind a loadbalancer provide the loadbalancer address here. This will configure all cluster
 	// components to connect to this address and also configures this address to be used when joining new nodes into the cluster.
-	// eg: https://my-cluster.io:9963
-	ExternalAddress string `json:"externalAddress,omitempty"`
+	ExternalAddresses []string `json:"externalAddresses,omitempty"`
 	// sans defines a List of additional addresses to push to API servers serving certificate
 	Sans []string `json:"sans,omitempty"`
 	// extraArgs defines a Map of key-values (strings) for any extra arguments you wish to pass down to Kubernetes api-server process

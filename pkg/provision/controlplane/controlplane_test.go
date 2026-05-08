@@ -430,8 +430,8 @@ spec:
 				return writeTempRuntimeConfig(t, runtimeConfigWithExternalAddress)
 			},
 			validate: func(t *testing.T, r *v1alpha1.Runtime) {
-				assert.Equal(t, "https://my-cluster.example.com:6443",
-					r.Spec.UpstreamCluster.APIServer.ExternalAddress)
+				assert.Equal(t, []string{"https://my-cluster.example.com:6443"},
+					r.Spec.UpstreamCluster.APIServer.ExternalAddresses)
 			},
 		},
 	}

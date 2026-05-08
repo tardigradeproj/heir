@@ -31,14 +31,17 @@ func APIServerAltNames(apiserver controlplanev1alpha1.APIServerSpec) []string {
 		"server.kubernetes.local",
 		"api-server.kubernetes.local",
 	)
-	if apiserver.ExternalAddress != "" {
-		u, err := url.Parse(apiserver.ExternalAddress)
-		if err != nil {
-			log.WithField("spec.externalAddress", apiserver.ExternalAddress).
-				Warningf("failed to parse spec.externalAddress: %v", err)
+	for _, externalAddress := range apiserver.ExternalAddresses {
+		if externalAddress != "" {
+			u, err := url.Parse(externalAddress)
+			if err != nil {
+				log.WithField("spec.externalAddress", externalAddress).
+					Warningf("failed to parse spec.externalAddress: %v", err)
+			}
+			sans = append(sans, u.Hostname())
 		}
-		sans = append(sans, u.Hostname())
 	}
+
 	sans = slices.DeleteFunc(sans, func(s string) bool {
 		return s == ""
 	})

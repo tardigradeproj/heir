@@ -8,8 +8,9 @@ import (
 )
 
 type NodeProfile struct {
-	KubeletConfiguration []byte
-	KubeletExtraArgs     map[string]string
+	KubeletConfiguration     []byte            `json:"kubeletConfiguration"`
+	KubeletExtraArgs         map[string]string `json:"KubeletExtraArgs"`
+	ApiServerExternalAddress []string          `json:"apiServerExternalAddress"`
 }
 type Option func(*WorkerContext)
 
@@ -38,7 +39,7 @@ type WorkerContext struct {
 	ContainerdLogFile        string        `json:"/var/log/samaritano/containerd.log"`
 	ContainerdStartupTimeout time.Duration // default: 90s, set in NewWorkerContextWithDefaults
 
-	ExternalAddressNodeProfileConfigmapKey []string `default:"externalAddress"`
+	ExternalAddressNodeProfileConfigmapKey string `default:"externalAddress"`
 }
 
 func NewWorkerContextWithDefaults() *WorkerContext {
