@@ -71,33 +71,29 @@ func (c *Component) Run(ctx context.Context) error {
 func (c *Component) runOnce(ctx context.Context) error {
 	cmd := exec.CommandContext(ctx, c.BinPath, c.Args...)
 	cmd.Env = c.buildEnv()
-	stdOut := io.Writer(os.Stdout)
-	stdErr := io.Writer(os.Stderr)
-	if c.LogFilePath != "" {
-		fileLogOut := &timberjack.Logger{
-			Filename:           c.LogFilePath,
-			MaxSize:            80,
-			MaxBackups:         3,
-			MaxAge:             28,
-			Compression:        "gzip",
-			LocalTime:          true,
-			RotationInterval:   24 * time.Hour,
-			RotateAtMinutes:    []int{0, 15, 30, 45},
-			RotateAt:           []string{"00:00", "12:00"},
-			BackupTimeFormat:   "2006-01-02-15-04-05",
-			AppendTimeAfterExt: true,
-			FileMode:           0o644,
-		}
-		if c.LogLevel == log.DebugLevel {
-			stdOut = io.MultiWriter(os.Stdout, fileLogOut)
-			stdErr = io.MultiWriter(os.Stderr, fileLogOut)
-		} else {
-			stdOut = fileLogOut
-			stdErr = fileLogOut
-		}
+
+	fileLogOut := &timberjack.Logger{
+		Filename:           c.LogFilePath,
+		MaxSize:            80,
+		MaxBackups:         3,
+		MaxAge:             28,
+		Compression:        "gzip",
+		LocalTime:          true,
+		RotationInterval:   24 * time.Hour,
+		RotateAtMinutes:    []int{0, 15, 30, 45},
+		RotateAt:           []string{"00:00", "12:00"},
+		BackupTimeFormat:   "2006-01-02-15-04-05",
+		AppendTimeAfterExt: true,
+		FileMode:           0o644,
 	}
-	cmd.Stdout = stdOut
-	cmd.Stderr = stdErr
+	if c.LogLevel == log.DebugLevel {
+		cmd.Stdout = io.MultiWriter(os.Stdout, fileLogOut)
+		cmd.Stderr = io.MultiWriter(os.Stderr, fileLogOut)
+	} else {
+		cmd.Stdout = fileLogOut
+		cmd.Stderr = fileLogOut
+	}
+
 	// Ensure the child process is killed when the parent dies.
 	cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGKILL}
 
