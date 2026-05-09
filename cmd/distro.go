@@ -16,6 +16,17 @@ func init() {
 		FullTimestamp:   true,
 		TimestampFormat: "2006-01-02 15:04:05",
 	})
+
+	levelStr := os.Getenv("LOG_LEVEL")
+	if levelStr == "" {
+		levelStr = "info"
+	}
+	level, err := log.ParseLevel(levelStr)
+	if err != nil {
+		log.Warnf("invalid LOG_LEVEL %q, defaulting to info", levelStr)
+		level = log.InfoLevel
+	}
+	log.SetLevel(level)
 }
 
 func main() {
