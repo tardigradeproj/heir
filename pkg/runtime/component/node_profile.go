@@ -2,6 +2,7 @@ package component
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 
 	controlplanev1alpha1 "github.com/tardigrade-runtime/samaritano/api/v1alpha1"
@@ -47,7 +48,10 @@ func CreateNodeProfileManifest(wrkCtx *typ.WorkerContext, runtime *controlplanev
 func getNodeProfileConfig(wrkCtx *typ.WorkerContext, runtime *controlplanev1alpha1.Runtime) (*NodeProfileConfig, error) {
 	coredns := runtime.Spec.UpstreamCluster.Network.Coredns
 	kubelet := runtime.Spec.UpstreamCluster.Kubelet
-
+	externalAddresses, err := json.Marshal(runtime.Spec.UpstreamCluster.APIServer.ExternalAddresses)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal API server external addresses: %w", err)
+	}
 	extraArgs := kubelet.ExtraArgs
 	if extraArgs == nil {
 		extraArgs = map[string]string{}
@@ -66,6 +70,8 @@ func getNodeProfileConfig(wrkCtx *typ.WorkerContext, runtime *controlplanev1alph
 		KubeletConfigurationKey:  wrkCtx.KubeletConfigurationNodeProfileConfigmapKey,
 		KubeletExtraArgsKey:      wrkCtx.KubeletExtraArgsNodeProfileConfigmapKey,
 		KubeletExtraArgs:         string(extraArgsYAML),
+		ExternalAddressKey:       wrkCtx.ExternalAddressNodeProfileConfigmapKey,
+		ExternalAddresses:        string(externalAddresses),
 	}, nil
 }
 
@@ -78,6 +84,8 @@ type NodeProfileConfig struct {
 	KubeletConfigurationKey  string
 	KubeletExtraArgsKey      string
 	KubeletExtraArgs         string
+	ExternalAddressKey       string
+	ExternalAddresses        string
 }
 
 const NodeProfileTemplate = `apiVersion: v1
@@ -88,6 +96,8 @@ metadata:
   labels:
     managed-by: bootstrap
 data:
+  {{ .ExternalAddressKey }}: |
+{{ .ExternalAddresses | indent 4 }}
   {{ .KubeletConfigurationKey }}: |
     apiVersion: kubelet.config.k8s.io/v1beta1
     authentication:
