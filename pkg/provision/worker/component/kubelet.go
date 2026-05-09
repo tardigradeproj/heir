@@ -4,7 +4,6 @@ package component
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -39,7 +38,7 @@ func (k *Kubelet) Setup() error {
 	}
 
 	// saving kubeletConfig
-	if err := os.WriteFile(k.wrkCtx.KubeletConfigFile, k.nodeProfile.KubeletConfiguration, 0644); err != nil {
+	if err := os.WriteFile(k.wrkCtx.KubeletConfigFile, []byte(k.nodeProfile.KubeletConfiguration), 0644); err != nil {
 		return fmt.Errorf("failed to write containerd config: %w", err)
 	}
 
@@ -79,7 +78,7 @@ func (k *Kubelet) Run(ctx context.Context) error {
 		Name:           "kubelet",
 		BinPath:        path.Join(k.wrkCtx.BinDir, "kubelet"),
 		LogLevel:       k.wrkCtx.LogLevel,
-		LogFilePath:    k.wrkCtx.ContainerdLogFile,
+		LogFilePath:    k.wrkCtx.KubeletLogFile,
 		Args:           args,
 		Env:            []string{},
 		MaxRetries:     5,
@@ -102,29 +101,4 @@ func (k *Kubelet) Teardown(ctx context.Context) error {
 		return nil
 	}
 	return k.component.Teardown(ctx)
-}
-
-func (k *Kubelet) Cleanup(ctx context.Context) error {
-	var errs []error
-
-	if err := k.Teardown(ctx); err != nil {
-		errs = append(errs, fmt.Errorf("teardown failed: %w", err))
-	}
-
-	// Remove the binary extracted by Setup.
-	p := path.Join(k.wrkCtx.BinDir, "kubelet")
-	if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
-		errs = append(errs, fmt.Errorf("failed to remove binary %s: %w", p, err))
-	} else {
-		log.WithField("path", p).Info("binary removed")
-	}
-
-	// Remove the kubelet config file written by Setup.
-	if err := os.Remove(k.wrkCtx.KubeletConfigFile); err != nil && !os.IsNotExist(err) {
-		errs = append(errs, fmt.Errorf("failed to remove kubelet config %s: %w", k.wrkCtx.KubeletConfigFile, err))
-	} else {
-		log.WithField("path", k.wrkCtx.KubeletConfigFile).Info("kubelet config removed")
-	}
-
-	return errors.Join(errs...)
 }

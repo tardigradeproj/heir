@@ -4,7 +4,6 @@ package component
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -109,57 +108,6 @@ func (c *Containerd) Teardown(ctx context.Context) error {
 		return nil
 	}
 	return c.component.Teardown(ctx)
-}
-
-// Cleanup tears down the running process then removes every file and directory
-// created by Setup and Run. All errors are collected via errors.Join.
-func (c *Containerd) Cleanup(ctx context.Context) error {
-	var errs []error
-
-	if err := c.Teardown(ctx); err != nil {
-		errs = append(errs, fmt.Errorf("teardown failed: %w", err))
-	}
-
-	// Remove the binaries extracted by Setup.
-	for _, name := range []string{"containerd", "containerd-shim-runc-v2", "runc"} {
-		p := path.Join(c.wrkCtx.BinDir, name)
-		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
-			errs = append(errs, fmt.Errorf("failed to remove binary %s: %w", p, err))
-		} else {
-			log.WithField("path", p).Info("binary removed")
-		}
-	}
-
-	// Remove the containerd config directory (contains config.toml).
-	configDir := path.Dir(c.wrkCtx.ContainerdConfig)
-	if err := os.RemoveAll(configDir); err != nil {
-		errs = append(errs, fmt.Errorf("failed to remove containerd config dir %s: %w", configDir, err))
-	} else {
-		log.WithField("path", configDir).Info("containerd config dir removed")
-	}
-
-	// Remove the state directory created by Run and populated by containerd.
-	if err := os.RemoveAll(c.wrkCtx.ContainerdState); err != nil {
-		errs = append(errs, fmt.Errorf("failed to remove containerd state dir %s: %w", c.wrkCtx.ContainerdState, err))
-	} else {
-		log.WithField("path", c.wrkCtx.ContainerdState).Info("containerd state dir removed")
-	}
-
-	// Remove the root directory (image layers, snapshots, metadata).
-	if err := os.RemoveAll(c.wrkCtx.ContainerdRoot); err != nil {
-		errs = append(errs, fmt.Errorf("failed to remove containerd root dir %s: %w", c.wrkCtx.ContainerdRoot, err))
-	} else {
-		log.WithField("path", c.wrkCtx.ContainerdRoot).Info("containerd root dir removed")
-	}
-
-	// Remove the socket file if containerd left it behind.
-	if err := os.Remove(c.wrkCtx.ContainerdAddress); err != nil && !os.IsNotExist(err) {
-		errs = append(errs, fmt.Errorf("failed to remove containerd socket %s: %w", c.wrkCtx.ContainerdAddress, err))
-	} else {
-		log.WithField("path", c.wrkCtx.ContainerdAddress).Info("containerd socket removed")
-	}
-
-	return errors.Join(errs...)
 }
 
 // waitForContainerdSocket polls the containerd unix socket until it accepts a
