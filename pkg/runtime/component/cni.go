@@ -169,7 +169,9 @@ spec:
         - /opt/bin/flanneld
         env:
         - name: KUBERNETES_SERVICE_HOST
-          value: "10.0.2.2"
+          value: "127.0.0.1"
+        - name: KUBERNETES_SERVICE_PORT
+          value: "6443"
         - name: POD_NAME
           valueFrom:
             fieldRef:
