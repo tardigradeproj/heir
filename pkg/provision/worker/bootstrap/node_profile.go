@@ -49,11 +49,24 @@ func ReadWorkerNodeProfile(ctx context.Context, wrkCtx *typ.WorkerContext) (*typ
 			if !ok {
 				return retry.Unrecoverable(fmt.Errorf("worker profile configmap %q has no %q key", wrkCtx.WorkerProfileConfigMapName, wrkCtx.KubeletExtraArgsNodeProfileConfigmapKey))
 			}
+			apiServerExternalAddressesInfo, ok := cm.Data[wrkCtx.ExternalAddressNodeProfileConfigmapKey]
+			if !ok {
+				return retry.Unrecoverable(fmt.Errorf("worker profile configmap %q has no %q key", wrkCtx.WorkerProfileConfigMapName, wrkCtx.ExternalAddressNodeProfileConfigmapKey))
+			}
+
 			extraArgs := map[string]string{}
 			if err = json.Unmarshal([]byte(kubeletExtraArgs), &extraArgs); err != nil {
 				log.WithError(err).Errorf("failed to unmarshal kubelet extra args content: %v", err)
+				return retry.Unrecoverable(fmt.Errorf("failed to unmarshal kubelet extra args content: %v", err))
 			}
-			profile = &typ.NodeProfile{KubeletConfiguration: []byte(kubeletConfig), KubeletExtraArgs: extraArgs}
+
+			apiServerExternalAddresses := []string{}
+			if err = json.Unmarshal([]byte(apiServerExternalAddressesInfo), &apiServerExternalAddresses); err != nil {
+				log.WithError(err).Errorf("failed to unmarshal API server external address content: %v", err)
+				return retry.Unrecoverable(fmt.Errorf("failed to unmarshal API server external address content: %v", err))
+			}
+
+			profile = &typ.NodeProfile{KubeletConfiguration: kubeletConfig, KubeletExtraArgs: extraArgs, ApiServerExternalAddress: apiServerExternalAddresses}
 			return nil
 		},
 		retry.Attempts(4),
@@ -69,5 +82,10 @@ func ReadWorkerNodeProfile(ctx context.Context, wrkCtx *typ.WorkerContext) (*typ
 		}),
 		retry.Context(ctx),
 	)
+	if profile != nil {
+		if err := profile.Save(wrkCtx.NodeProfileLocalFilePath); err != nil {
+			return nil, fmt.Errorf("failed to save node profile to %s: %w", wrkCtx.NodeProfileLocalFilePath, err)
+		}
+	}
 	return profile, err
 }

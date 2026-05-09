@@ -131,7 +131,7 @@ func LoadClientCert(ctx context.Context, wrkCtx *typ.WorkerContext, nodeName str
 		logrus.Info("Failed cleaning up private key file", "path", privateKeyPath, "err", err)
 	}
 
-	return writeKubeconfigFromBootstrapping(bootstrapClientConfig, wrkCtx.KubeletKubeConfigPath, store.CurrentPath())
+	return writeKubeconfigFromBootstrapping(wrkCtx, bootstrapClientConfig, wrkCtx.KubeletKubeConfigPath, store.CurrentPath())
 }
 func verifyKeyData(data []byte) bool {
 	if len(data) == 0 {
@@ -233,7 +233,7 @@ func digestedName(publicKey interface{}, subject *pkix.Name, usages []certificat
 
 	return fmt.Sprintf("node-csr-%s", encode(hash.Sum(nil))), nil
 }
-func writeKubeconfigFromBootstrapping(bootstrapClientConfig *restclient.Config, kubeconfigPath, pemPath string) error {
+func writeKubeconfigFromBootstrapping(wrkCtx *typ.WorkerContext, bootstrapClientConfig *restclient.Config, kubeconfigPath, pemPath string) error {
 	// Get the CA data from the bootstrap client config.
 	caFile, caData := bootstrapClientConfig.CAFile, []byte{}
 	if len(caFile) == 0 {
@@ -244,7 +244,7 @@ func writeKubeconfigFromBootstrapping(bootstrapClientConfig *restclient.Config, 
 	kubeconfigData := clientcmdapi.Config{
 		// Define a cluster stanza based on the bootstrap kubeconfig.
 		Clusters: map[string]*clientcmdapi.Cluster{"default-cluster": {
-			Server:                   bootstrapClientConfig.Host,
+			Server:                   wrkCtx.ApiServerLocalAddress,
 			InsecureSkipTLSVerify:    bootstrapClientConfig.Insecure,
 			CertificateAuthority:     caFile,
 			CertificateAuthorityData: caData,
