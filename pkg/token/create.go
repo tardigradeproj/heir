@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -13,6 +14,8 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
+
+	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/typ"
 )
 
 type Token struct {
@@ -26,6 +29,9 @@ func (t Token) String() string {
 
 // CreateBootstrapToken generates a bootstrap token, persists it as a Secret in
 // kube-system, and returns a base64-encoded bootstrap kubeconfig.
+// The kubeconfig contains one cluster entry for the primary API server plus one
+// additional entry for each external address found in the node profile configmap,
+// so that the worker's API server proxy is seeded with all known upstream addresses.
 func CreateBootstrapToken(ctx context.Context, kubeconfig, contextName string, expiry time.Duration) (string, error) {
 	t, err := Generate()
 	if err != nil {
@@ -47,17 +53,41 @@ func CreateBootstrapToken(ctx context.Context, kubeconfig, contextName string, e
 		return "", fmt.Errorf("failed to create kubernetes client: %w", err)
 	}
 
+	externalAddresses, err := readExternalAddressesFromNodeProfileConfigMap(ctx, client)
+	if err != nil {
+		return "", fmt.Errorf("failed to read external addresses from node profile configmap: %w", err)
+	}
+
 	secret := NewSecret(t, expiry)
 	if _, err := client.CoreV1().Secrets(secret.Namespace).Create(ctx, secret, metav1.CreateOptions{}); err != nil {
 		return "", fmt.Errorf("failed to create bootstrap token secret: %w", err)
 	}
 
-	bootstrapKubeconfig, err := buildBootstrapKubeconfig(t, server, caData)
+	bootstrapKubeconfig, err := buildBootstrapKubeconfig(t, server, caData, externalAddresses)
 	if err != nil {
 		return "", fmt.Errorf("failed to build bootstrap kubeconfig: %w", err)
 	}
 
 	return base64.StdEncoding.EncodeToString(bootstrapKubeconfig), nil
+}
+
+// readExternalAddressesFromNodeProfileConfigMap fetches the node profile configmap from
+// kube-system and returns the external API server addresses.
+func readExternalAddressesFromNodeProfileConfigMap(ctx context.Context, client kubernetes.Interface) ([]string, error) {
+	wrkDefaults := typ.NewWorkerContextWithDefaults()
+	cm, err := client.CoreV1().ConfigMaps(metav1.NamespaceSystem).Get(ctx, wrkDefaults.WorkerProfileConfigMapName, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get node profile configmap %q: %w", wrkDefaults.WorkerProfileConfigMapName, err)
+	}
+	raw, ok := cm.Data[wrkDefaults.ExternalAddressNodeProfileConfigmapKey]
+	if !ok {
+		return nil, fmt.Errorf("node profile configmap does not contain api server external addresses")
+	}
+	var addresses []string
+	if err := json.Unmarshal([]byte(raw), &addresses); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal external addresses: %w", err)
+	}
+	return addresses, nil
 }
 
 func buildClientConfig(kubeconfig, contextName string) clientcmd.ClientConfig {
@@ -102,7 +132,10 @@ func extractClusterInfo(clientConfig clientcmd.ClientConfig, contextName string)
 	return cluster.Server, cluster.CertificateAuthorityData, nil
 }
 
-func buildBootstrapKubeconfig(t Token, server string, caData []byte) ([]byte, error) {
+// buildBootstrapKubeconfig builds a kubeconfig containing one primary cluster entry
+// (used for TLS bootstrap) plus one additional entry per external address so that
+// the worker's API server proxy is seeded with all known upstream hosts.
+func buildBootstrapKubeconfig(t Token, server string, caData []byte, externalAddresses []string) ([]byte, error) {
 	const (
 		clusterName = "bootstrap"
 		userName    = "tls-bootstrap-token-user"
@@ -112,6 +145,17 @@ func buildBootstrapKubeconfig(t Token, server string, caData []byte) ([]byte, er
 	cfg.Clusters[clusterName] = &clientcmdapi.Cluster{
 		Server:                   server,
 		CertificateAuthorityData: caData,
+	}
+	// Add one cluster entry per external address. These are picked up by the worker's
+	// API server proxy to seed its upstream list before the node profile is available.
+	for i, addr := range externalAddresses {
+		if addr == server {
+			continue
+		}
+		cfg.Clusters[fmt.Sprintf("%s-%d", clusterName, i+1)] = &clientcmdapi.Cluster{
+			Server:                   addr,
+			CertificateAuthorityData: caData,
+		}
 	}
 	cfg.AuthInfos[userName] = &clientcmdapi.AuthInfo{
 		Token: t.String(),
