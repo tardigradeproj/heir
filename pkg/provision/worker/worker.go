@@ -4,7 +4,6 @@ package worker
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -19,7 +18,6 @@ import (
 	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/proxy"
 	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/sys"
 	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/typ"
-	apimachineryruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
@@ -42,7 +40,10 @@ func Run(ctx context.Context, opts ...typ.Option) error {
 	}
 
 	log.Debug("configuring API server local proxy")
-	apiServerProxy := proxy.New([]string{})
+	apiServerProxy, err := proxy.New([]string{})
+	if err != nil {
+		return fmt.Errorf("failed to setup API server proxy: %w", err)
+	}
 	apiServerProxyCh := make(chan error)
 	if err := registerApiServerExternalAddressOnLocalProxy(log, workerCtx, apiServerProxy); err != nil {
 		return fmt.Errorf("failed to create base conditions to start local API server proxy: %w", err)
@@ -69,9 +70,14 @@ func Run(ctx context.Context, opts ...typ.Option) error {
 	}
 
 	log.Debug("updating API server local proxy target addresses")
-	apiServerProxy.UpdateServers(profile.ApiServerExternalAddress)
+	if err := apiServerProxy.UpdateServers(profile.ApiServerExternalAddress); err != nil {
+		return fmt.Errorf("failed to update API server local proxy target addresses: %w", err)
+	}
+
+	log.Debug("decompressing CNI plugins")
 
 	runners := []Runner{
+		component.NewCni(workerCtx),
 		component.NewContainerd(workerCtx),
 		component.NewKubelet(workerCtx, profile, hostname),
 	}
@@ -87,7 +93,9 @@ func Run(ctx context.Context, opts ...typ.Option) error {
 	errCh := make(chan error, len(runners))
 	for _, rn := range runners {
 		go func(r Runner) {
-			errCh <- r.Run(ctx)
+			if err := r.Run(ctx); err != nil {
+				errCh <- err
+			}
 		}(rn)
 	}
 
@@ -143,14 +151,18 @@ func registerApiServerExternalAddressOnLocalProxy(log *logrus.Entry, workerConte
 		// Node profile has not been written yet (pre-bootstrap). Read the
 		// additionalApiServerProxyAddresses extension from the bootstrap kubeconfig so
 		// the proxy has at least the addresses that were baked in at join time.
-		log.Warn("node profile file does not exist, reading additional API server proxy addresses from bootstrap kubeconfig")
+		log.Warn("node profile file does not exist, reading external API server proxy addresses from bootstrap kubeconfig")
 		addresses, err := readAdditionalApiServerProxyAddresses(workerContext.KubeletBootstrapKubeconfigPath)
 		if err != nil {
 			return fmt.Errorf("failed to read additionalApiServerProxyAddresses from bootstrap kubeconfig: %w", err)
 		}
 		if len(addresses) > 0 {
-			log.WithField("external.address.ln", len(addresses)).Debug("updating external addresses on apiServer proxy from bootstrap kubeconfig")
-			apiServerProxy.UpdateServers(addresses)
+			log.WithField("external.address.ln", len(addresses)).
+				WithField("external.addresses", addresses).
+				Debug("updating external addresses on apiServer proxy from bootstrap kubeconfig")
+			if err := apiServerProxy.UpdateServers(addresses); err != nil {
+				return err
+			}
 		}
 		return nil
 	}
@@ -160,45 +172,30 @@ func registerApiServerExternalAddressOnLocalProxy(log *logrus.Entry, workerConte
 	if err := nodeProfile.Load(workerContext.NodeProfileLocalFilePath); err != nil {
 		return err
 	}
-	logrus.WithField("external.address.ln", len(nodeProfile.ApiServerExternalAddress)).Debug("updating external addresses on apiServer proxy")
-	apiServerProxy.UpdateServers(nodeProfile.ApiServerExternalAddress)
+	logrus.WithField("external.address.ln", len(nodeProfile.ApiServerExternalAddress)).
+		WithField("external.addresses", nodeProfile.ApiServerExternalAddress).
+		Debug("updating external addresses on apiServer proxy")
+	if err := apiServerProxy.UpdateServers(nodeProfile.ApiServerExternalAddress); err != nil {
+		return err
+	}
 	return nil
 }
 
-// readAdditionalApiServerProxyAddresses loads a kubeconfig file and returns the
-// additionalApiServerProxyAddresses extension value from the current cluster entry.
-// The extension is expected to be a JSON-encoded []string. A missing extension is
-// not an error — nil is returned instead.
+// readAdditionalApiServerProxyAddresses loads a kubeconfig file, collects the server
+// URL from every cluster object.
 func readAdditionalApiServerProxyAddresses(kubeconfigPath string) ([]string, error) {
 	cfg, err := clientcmd.LoadFromFile(kubeconfigPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load kubeconfig: %w", err)
 	}
 
-	ctx := cfg.Contexts[cfg.CurrentContext]
-	if ctx == nil {
-		return nil, nil
+	var servers []string
+	for _, cluster := range cfg.Clusters {
+		if cluster.Server != "" {
+			servers = append(servers, cluster.Server)
+		}
 	}
-	cluster := cfg.Clusters[ctx.Cluster]
-	if cluster == nil {
-		return nil, nil
-	}
-
-	ext, ok := cluster.Extensions["additionalApiServerProxyAddresses"]
-	if !ok {
-		return nil, nil
-	}
-
-	unknown, ok := ext.(*apimachineryruntime.Unknown)
-	if !ok {
-		return nil, fmt.Errorf("unexpected type %T for additionalApiServerProxyAddresses extension", ext)
-	}
-
-	var addresses []string
-	if err := json.Unmarshal(unknown.Raw, &addresses); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal additionalApiServerProxyAddresses: %w", err)
-	}
-	return addresses, nil
+	return servers, nil
 }
 
 func createDirectories(workerCtx *typ.WorkerContext) error {
