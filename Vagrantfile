@@ -46,7 +46,7 @@ Vagrant.configure("2") do |config|
 
   config.vm.provision "shell", name: "golang", inline: <<-SHELL
     ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
-    curl -fsSL "https://go.dev/dl/go1.25.3.linux-${ARCH}.tar.gz" -o /tmp/go.tar.gz
+    curl -fsSL "https://go.dev/dl/go1.26.3.linux-${ARCH}.tar.gz" -o /tmp/go.tar.gz
     rm -rf /usr/local/go
     tar -C /usr/local -xzf /tmp/go.tar.gz
     rm /tmp/go.tar.gz

@@ -9,6 +9,7 @@ require (
 	github.com/avast/retry-go v3.0.0+incompatible
 	github.com/cloudflare/cfssl v1.6.5
 	github.com/containerd/containerd v1.6.36
+	github.com/coreos/go-systemd/v22 v22.7.0
 	github.com/evanphx/json-patch/v5 v5.9.11
 	github.com/go-task/slim-sprig/v3 v3.0.0
 	github.com/k0sproject/bootloose v0.9.6
@@ -19,6 +20,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/crypto v0.47.0
 	gvisor.dev/gvisor v0.0.0-20260420225414-25ee8c385cdf
+	inet.af/tcpproxy v0.0.0-20231102063150-2862066fc2a9
 	k8s.io/api v0.36.0
 	k8s.io/apiextensions-apiserver v0.35.0
 	k8s.io/apimachinery v0.36.0
@@ -48,7 +50,6 @@ require (
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/containerd/ttrpc v1.1.2 // indirect
 	github.com/containerd/typeurl v1.0.2 // indirect
-	github.com/coreos/go-systemd/v22 v22.7.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/docker/go-connections v0.6.0 // indirect
 	github.com/docker/go-events v0.0.0-20190806004212-e31b211e4f1c // indirect
@@ -144,7 +145,6 @@ require (
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	inet.af/tcpproxy v0.0.0-20231102063150-2862066fc2a9 // indirect
 	k8s.io/apiserver v0.35.0 // indirect
 	k8s.io/component-base v0.36.0 // indirect
 	k8s.io/cri-api v0.25.0 // indirect
