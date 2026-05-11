@@ -92,7 +92,11 @@ func GenerateDeployment(runtime *controlplanev1alpha1.Runtime, layout ControlPla
 		{Name: "static-config", MountPath: layout.StaticManifest.KubeProxy.MountPath, SubPath: layout.StaticManifest.KubeProxy.SecretKey, ReadOnly: true},
 		{Name: "static-config", MountPath: layout.StaticManifest.Coredns.MountPath, SubPath: layout.StaticManifest.Coredns.SecretKey, ReadOnly: true},
 		{Name: "static-config", MountPath: layout.StaticManifest.NodeProfile.MountPath, SubPath: layout.StaticManifest.NodeProfile.SecretKey, ReadOnly: true},
-		{Name: "static-config", MountPath: layout.StaticManifest.FlannelCNI.MountPath, SubPath: layout.StaticManifest.FlannelCNI.SecretKey, ReadOnly: true},
+	}
+	if runtime.Spec.UpstreamCluster.Network.CNI.Supplier == "flannel" {
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{
+			Name: "static-config", MountPath: layout.StaticManifest.FlannelCNI.MountPath, SubPath: layout.StaticManifest.FlannelCNI.SecretKey, ReadOnly: true},
+		)
 	}
 
 	var runtimeClassName *string

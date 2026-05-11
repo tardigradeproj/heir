@@ -8,14 +8,14 @@ import (
 	"github.com/tardigrade-runtime/samaritano/pkg/templatewriter"
 )
 
-func CreateCNIManifest(runtime *controlplanev1alpha1.Runtime) ([]byte, error) {
-	cfg := &cniConfig{
+func CreateFlannelCNIManifest(runtime *controlplanev1alpha1.Runtime) ([]byte, error) {
+	cfg := &flannelCNIConfig{
 		PodCIDR: runtime.Spec.UpstreamCluster.Network.PodCIDR,
 	}
 	var buf bytes.Buffer
 	if err := (&templatewriter.TemplateWriter{
 		Name:     "cni",
-		Template: cniTemplate,
+		Template: flannelCNITemplate,
 		Data:     cfg,
 	}).WriteToBuffer(&buf); err != nil {
 		return nil, fmt.Errorf("failed to write cni template: %w", err)
@@ -23,11 +23,11 @@ func CreateCNIManifest(runtime *controlplanev1alpha1.Runtime) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-type cniConfig struct {
+type flannelCNIConfig struct {
 	PodCIDR string
 }
 
-const cniTemplate = `apiVersion: v1
+const flannelCNITemplate = `apiVersion: v1
 kind: Namespace
 metadata:
   labels:

@@ -53,10 +53,6 @@ func GenerateControlPlaneConfig(runtime *controlplanev1alpha1.Runtime, layout Co
 	if err != nil {
 		return nil, "", err
 	}
-	flannelConfig, err := component.CreateCNIManifest(runtime)
-	if err != nil {
-		return nil, "", err
-	}
 	apiserverScript := RenderRunScript("/usr/local/bin/kube-apiserver",
 		MergeArgs(map[string]string{
 			"advertise-address":                "",
@@ -117,9 +113,16 @@ func GenerateControlPlaneConfig(runtime *controlplanev1alpha1.Runtime, layout Co
 		layout.Config.Scheduler.SecretKey:           schedulerScript,
 		layout.StaticManifest.Bootstrap.SecretKey:   string(tlsbootstrap),
 		layout.StaticManifest.NodeProfile.SecretKey: string(nodeProfile),
-		layout.StaticManifest.FlannelCNI.SecretKey:  string(flannelConfig),
 		layout.StaticManifest.Coredns.SecretKey:     string(coredns),
 		layout.StaticManifest.KubeProxy.SecretKey:   string(kubeproxy),
+	}
+
+	if runtime.Spec.UpstreamCluster.Network.CNI.Supplier == "flannel" {
+		flannelConfig, err := component.CreateFlannelCNIManifest(runtime)
+		if err != nil {
+			return nil, "", err
+		}
+		data[layout.StaticManifest.FlannelCNI.SecretKey] = string(flannelConfig)
 	}
 
 	desiredHash, err := HashConfigData(data)
