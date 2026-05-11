@@ -14,6 +14,7 @@ type NodeProfile struct {
 	KubeletConfiguration     string            `json:"kubeletConfiguration"`
 	KubeletExtraArgs         map[string]string `json:"KubeletExtraArgs"`
 	ApiServerExternalAddress []string          `json:"apiServerExternalAddress"`
+	CNIProvider              string            `json:"CNIProvider"`
 }
 
 // Save marshals the NodeProfile to JSON and writes it to path.
@@ -71,6 +72,8 @@ type WorkerContext struct {
 	KubeletExtraArgsNodeProfileConfigmapKey     string `default:"kubelet.extraArgs"`
 	KubeletConfigurationNodeProfileConfigmapKey string `default:"kubelet.configuration"`
 	NodeProfileLocalFilePath                    string `default:"/etc/samaritano/node-profile.json"`
+
+	CNIEnableProviderNodeProfileConfigmapKey string `default:"cni.provider"`
 
 	CNIBinFolderPath string `default:"/opt/cni/bin"`
 }

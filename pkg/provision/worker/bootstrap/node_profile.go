@@ -53,7 +53,10 @@ func ReadWorkerNodeProfile(ctx context.Context, wrkCtx *typ.WorkerContext) (*typ
 			if !ok {
 				return retry.Unrecoverable(fmt.Errorf("worker profile configmap %q has no %q key", wrkCtx.WorkerProfileConfigMapName, wrkCtx.ExternalAddressNodeProfileConfigmapKey))
 			}
-
+			cniProvider, ok := cm.Data[wrkCtx.CNIEnableProviderNodeProfileConfigmapKey]
+			if !ok {
+				return retry.Unrecoverable(fmt.Errorf("worker profile configmap %q has no %q key", wrkCtx.WorkerProfileConfigMapName, wrkCtx.CNIEnableProviderNodeProfileConfigmapKey))
+			}
 			extraArgs := map[string]string{}
 			if err = json.Unmarshal([]byte(kubeletExtraArgs), &extraArgs); err != nil {
 				log.WithError(err).Errorf("failed to unmarshal kubelet extra args content: %v", err)
@@ -66,7 +69,7 @@ func ReadWorkerNodeProfile(ctx context.Context, wrkCtx *typ.WorkerContext) (*typ
 				return retry.Unrecoverable(fmt.Errorf("failed to unmarshal API server external address content: %v", err))
 			}
 
-			profile = &typ.NodeProfile{KubeletConfiguration: kubeletConfig, KubeletExtraArgs: extraArgs, ApiServerExternalAddress: apiServerExternalAddresses}
+			profile = &typ.NodeProfile{KubeletConfiguration: kubeletConfig, KubeletExtraArgs: extraArgs, ApiServerExternalAddress: apiServerExternalAddresses, CNIProvider: cniProvider}
 			return nil
 		},
 		retry.Attempts(4),
