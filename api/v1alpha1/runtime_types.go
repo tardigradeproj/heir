@@ -88,8 +88,8 @@ type NetworkSpec struct {
 	Coredns CorednsSpec `json:"coredns"`
 }
 type CNISpec struct {
-	// +kubebuilder:validation:Enum=calico;custom
-	//+kubebuilder:default="calico"
+	// +kubebuilder:validation:Enum=flannel;custom
+	//+kubebuilder:default="flannel"
 	Supplier string `json:"supplier,omitempty"`
 }
 type StorageSpec struct {

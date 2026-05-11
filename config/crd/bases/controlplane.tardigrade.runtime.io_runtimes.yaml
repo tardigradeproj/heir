@@ -1245,9 +1245,9 @@ spec:
                         description: CNI configuration
                         properties:
                           supplier:
-                            default: calico
+                            default: flannel
                             enum:
-                            - calico
+                            - flannel
                             - custom
                             type: string
                         type: object
