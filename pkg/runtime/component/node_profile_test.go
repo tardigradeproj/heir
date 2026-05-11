@@ -20,6 +20,9 @@ func defaultNodeProfileRuntime(kubelet controlplanev1alpha1.KubeletSpec) *contro
 					Coredns: controlplanev1alpha1.CorednsSpec{
 						ClusterDNSIP: "10.96.0.10",
 					},
+					CNI: controlplanev1alpha1.CNISpec{
+						Supplier: "flannel",
+					},
 				},
 				Kubelet: kubelet,
 			},
@@ -69,6 +72,9 @@ func TestCreateNodeProfileManifest(t *testing.T) {
 
 				_, ok = cm.Data["kubelet.extraArgs"]
 				assert.True(t, ok, "expected kubelet.extraArgs key in ConfigMap data")
+
+				_, ok = cm.Data["cni.provider"]
+				assert.True(t, ok, "expected cni.provider key in ConfigMap data")
 			},
 		},
 		{

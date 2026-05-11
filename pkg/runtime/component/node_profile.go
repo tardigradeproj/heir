@@ -48,6 +48,7 @@ func CreateNodeProfileManifest(wrkCtx *typ.WorkerContext, runtime *controlplanev
 func getNodeProfileConfig(wrkCtx *typ.WorkerContext, runtime *controlplanev1alpha1.Runtime) (*NodeProfileConfig, error) {
 	coredns := runtime.Spec.UpstreamCluster.Network.Coredns
 	kubelet := runtime.Spec.UpstreamCluster.Kubelet
+	cni := runtime.Spec.UpstreamCluster.Network.CNI
 	externalAddresses, err := json.Marshal(runtime.Spec.UpstreamCluster.APIServer.ExternalAddresses)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal API server external addresses: %w", err)
@@ -72,6 +73,8 @@ func getNodeProfileConfig(wrkCtx *typ.WorkerContext, runtime *controlplanev1alph
 		KubeletExtraArgs:         string(extraArgsYAML),
 		ExternalAddressKey:       wrkCtx.ExternalAddressNodeProfileConfigmapKey,
 		ExternalAddresses:        string(externalAddresses),
+		CNIProvider:              cni.Supplier,
+		CNIProviderKey:           wrkCtx.CNIEnableProviderNodeProfileConfigmapKey,
 	}, nil
 }
 
@@ -86,6 +89,8 @@ type NodeProfileConfig struct {
 	KubeletExtraArgs         string
 	ExternalAddressKey       string
 	ExternalAddresses        string
+	CNIProviderKey           string
+	CNIProvider              string
 }
 
 const NodeProfileTemplate = `apiVersion: v1
@@ -96,6 +101,7 @@ metadata:
   labels:
     managed-by: bootstrap
 data:
+  {{ .CNIProviderKey }}: {{ .CNIProvider }}
   {{ .ExternalAddressKey }}: |
 {{ .ExternalAddresses | indent 4 }}
   {{ .KubeletConfigurationKey }}: |
