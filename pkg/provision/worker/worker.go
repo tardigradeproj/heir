@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"syscall"
 	"time"
 
@@ -77,9 +78,12 @@ func Run(ctx context.Context, opts ...typ.Option) error {
 	log.Debug("decompressing CNI plugins")
 
 	runners := []Runner{
-		component.NewCni(workerCtx),
 		component.NewContainerd(workerCtx),
 		component.NewKubelet(workerCtx, profile, hostname),
+	}
+	// only install CNI plugins bin when CNI is flannel
+	if slices.Contains([]string{"flannel"}, profile.CNIProvider) {
+		runners = append(runners, component.NewCni(workerCtx))
 	}
 
 	log.Debug("setting up components")
