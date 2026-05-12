@@ -19,8 +19,8 @@ import (
 
 const (
 	installPath = "/usr/local/bin/samaritano"
-	unitName    = "samaritano-worker"
-	unitPath    = "/etc/systemd/system/samaritano-worker.service"
+	unitName    = "samaritano.service"
+	unitPath    = "/etc/systemd/system/samaritano.service"
 )
 
 func Join(ctx context.Context, token string, opts ...typ.Option) error {
@@ -29,9 +29,11 @@ func Join(ctx context.Context, token string, opts ...typ.Option) error {
 	for _, opt := range opts {
 		opt(workerCtx)
 	}
-
 	log := logrus.WithField("operation", "join")
-
+	log.Debug("creating required directories")
+	if err := createDirectories(workerCtx); err != nil {
+		return fmt.Errorf("failed to create config directories: %w", err)
+	}
 	log.Info("saving bootstrap kubeconfig")
 	if err := btsp.SaveBootstrapKubeconfig(token, workerCtx.KubeletBootstrapKubeconfigPath, workerCtx.KubeletPKICaCertPath); err != nil {
 		return fmt.Errorf("failed to save bootstrap kubeconfig: %w", err)

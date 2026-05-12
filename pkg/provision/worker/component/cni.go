@@ -19,7 +19,6 @@ func NewCni(wrkCtx *typ.WorkerContext) *Cni {
 
 func (c *Cni) Setup() error {
 	binaries := []struct{ src, dst string }{
-		{"worker/cni/bandwidth", path.Join(c.wrkCtx.CNIBinFolderPath, "bandwidth")},
 		{"worker/cni/bridge", path.Join(c.wrkCtx.CNIBinFolderPath, "bridge")},
 		{"worker/cni/dhcp", path.Join(c.wrkCtx.CNIBinFolderPath, "dhcp")},
 		{"worker/cni/dummy", path.Join(c.wrkCtx.CNIBinFolderPath, "dummy")},
