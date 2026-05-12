@@ -55,7 +55,7 @@ func getConfig(runtime *controlplanev1alpha1.Runtime) (*proxyConfig, error) {
 	cfg := proxyConfig{
 		Enabled:              true,
 		ClusterCIDR:          network.PodCIDR,
-		ControlPlaneEndpoint: runtime.Spec.UpstreamCluster.APIServer.ExternalAddress,
+		ControlPlaneEndpoint: "https://127.0.0.1:6443",
 		Image:                fmt.Sprintf("%s/%s", network.KubeProxy.RegisterSetting.Registry, network.KubeProxy.RegisterSetting.Image),
 		PullPolicy:           string(network.KubeProxy.RegisterSetting.PullPolicy),
 		DualStack:            false,

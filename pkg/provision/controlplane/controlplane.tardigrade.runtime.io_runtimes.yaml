@@ -1175,12 +1175,13 @@ spec:
                     default: {}
                     description: APIServerSpec defines api-server configurations
                     properties:
-                      externalAddress:
+                      externalAddresses:
                         description: |-
                           If Samaritano controllers are running behind a loadbalancer provide the loadbalancer address here. This will configure all cluster
                           components to connect to this address and also configures this address to be used when joining new nodes into the cluster.
-                          eg: https://my-cluster.io:9963
-                        type: string
+                        items:
+                          type: string
+                        type: array
                       extraArgs:
                         additionalProperties:
                           type: string
@@ -1221,6 +1222,21 @@ spec:
                           x-kubernetes-preserve-unknown-fields: true
                         type: array
                     type: object
+                  kubelet:
+                    default: {}
+                    properties:
+                      configPatches:
+                        description: |-
+                          configuration holds KubeletConfiguration. The configuration provided patches the default kubelet configuration
+                          the kubelet config file on worker nodes.
+                        type: string
+                      extraArgs:
+                        additionalProperties:
+                          type: string
+                        description: extraArgs defines a Map of key-values (strings)
+                          for any extra arguments you wish to pass down to kubelet
+                        type: object
+                    type: object
                   network:
                     default: {}
                     properties:
@@ -1229,9 +1245,9 @@ spec:
                         description: CNI configuration
                         properties:
                           supplier:
-                            default: calico
+                            default: flannel
                             enum:
-                            - calico
+                            - flannel
                             - custom
                             type: string
                         type: object
@@ -1441,6 +1457,7 @@ spec:
                 - apiServer
                 - controllerManager
                 - extraResources
+                - kubelet
                 - network
                 - scheduler
                 - storage

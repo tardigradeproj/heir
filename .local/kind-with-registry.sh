@@ -60,8 +60,8 @@ bastion_kubeconfig_path="${script_dir}/../integration-test/bastion-kubeconfig.ya
 cp "${kubeconfig_path}" "${bastion_kubeconfig_path}"
 api_port=$(kubectl --kubeconfig="${bastion_kubeconfig_path}" config view --raw \
   -o jsonpath='{.clusters[0].cluster.server}' | grep -oE '[0-9]+$')
-kubectl --kubeconfig="${bastion_kubeconfig_path}" config set-cluster kind-integration-test \
-  --server="https://control-plane:6443"
+#kubectl --kubeconfig="${bastion_kubeconfig_path}" config set-cluster kind-integration-test \
+#  --server="https://control-plane:6443"
 
 # 4. Add the registry config to the nodes
 #

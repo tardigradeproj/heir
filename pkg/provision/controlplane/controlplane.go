@@ -85,7 +85,7 @@ func Provision(ctx context.Context, opts ...Option) error {
 		return fmt.Errorf("failed to setup deployment: %w", err)
 	}
 	if pCtx.clusterKubeconfig != "" {
-		if err := writeKubeconfig(kubeconfig, pCtx.clusterKubeconfig, runtime.Spec.UpstreamCluster.APIServer.ExternalAddress); err != nil {
+		if err := writeKubeconfig(kubeconfig, pCtx.clusterKubeconfig, runtime.Spec.UpstreamCluster.APIServer.ExternalAddresses); err != nil {
 			return fmt.Errorf("failed to write kubeconfig to %s: %w", pCtx.clusterKubeconfig, err)
 		}
 		log.WithField("path", pCtx.clusterKubeconfig).Info("kubeconfig written")
@@ -219,15 +219,27 @@ func setupDeployment(ctx context.Context, cleaner *cleanup.Cleanup, client kuber
 // writeKubeconfig writes the given kubeconfig to path. If a valid kubeconfig
 // already exists at that path, the new clusters, users, and contexts are merged
 // into it and the current context is updated to the new one.
-func writeKubeconfig(kubeconfig *clientcmdapi.Config, path string, clusterExternalUrl string) error {
-	if clusterExternalUrl == "" {
+func writeKubeconfig(kubeconfig *clientcmdapi.Config, path string, clusterExternalUrls []string) error {
+	if len(clusterExternalUrls) == 0 {
 		log.Warn("the generated kubeconfig does not contain a server address and cannot be used to communicate with the Kubernetes API server; " +
-			"to resolve this, set spec.upstreamCluster.apiServer.externalAddress to the externally reachable address of the control plane " +
-			"(e.g. https://my-cluster.example.com:6443) and re-provision")
+			"to resolve this, set spec.upstreamCluster.apiServer.externalAddresses to the externally reachable address of the control plane " +
+			"(e.g. [https://my-cluster.example.com:6443]) and re-provision")
 	} else {
-		for _, cluster := range kubeconfig.Clusters {
-			cluster.Server = clusterExternalUrl
+		// Expand the single generated cluster entry into one entry per external URL.
+		// The first URL keeps the original cluster name; subsequent URLs get a numeric suffix.
+		expanded := make(map[string]*clientcmdapi.Cluster, len(clusterExternalUrls))
+		for origName, origCluster := range kubeconfig.Clusters {
+			for i, url := range clusterExternalUrls {
+				name := origName
+				if i > 0 {
+					name = fmt.Sprintf("%s-%d", origName, i+1)
+				}
+				c := *origCluster
+				c.Server = url
+				expanded[name] = &c
+			}
 		}
+		kubeconfig.Clusters = expanded
 	}
 	existing, err := clientcmd.LoadFromFile(path)
 	if err != nil && !os.IsNotExist(err) {

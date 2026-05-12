@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"fmt"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -71,23 +72,38 @@ func writeKubeconfig(t *testing.T, serverURL, contextName string, caData []byte)
 	return f.Name()
 }
 
-// fakeAPIServer returns an httptest.Server that responds to the secrets create
-// endpoint. statusCode controls the HTTP response for that endpoint.
-func fakeAPIServer(t *testing.T, statusCode int) *httptest.Server {
+// fakeAPIServer returns an httptest.Server that handles the two endpoints
+// CreateBootstrapToken exercises:
+//   - GET  .../namespaces/kube-system/configmaps/worker-profile  — always 200;
+//     the externalAddress key is always present (empty JSON array when nil).
+//   - POST .../namespaces/kube-system/secrets — responds with secretStatusCode.
+func fakeAPIServer(t *testing.T, secretStatusCode int, externalAddresses []string) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/namespaces/kube-system/secrets") {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(statusCode)
-			if statusCode == http.StatusCreated {
-				secret := &corev1.Secret{
-					ObjectMeta: metav1.ObjectMeta{Name: "bootstrap-token-test", Namespace: "kube-system"},
-				}
-				_ = json.NewEncoder(w).Encode(secret)
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/namespaces/kube-system/configmaps/worker-profile"):
+			addrs := externalAddresses
+			if addrs == nil {
+				addrs = []string{}
 			}
-			return
+			addrsJSON, _ := json.Marshal(addrs)
+			cm := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "worker-profile", Namespace: "kube-system"},
+				Data:       map[string]string{"externalAddress": string(addrsJSON)},
+			}
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(cm)
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/namespaces/kube-system/secrets"):
+			w.WriteHeader(secretStatusCode)
+			if secretStatusCode == http.StatusCreated {
+				_ = json.NewEncoder(w).Encode(&corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{Name: "bootstrap-token-test", Namespace: "kube-system"},
+				})
+			}
+		default:
+			w.WriteHeader(http.StatusNotFound)
 		}
-		w.WriteHeader(http.StatusNotFound)
 	}))
 }
 
@@ -105,7 +121,7 @@ func TestCreateBootstrapToken(t *testing.T) {
 		{
 			name: "returns valid base64-encoded bootstrap kubeconfig on success",
 			setup: func(t *testing.T) (string, string) {
-				srv := fakeAPIServer(t, http.StatusCreated)
+				srv := fakeAPIServer(t, http.StatusCreated, []string{"bootstrap-token-test"})
 				t.Cleanup(srv.Close)
 				return writeKubeconfig(t, srv.URL, "samaritano", caPEM), "samaritano"
 			},
@@ -139,7 +155,7 @@ func TestCreateBootstrapToken(t *testing.T) {
 		{
 			name: "bootstrap kubeconfig carries cluster server URL and CA data",
 			setup: func(t *testing.T) (string, string) {
-				srv := fakeAPIServer(t, http.StatusCreated)
+				srv := fakeAPIServer(t, http.StatusCreated, []string{"127.0.0.1"})
 				t.Cleanup(srv.Close)
 				return writeKubeconfig(t, srv.URL, "samaritano", caPEM), "samaritano"
 			},
@@ -161,7 +177,7 @@ func TestCreateBootstrapToken(t *testing.T) {
 		{
 			name: "non-default context name is respected",
 			setup: func(t *testing.T) (string, string) {
-				srv := fakeAPIServer(t, http.StatusCreated)
+				srv := fakeAPIServer(t, http.StatusCreated, []string{"127.0.0.1"})
 				t.Cleanup(srv.Close)
 				return writeKubeconfig(t, srv.URL, "my-cluster", caPEM), "my-cluster"
 			},
@@ -187,7 +203,7 @@ func TestCreateBootstrapToken(t *testing.T) {
 		{
 			name: "context not present in kubeconfig",
 			setup: func(t *testing.T) (string, string) {
-				srv := fakeAPIServer(t, http.StatusCreated)
+				srv := fakeAPIServer(t, http.StatusCreated, nil)
 				t.Cleanup(srv.Close)
 				return writeKubeconfig(t, srv.URL, "samaritano", caPEM), "missing"
 			},
@@ -198,7 +214,7 @@ func TestCreateBootstrapToken(t *testing.T) {
 		{
 			name: "kubeconfig cluster has no CA data",
 			setup: func(t *testing.T) (string, string) {
-				srv := fakeAPIServer(t, http.StatusCreated)
+				srv := fakeAPIServer(t, http.StatusCreated, nil)
 				t.Cleanup(srv.Close)
 				return writeKubeconfig(t, srv.URL, "samaritano", nil), "samaritano"
 			},
@@ -209,13 +225,47 @@ func TestCreateBootstrapToken(t *testing.T) {
 		{
 			name: "api server returns error on secret creation",
 			setup: func(t *testing.T) (string, string) {
-				srv := fakeAPIServer(t, http.StatusInternalServerError)
+				srv := fakeAPIServer(t, http.StatusInternalServerError, []string{"127.0.0.1"})
 				t.Cleanup(srv.Close)
 				return writeKubeconfig(t, srv.URL, "samaritano", caPEM), "samaritano"
 			},
 			expiry:     1 * time.Hour,
 			wantErr:    true,
 			wantErrMsg: "failed to create bootstrap token secret",
+		},
+		{
+			// external addresses are stored as-is (no https prefix) under bootstrap-1, bootstrap-2, …
+			// addresses that equal the primary server URL are deduplicated and skipped.
+			name: "external addresses from configmap appear as bootstrap-N cluster entries",
+			setup: func(t *testing.T) (string, string) {
+				srv := fakeAPIServer(t, http.StatusCreated, []string{"10.0.0.1:6443", "10.0.0.2:6443"})
+				t.Cleanup(srv.Close)
+				return writeKubeconfig(t, srv.URL, "samaritano", caPEM), "samaritano"
+			},
+			expiry:  1 * time.Hour,
+			wantErr: false,
+			validateB64: func(t *testing.T, b64 string) {
+				raw, _ := base64.StdEncoding.DecodeString(b64)
+				cfg, _ := clientcmd.Load(raw)
+				// Expect primary "bootstrap" cluster + one entry per external address.
+				if got := len(cfg.Clusters); got != 3 {
+					t.Errorf("expected 3 cluster entries (1 primary + 2 external), got %d", got)
+				}
+				for i, addr := range []string{"10.0.0.1:6443", "10.0.0.2:6443"} {
+					name := fmt.Sprintf("bootstrap-%d", i+1)
+					cluster, ok := cfg.Clusters[name]
+					if !ok {
+						t.Errorf("expected cluster entry %q not found in bootstrap kubeconfig", name)
+						continue
+					}
+					if cluster.Server != addr {
+						t.Errorf("cluster %q server = %q, want %q", name, cluster.Server, addr)
+					}
+					if len(cluster.CertificateAuthorityData) == 0 {
+						t.Errorf("cluster %q has no CA data", name)
+					}
+				}
+			},
 		},
 	}
 

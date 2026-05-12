@@ -176,6 +176,44 @@ samaritano create cluster \
 
 ---
 
+## 9. Improve Worker Node Setup: Containerd, CNI, and iptables
+
+**Labels:** `enhancement`, `networking`
+
+### Description
+
+Worker node provisioning (`pkg/provision/worker/join.go`) currently performs a basic setup that is insufficient for a fully functional node. Containerd configuration needs to be hardened, CNI plugins need to be properly installed and configured, and iptables rules need to be established to ensure pod networking and traffic forwarding work correctly after a node joins the cluster.
+
+### Scope
+
+- `pkg/provision/worker/join.go` — containerd config, CNI setup, iptables initialisation
+- `pkg/provision/worker/` — any supporting helpers
+
+### Work Items
+
+**Containerd**
+- [ ] Review and harden the generated `config.toml` (snapshotter, runtime, cgroup driver)
+- [ ] Ensure containerd socket is available and service is healthy before kubelet starts
+
+**CNI**
+- [ ] Extract and place CNI plugin binaries under the correct path (`/opt/cni/bin`)
+- [ ] Generate a valid CNI configuration file under `/etc/cni/net.d/` compatible with the cluster's CNI provider (Calico or fallback)
+- [ ] Verify pod-to-pod and pod-to-service connectivity after node joins
+
+**iptables**
+- [ ] Ensure `iptables` (legacy or nft) is available on the worker node
+- [ ] Set up required forwarding rules (`net.ipv4.ip_forward`, `bridge-nf-call-iptables`)
+- [ ] Validate rules survive a kubelet restart
+
+### Acceptance Criteria
+
+- [ ] A provisioned worker node reaches `Ready` status without manual intervention
+- [ ] Pods scheduled on the worker can communicate with pods on other nodes
+- [ ] containerd service starts cleanly with the generated configuration
+- [ ] iptables forwarding rules are in place after provisioning completes
+
+---
+
 ## 8. Implement `create cluster` for Docker via Samaritano CLI
 
 **Labels:** `feature`, `cli`

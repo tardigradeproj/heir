@@ -1,208 +1,145 @@
+//go:build linux
+
 package worker
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
-	log "github.com/sirupsen/logrus"
-	"github.com/tardigrade-runtime/samaritano/artifacts"
-	"k8s.io/client-go/tools/clientcmd"
+	"github.com/coreos/go-systemd/v22/dbus"
+	sdunit "github.com/coreos/go-systemd/v22/unit"
+	"github.com/sirupsen/logrus"
+	btsp "github.com/tardigrade-runtime/samaritano/pkg/provision/worker/bootstrap"
+	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/typ"
 )
 
-var (
-	kubeletBin                 = "/usr/local/bin/kubelet"
-	containerdShimRunc         = "/usr/local/bin/containerd-shim-runc-v2"
-	runc                       = "/usr/local/bin/runc"
-	kubeletBootstrapKubeconfig = "/etc/samaritano/kubernetes/bootstrap-kubelet.conf"
-	kubeletKubeconfig          = "/etc/samaritano/kubernetes/kubelet.conf"
-	kubernetesPKI              = "/etc/samaritano/kubernetes/pki"
-	kubeletConfigFile          = "/var/lib/samaritano/kubelet/config.yaml"
-	kubeletStaticPod           = "/etc/samaritano/kubernetes/manifests"
-	kubeletCertDir             = "/var/lib/samaritano/kubelet/pki"
-	containerdBin              = "/usr/local/bin/containerd"
-	ctrBin                     = "/usr/local/bin/ctr"
-	crictlBin                  = "/usr/local/bin/crictl"
-	containerdConfiguration    = "/etc/samaritano/kubernetes/config.toml"
-	cniBIn                     = "/opt/cni/bin"
-	cniConfiguration           = "/etc/cni/net.d"
+const (
+	installPath = "/usr/local/bin/samaritano"
+	unitName    = "samaritano.service"
+	unitPath    = "/etc/systemd/system/samaritano.service"
 )
 
-func Join(ctx context.Context, token string, opts ...Option) error {
-	jointCtx := &joinContext{
-		token: token,
-	}
+func Join(ctx context.Context, token string, opts ...typ.Option) error {
+	workerCtx := typ.NewWorkerContextWithDefaults()
+	workerCtx.Token = token
 	for _, opt := range opts {
-		opt(jointCtx)
+		opt(workerCtx)
 	}
-
-	binaries := []struct{ src, dst string }{
-		{"worker/kubelet", kubeletBin},
-		{"worker/containerd", containerdBin},
-		{"worker/containerd-shim-runc-v2", containerdShimRunc},
-		{"worker/runc", runc},
-		{"worker/crictl", crictlBin},
-		{"worker/ctr", ctrBin},
-	}
-	for _, b := range binaries {
-		log.WithField("dst", b.dst).Info("extracting binary")
-		if err := extractStreamed(b.src, b.dst); err != nil {
-			return fmt.Errorf("failed to extract %s: %w", b.src, err)
-		}
+	log := logrus.WithField("operation", "join")
+	log.Debug("creating required directories")
+	if err := createDirectories(workerCtx); err != nil {
+		return fmt.Errorf("failed to create config directories: %w", err)
 	}
 	log.Info("saving bootstrap kubeconfig")
-	if err := saveBootstrapKubeconfig(jointCtx.token, kubeletBootstrapKubeconfig); err != nil {
+	if err := btsp.SaveBootstrapKubeconfig(token, workerCtx.KubeletBootstrapKubeconfigPath, workerCtx.KubeletPKICaCertPath); err != nil {
 		return fmt.Errorf("failed to save bootstrap kubeconfig: %w", err)
 	}
-	log.Info("saving kubelet config")
-	if err := saveKubeletConfig(kubeletConfigFile); err != nil {
-		return fmt.Errorf("failed to save kubelet config: %w", err)
+
+	log.WithField("dst", installPath).Info("installing binary")
+	if err := installSelf(installPath); err != nil {
+		return fmt.Errorf("failed to install binary: %w", err)
 	}
-	log.Info("saving containerd config")
-	if err := saveContainerdConfig(containerdConfiguration); err != nil {
-		return fmt.Errorf("failed to save containerd config: %w", err)
+
+	log.WithField("unit", unitName).Info("registering systemd unit")
+	if err := installSystemdUnit(ctx, workerCtx); err != nil {
+		return fmt.Errorf("failed to register systemd unit: %w", err)
 	}
-	log.Info("setting up systemd units")
-	if err := setupUnits(ctx, jointCtx); err != nil {
-		return fmt.Errorf("failed to setup systemd units: %w", err)
-	}
-	log.Info("worker node provisioning complete")
+
 	return nil
 }
 
-// saveBootstrapKubeconfig decodes the base64-encoded kubeconfig, validates it,
-// writes it to dst, and extracts the cluster CA certificate into kubeletPKI/ca.crt
-// so kubelet can verify the API server when it rotates its own credentials.
-func saveBootstrapKubeconfig(b64Kubeconfig string, dst string) error {
-	raw, err := base64.StdEncoding.DecodeString(b64Kubeconfig)
+func installSelf(dst string) error {
+	src, err := os.Executable()
 	if err != nil {
-		return fmt.Errorf("failed to decode bootstrap kubeconfig: %w", err)
+		return fmt.Errorf("could not determine executable path: %w", err)
 	}
-
-	cfg, err := clientcmd.Load(raw)
+	src, err = filepath.EvalSymlinks(src)
 	if err != nil {
-		return fmt.Errorf("invalid bootstrap kubeconfig: %w", err)
+		return fmt.Errorf("could not resolve executable symlink: %w", err)
 	}
 
 	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
-		return fmt.Errorf("failed to create kubeconfig directory: %w", err)
-	}
-	if err := os.WriteFile(dst, raw, 0600); err != nil {
-		return fmt.Errorf("failed to write bootstrap kubeconfig: %w", err)
-	}
-	log.WithField("path", dst).Info("bootstrap kubeconfig written")
-
-	// Extract the cluster CA from the kubeconfig and write it to the PKI directory
-	// so kubelet can use it to verify the API server during certificate rotation.
-	ctx := cfg.Contexts[cfg.CurrentContext]
-	if ctx == nil {
-		return fmt.Errorf("bootstrap kubeconfig has no current context")
-	}
-	cluster := cfg.Clusters[ctx.Cluster]
-	if cluster == nil || len(cluster.CertificateAuthorityData) == 0 {
-		return fmt.Errorf("bootstrap kubeconfig cluster %q has no CA data", ctx.Cluster)
+		return fmt.Errorf("could not create install directory: %w", err)
 	}
 
-	if err := os.MkdirAll(kubernetesPKI, 0755); err != nil {
-		return fmt.Errorf("failed to create kubelet PKI directory: %w", err)
-	}
-	caCertPath := filepath.Join(kubernetesPKI, "ca.crt")
-	if err := os.WriteFile(caCertPath, cluster.CertificateAuthorityData, 0644); err != nil {
-		return fmt.Errorf("failed to write CA certificate: %w", err)
-	}
-	log.WithField("path", caCertPath).Info("cluster CA certificate written")
-
-	return nil
-}
-
-func saveKubeletConfig(dst string) error {
-	log.WithField("path", dst).Info("writing kubelet config")
-	content := fmt.Sprintf(`kind: KubeletConfiguration
-apiVersion: kubelet.config.k8s.io/v1beta1
-authentication:
-  anonymous:
-    enabled: false
-  webhook:
-    enabled: true
-  x509:
-    clientCAFile: "%s/ca.crt"
-authorization:
-  mode: Webhook
-cgroupDriver: systemd
-clusterDNS:
-- 10.96.0.10
-clusterDomain: cluster.local
-containerRuntimeEndpoint: "unix:///var/run/containerd/containerd.sock"
-enableServer: true
-port: 10250
-serverTLSBootstrap: true
-logging:
-  flushFrequency: 0
-  options:
-    json:
-      infoBufferSize: "0"
-    text:
-      infoBufferSize: "0"
-`, kubernetesPKI)
-
-	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
-		return fmt.Errorf("failed to create kubelet config directory: %w", err)
-	}
-	if err := os.WriteFile(dst, []byte(content), 0644); err != nil {
-		return fmt.Errorf("failed to write kubelet config: %w", err)
-	}
-	return nil
-}
-
-func saveContainerdConfig(dst string) error {
-	log.WithField("path", dst).Info("writing containerd config")
-	// #TODO: urgent snapshotter = "overlayfs"
-	content := fmt.Sprintf(`
-version = 2
-[plugins."io.containerd.grpc.v1.cri"]
-  [plugins."io.containerd.grpc.v1.cri".containerd]
-    snapshotter = "native"
-    default_runtime_name = "runc"
-  [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
-    runtime_type = "io.containerd.runc.v2"
-  [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
-    SystemdCgroup = true
-[plugins."io.containerd.grpc.v1.cri".cni]
-  bin_dir = "%s"
-  conf_dir = "%s"
-[plugins."io.containerd.transfer.v1.local"]
-  [[plugins."io.containerd.transfer.v1.local".unpack_config]]
-    platform = "linux/arm64"
-    snapshotter = "native"
-`, cniBIn, cniConfiguration)
-
-	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
-		return fmt.Errorf("failed to create containerd config directory: %w", err)
-	}
-	if err := os.WriteFile(dst, []byte(content), 0644); err != nil {
-		return fmt.Errorf("failed to write containerd config: %w", err)
-	}
-	return nil
-}
-
-func extractStreamed(src string, dst string) error {
-	// Open the embedded file as a stream
-	source, err := artifact.FS.Open(src)
+	in, err := os.Open(src)
 	if err != nil {
 		return err
 	}
-	defer source.Close()
+	defer in.Close()
 
-	// Create the destination file
-	dest, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY, 0755)
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
 	if err != nil {
 		return err
 	}
-	defer dest.Close()
-	// RAM usage remains tiny and flat.
-	_, err = io.Copy(dest, source)
-	return err
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		return err
+	}
+	return out.Close()
+}
+
+func installSystemdUnit(ctx context.Context, workerCtx *typ.WorkerContext) error {
+	execStart := installPath + " worker"
+	if extra := serializeExtraArgs(workerCtx.KubeletExtraArgs); extra != "" {
+		execStart += " --kubelet-extra-args=" + extra
+	}
+
+	opts := []*sdunit.UnitOption{
+		sdunit.NewUnitOption("Unit", "Description", "Samaritano Worker Node Agent"),
+		sdunit.NewUnitOption("Unit", "After", "network-online.target"),
+		sdunit.NewUnitOption("Unit", "Wants", "network-online.target"),
+		sdunit.NewUnitOption("Service", "ExecStart", execStart),
+		sdunit.NewUnitOption("Service", "Restart", "always"),
+		sdunit.NewUnitOption("Service", "RestartSec", "5"),
+		sdunit.NewUnitOption("Install", "WantedBy", "multi-user.target"),
+	}
+
+	unitReader := sdunit.Serialize(opts)
+	unitContent, err := io.ReadAll(unitReader)
+	if err != nil {
+		return fmt.Errorf("failed to serialize unit file: %w", err)
+	}
+	if err := os.WriteFile(unitPath, unitContent, 0644); err != nil {
+		return fmt.Errorf("failed to write unit file: %w", err)
+	}
+
+	conn, err := dbus.NewSystemConnectionContext(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to connect to systemd: %w", err)
+	}
+	defer conn.Close()
+
+	if err := conn.ReloadContext(ctx); err != nil {
+		return fmt.Errorf("systemd daemon-reload failed: %w", err)
+	}
+
+	if _, _, err := conn.EnableUnitFilesContext(ctx, []string{unitPath}, false, true); err != nil {
+		return fmt.Errorf("failed to enable unit %q: %w", unitName, err)
+	}
+
+	resultCh := make(chan string, 1)
+	if _, err := conn.StartUnitContext(ctx, unitName, "replace", resultCh); err != nil {
+		return fmt.Errorf("failed to start unit %q: %w", unitName, err)
+	}
+	if result := <-resultCh; result != "done" {
+		return fmt.Errorf("unit %q start job finished with result %q", unitName, result)
+	}
+
+	return nil
+}
+
+func serializeExtraArgs(args map[string]string) string {
+	if len(args) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(args))
+	for k, v := range args {
+		parts = append(parts, k+"="+v)
+	}
+	return strings.Join(parts, ",")
 }

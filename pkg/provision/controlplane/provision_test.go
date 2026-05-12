@@ -64,7 +64,8 @@ spec:
       serviceType: ClusterIP
   upstreamCluster:
     apiServer:
-      externalAddress: "https://my-cluster.example.com:6443"
+      externalAddresses:
+      - "https://my-cluster.example.com:6443"
     storage:
       type: kine
 `

@@ -23,6 +23,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
+// #TODO:  create property for clusterDomain (default: cluster.local)
+
 // UpstreamCluster defines how UpstreamCluster components are configured
 type UpstreamCluster struct {
 	// +kubebuilder:default={}
@@ -36,15 +38,24 @@ type UpstreamCluster struct {
 	// +kubebuilder:default={"type": "kine"}
 	Storage StorageSpec `json:"storage"`
 	// +kubebuilder:default={}
+	Kubelet KubeletSpec `json:"kubelet"`
+	// +kubebuilder:default={}
 	ExtraResources ExtraResourcesSpec `json:"extraResources"`
+}
+type KubeletSpec struct {
+	// extraArgs defines a Map of key-values (strings) for any extra arguments you wish to pass down to kubelet
+	ExtraArgs map[string]string `json:"extraArgs,omitempty"`
+	// configuration holds KubeletConfiguration. The configuration provided patches the default kubelet configuration
+	// the kubelet config file on worker nodes.
+	// +optional
+	ConfigPatches string `json:"configPatches,omitempty"`
 }
 
 // APIServerSpec defines api-server configurations
 type APIServerSpec struct {
 	// If Samaritano controllers are running behind a loadbalancer provide the loadbalancer address here. This will configure all cluster
 	// components to connect to this address and also configures this address to be used when joining new nodes into the cluster.
-	// eg: https://my-cluster.io:9963
-	ExternalAddress string `json:"externalAddress,omitempty"`
+	ExternalAddresses []string `json:"externalAddresses,omitempty"`
 	// sans defines a List of additional addresses to push to API servers serving certificate
 	Sans []string `json:"sans,omitempty"`
 	// extraArgs defines a Map of key-values (strings) for any extra arguments you wish to pass down to Kubernetes api-server process
@@ -77,8 +88,8 @@ type NetworkSpec struct {
 	Coredns CorednsSpec `json:"coredns"`
 }
 type CNISpec struct {
-	// +kubebuilder:validation:Enum=calico;custom
-	//+kubebuilder:default="calico"
+	// +kubebuilder:validation:Enum=flannel;custom
+	//+kubebuilder:default="flannel"
 	Supplier string `json:"supplier,omitempty"`
 }
 type StorageSpec struct {

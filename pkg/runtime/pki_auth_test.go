@@ -54,7 +54,7 @@ func TestAPIServerAltNames(t *testing.T) {
 		{
 			name: "externalAddress hostname is extracted and added",
 			spec: controlplanev1alpha1.APIServerSpec{
-				ExternalAddress: "https://my-cluster.example.com:6443",
+				ExternalAddresses: []string{"https://my-cluster.example.com:6443"},
 			},
 			expected: []string{
 				"127.0.0.1",
@@ -71,7 +71,7 @@ func TestAPIServerAltNames(t *testing.T) {
 			name: "duplicate SANs are deduplicated",
 			spec: controlplanev1alpha1.APIServerSpec{
 				Sans:            []string{"kubernetes", "127.0.0.1"},
-				ExternalAddress: "https://kubernetes:6443",
+				ExternalAddresses: []string{"https://kubernetes:6443"},
 			},
 			expected: []string{
 				"127.0.0.1",
@@ -213,7 +213,7 @@ func TestGeneratePKIAuthSecret(t *testing.T) {
 		{
 			name: "apiserver cert includes externalAddress hostname as SAN",
 			runtime: pkiAuthRuntime("my-cluster", "default", controlplanev1alpha1.APIServerSpec{
-				ExternalAddress: "https://my-cluster.example.com:6443",
+				ExternalAddresses: []string{"https://my-cluster.example.com:6443"},
 			}),
 			validate: func(t *testing.T, data map[string][]byte) {
 				block, _ := pem.Decode(data[layout.PKI.APIServerCert.SecretKey])

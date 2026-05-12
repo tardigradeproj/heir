@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	controlplanev1alpha1 "github.com/tardigrade-runtime/samaritano/api/v1alpha1"
+	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/typ"
 	"github.com/tardigrade-runtime/samaritano/pkg/runtime/component"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -37,6 +38,7 @@ func GenerateStorageSecret(runtime *controlplanev1alpha1.Runtime, layout Control
 // SHA-256 hash of its data. No API calls are made; the caller is responsible for setting the
 // owner reference and persisting the result.
 func GenerateControlPlaneConfig(runtime *controlplanev1alpha1.Runtime, layout ControlPlaneLayout) (*corev1.ConfigMap, string, error) {
+	workerProfile := typ.NewWorkerContextWithDefaults()
 	net := runtime.Spec.UpstreamCluster.Network
 	kubeproxy, err := component.CreateKubeProxyManifest(runtime)
 	if err != nil {
@@ -47,8 +49,13 @@ func GenerateControlPlaneConfig(runtime *controlplanev1alpha1.Runtime, layout Co
 	if err != nil {
 		return nil, "", err
 	}
+	nodeProfile, err := component.CreateNodeProfileManifest(workerProfile, runtime)
+	if err != nil {
+		return nil, "", err
+	}
 	apiserverScript := RenderRunScript("/usr/local/bin/kube-apiserver",
 		MergeArgs(map[string]string{
+			"advertise-address":                "",
 			"allow-privileged":                 "true",
 			"authorization-mode":               "Node,RBAC",
 			"bind-address":                     "0.0.0.0",
@@ -101,12 +108,21 @@ func GenerateControlPlaneConfig(runtime *controlplanev1alpha1.Runtime, layout Co
 	)
 
 	data := map[string]string{
-		layout.Config.APIServer.SecretKey:         apiserverScript,
-		layout.Config.ControllerManager.SecretKey: controllerManagerScript,
-		layout.Config.Scheduler.SecretKey:         schedulerScript,
-		layout.StaticManifest.Bootstrap.SecretKey: string(tlsbootstrap),
-		layout.StaticManifest.Coredns.SecretKey:   string(coredns),
-		layout.StaticManifest.KubeProxy.SecretKey: string(kubeproxy),
+		layout.Config.APIServer.SecretKey:           apiserverScript,
+		layout.Config.ControllerManager.SecretKey:   controllerManagerScript,
+		layout.Config.Scheduler.SecretKey:           schedulerScript,
+		layout.StaticManifest.Bootstrap.SecretKey:   string(tlsbootstrap),
+		layout.StaticManifest.NodeProfile.SecretKey: string(nodeProfile),
+		layout.StaticManifest.Coredns.SecretKey:     string(coredns),
+		layout.StaticManifest.KubeProxy.SecretKey:   string(kubeproxy),
+	}
+
+	if runtime.Spec.UpstreamCluster.Network.CNI.Supplier == "flannel" {
+		flannelConfig, err := component.CreateFlannelCNIManifest(runtime)
+		if err != nil {
+			return nil, "", err
+		}
+		data[layout.StaticManifest.FlannelCNI.SecretKey] = string(flannelConfig)
 	}
 
 	desiredHash, err := HashConfigData(data)

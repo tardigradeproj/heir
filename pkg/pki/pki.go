@@ -29,6 +29,12 @@ type Certificate struct {
 	Cert []byte
 }
 
+type CertificateRequest struct {
+	Key    []byte
+	CSR    []byte
+	Expiry time.Duration
+}
+
 func GenerateSelfSignedCert() (*Certificate, error) {
 	req := &csr.CertificateRequest{
 		CN: "kubernetes-ca",
@@ -57,6 +63,39 @@ func GenerateSelfSignedCert() (*Certificate, error) {
 	return &Certificate{
 		Key:  keyPEM,
 		Cert: certPEM,
+	}, nil
+}
+
+// GenerateCSR generates a private key and a PEM-encoded certificate signing
+// request for the given CSR parameters. The returned CertificateRequest.Expiry
+// carries the requested validity duration so callers can forward it as
+// expirationSeconds when submitting the CSR to the Kubernetes CertificateSigningRequest API.
+func GenerateCSR(request CSR, expiry time.Duration) (*CertificateRequest, error) {
+	req := &csr.CertificateRequest{
+		CN: request.CN,
+		Names: []csr.Name{
+			{
+				O:  request.O,
+				OU: request.Name,
+			},
+		},
+		KeyRequest: &csr.KeyRequest{
+			A: "rsa",
+			S: 2048,
+		},
+		Hosts: request.Hostnames,
+	}
+
+	g := &csr.Generator{Validator: genkey.Validator}
+	csrPEM, keyPEM, err := g.ProcessRequest(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate CSR: %w", err)
+	}
+
+	return &CertificateRequest{
+		Key:    keyPEM,
+		CSR:    csrPEM,
+		Expiry: expiry,
 	}, nil
 }
 
