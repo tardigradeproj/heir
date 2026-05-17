@@ -1,4 +1,3 @@
-// cgroup validation
 package sys
 
 import (
