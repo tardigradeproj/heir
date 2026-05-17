@@ -5,8 +5,8 @@ IMAGE_NAME     ?= samaritano-base
 IMAGE_TAG      ?= latest
 
 ARCH               ?= arm64
-KUBE_VERSION       ?= v1.34.0
-KINE_VERSION       ?= v0.13.9
+OS                 ?= linux
+KUBE_VERSION       ?= v1.35.5
 CONTAINERD_VERSION ?= 2.1.0
 RUNC_VERSION       ?= v1.2.6
 CRICTL_VERSION     ?= v1.33.0
@@ -74,23 +74,28 @@ download-calico: ## Download Calico manifests (operator-crds and tigera-operator
 		-o "$(ARTIFACTS_DIR)/manifests/calico-tigera-operator.yaml"
 	@echo "Calico manifests ready in $(ARTIFACTS_DIR)/manifests/"
 
-.PHONY: download-artifacts
-download-artifacts: ## Download Kubernetes server binaries and kine for ARCH, bundle kine into the kubernetes tarball
+KUBE_TARBALL := $(ARTIFACTS_DIR)/kubernetes-server-$(OS)-$(ARCH).tar.gz
+
+$(KUBE_TARBALL):
 	@mkdir -p "$(ARTIFACTS_DIR)"
-	@echo "Downloading Kubernetes $(KUBE_VERSION) for linux/$(ARCH)..."
-	curl -fsSL "https://dl.k8s.io/$(KUBE_VERSION)/kubernetes-server-linux-$(ARCH).tar.gz" \
-		-o "$(ARTIFACTS_DIR)/kubernetes-server-linux-$(ARCH).tar.gz"
-	@echo "Downloading kine $(KINE_VERSION) for $(ARCH)..."
-	curl -fsSL "https://github.com/k3s-io/kine/releases/download/$(KINE_VERSION)/kine-$(ARCH)" \
-		-o "$(ARTIFACTS_DIR)/kine"
-	@chmod +x "$(ARTIFACTS_DIR)/kine"
-	@echo "Injecting kine into kubernetes/server/bin/ ..."
+	@echo "Downloading Kubernetes $(KUBE_VERSION) for $(OS)/$(ARCH)..."
+	curl -fsSL "https://dl.k8s.io/$(KUBE_VERSION)/kubernetes-server-$(OS)-$(ARCH).tar.gz" \
+	   -o "$@"
+	@echo "Artifact ready: $@"
+
+.PHONY: download-kubernetes
+download-kubernetes: $(KUBE_TARBALL)
+
+.PHONY: control-plane-artifact-setup
+control-plane-artifact-setup: download-kubernetes ## build-masteragent ## Download Kubernetes binaries, build masteragent, and bundle into control-plane-artifact-<os>-<arch>.tar.gz
+	@echo "Bundling masteragent into control-plane artifact..."
 	@tmpdir=$$(mktemp -d); \
 	tar -xzf "$(ARTIFACTS_DIR)/kubernetes-server-linux-$(ARCH).tar.gz" -C "$$tmpdir"; \
-	cp "$(ARTIFACTS_DIR)/kine" "$$tmpdir/kubernetes/server/bin/kine"; \
-	tar -czf "$(ARTIFACTS_DIR)/kubernetes-server-linux-$(ARCH).tar.gz" -C "$$tmpdir" kubernetes; \
+	cp "$(ARTIFACTS_DIR)/masteragent" "$$tmpdir/kubernetes/server/bin/masteragent"; \
+	tar -czf "$(ARTIFACTS_DIR)/control-plane-artifact-$(OS)-$(ARCH).tar.gz" -C "$$tmpdir" kubernetes; \
 	rm -rf "$$tmpdir"
-	@echo "Artifact ready: $(ARTIFACTS_DIR)/kubernetes-server-linux-$(ARCH).tar.gz"
+	@echo "Artifact ready: $(ARTIFACTS_DIR)/control-plane-artifact-$(OS)-$(ARCH).tar.gz"
+
 
 .PHONY: build-base
 build-base: ## Build the base container image
@@ -99,27 +104,16 @@ build-base: ## Build the base container image
 		-t $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG) \
 		images/base
 
-.PHONY: run-base
-run-base: ## Run the base container image with the privileges required by systemd
-	docker run -d \
-		--privileged \
-		--cgroupns=host \
-		-v /sys/fs/cgroup:/sys/fs/cgroup:rw \
-		$(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)
 
-.PHONY: run-controlplane-image
-run-controlplane-image: ## Run the base container image with the privileges required by systemd
-	docker run -d \
-		--privileged \
-		--cgroupns=host \
-		-v /sys/fs/cgroup:/sys/fs/cgroup:rw \
-		$(IMAGE_NAME):$(IMAGE_TAG)
 
-.PHONY: run-distro
+.PHONY: build-controlplane-image
 build-controlplane-image:
-	go run cmd/distro.go build control-plane-image --base-image $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG) --image=$(IMAGE_NAME):v3 --type=file $$(pwd)/artifacts/kubernetes-server-linux-arm64.tar.gz
+	go run cmd/distro.go build control-plane-image --base-image $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG) --image=$(IMAGE_NAME):v0.0.1 --type=file $(ARTIFACTS_DIR)/control-plane-artifact-$(OS)-$(ARCH).tar.gz
 
-
+.PHONY: build-masteragent
+build-masteragent: ## Build masteragent natively with CGO (run from vagrant); binary lands in artifacts/
+	@mkdir -p "$(ARTIFACTS_DIR)"
+	CGO_ENABLED=1 go build -o $(ARTIFACTS_DIR)/masteragent ./cmd/masteragent.go
 
 .PHONY: build-distro
 build-distro: ## Build cmd/distro for linux/ARCH and place the binary in integration-test/
@@ -165,3 +159,8 @@ vagrant-sync: ## Rsync local files into the Vagrant VM
 .PHONY: vagrant-ssh
 vagrant-ssh: ## Open an SSH session into the Vagrant VM
 	vagrant ssh
+
+.PHONY: copy-masteragent
+copy-masteragent: ## Build masteragent on vagrant and copy binary back to host
+	vagrant ssh -c "cd samaritano && make build-masteragent"
+	vagrant scp default:~/samaritano/artifacts/masteragent $(ARTIFACTS_DIR)/masteragent

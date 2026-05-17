@@ -1,5 +1,3 @@
-//go:build linux
-
 package component
 
 import (
@@ -10,7 +8,6 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
-	"github.com/containerd/containerd"
 	criconfig "github.com/containerd/containerd/pkg/cri/config"
 	log "github.com/sirupsen/logrus"
 	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/procmgr"
@@ -112,31 +109,31 @@ func (c *Containerd) Teardown(ctx context.Context) error {
 
 // waitForContainerdSocket polls the containerd unix socket until it accepts a
 // connection or ctx is cancelled.
-func waitForContainerdSocket(ctx context.Context, address string) error {
-	lg := log.WithField("address", address)
-	client, err := containerd.New(address)
-	if err != nil {
-		return fmt.Errorf("failed to connect to containerd: %v", err)
-	}
-	defer client.Close()
-	serving, err := client.IsServing(ctx)
-	if err != nil {
-		return fmt.Errorf("containerd health check failed: %v", err)
-	}
-	if serving {
-		lg.Info("containerd is running and healthy")
-
-		// fetch the version to prove we can communicate properly
-		version, err := client.Version(ctx)
-		if err == nil {
-			log.WithField("version", version).
-				WithField("revision", version.Revision).
-				Info("containerd is running and healthy")
-		} else {
-			log.Info("could not fetch containerd version details")
-		}
-	} else {
-		return fmt.Errorf("containerd socket exists, but the daemon is not currently serving")
-	}
-	return nil
-}
+//func waitForContainerdSocket(ctx context.Context, address string) error {
+//	lg := log.WithField("address", address)
+//	client, err := containerd.New(address)
+//	if err != nil {
+//		return fmt.Errorf("failed to connect to containerd: %v", err)
+//	}
+//	defer client.Close()
+//	serving, err := client.IsServing(ctx)
+//	if err != nil {
+//		return fmt.Errorf("containerd health check failed: %v", err)
+//	}
+//	if serving {
+//		lg.Info("containerd is running and healthy")
+//
+//		// fetch the version to prove we can communicate properly
+//		version, err := client.Version(ctx)
+//		if err == nil {
+//			log.WithField("version", version).
+//				WithField("revision", version.Revision).
+//				Info("containerd is running and healthy")
+//		} else {
+//			log.Info("could not fetch containerd version details")
+//		}
+//	} else {
+//		return fmt.Errorf("containerd socket exists, but the daemon is not currently serving")
+//	}
+//	return nil
+//}

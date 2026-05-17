@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/tardigrade-runtime/samaritano/pkg/k8s"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -37,13 +38,11 @@ func CreateBootstrapToken(ctx context.Context, kubeconfig, contextName string, e
 	if err != nil {
 		return "", err
 	}
-
-	clientConfig := buildClientConfig(kubeconfig, contextName)
+	clientConfig := k8s.BuildClientConfig(kubeconfig, contextName)
 	server, caData, err := extractClusterInfo(clientConfig, contextName)
 	if err != nil {
 		return "", err
 	}
-
 	restConfig, err := clientConfig.ClientConfig()
 	if err != nil {
 		return "", fmt.Errorf("failed to build rest config: %w", err)
@@ -88,18 +87,6 @@ func readExternalAddressesFromNodeProfileConfigMap(ctx context.Context, client k
 		return nil, fmt.Errorf("failed to unmarshal external addresses: %w", err)
 	}
 	return addresses, nil
-}
-
-func buildClientConfig(kubeconfig, contextName string) clientcmd.ClientConfig {
-	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
-	if kubeconfig != "" {
-		loadingRules.ExplicitPath = kubeconfig
-	}
-	overrides := &clientcmd.ConfigOverrides{}
-	if contextName != "" {
-		overrides.CurrentContext = contextName
-	}
-	return clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, overrides)
 }
 
 func extractClusterInfo(clientConfig clientcmd.ClientConfig, contextName string) (server string, caData []byte, err error) {

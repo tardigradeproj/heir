@@ -17,8 +17,7 @@ RUN mkdir -p \
     /etc/s6-overlay/s6-rc.d/bootstrap-controller \
     /etc/s6-overlay/s6-rc.d/bootstrap-controller-log \
     /etc/s6-overlay/s6-rc.d/bootstrap-controller/dependencies.d \
-    /etc/s6-overlay/s6-rc.d/kine/dependencies.d \
-    /etc/s6-overlay/s6-rc.d/kine-log \
+    /etc/s6-overlay/s6-rc.d/masteragent \
     /etc/s6-overlay/s6-rc.d/kube-apiserver/dependencies.d \
     /etc/s6-overlay/s6-rc.d/kube-apiserver-log \
     /etc/s6-overlay/s6-rc.d/kube-controller-manager/dependencies.d \
@@ -72,33 +71,14 @@ foreground { s6-mkdir -p /var/log/bootstrap-controller }
 s6-log T n3 s5000000 /var/log/bootstrap-controller
 EOF
 # ==========================================
-# Service & Pipeline: kine
+# Service: masteragent
 # ==========================================
-COPY <<EOF /etc/s6-overlay/s6-rc.d/kine/type
+COPY <<EOF /etc/s6-overlay/s6-rc.d/masteragent/type
 longrun
 EOF
-COPY <<EOF /etc/s6-overlay/s6-rc.d/kine/producer-for
-kine-log
-EOF
-COPY --chmod=700 <<EOF /etc/s6-overlay/s6-rc.d/kine/run
-#!/command/execlineb -P
-fdmove -c 2 1
-/etc/kubernetes/manifests/kine.sh
-EOF
-
-COPY <<EOF /etc/s6-overlay/s6-rc.d/kine-log/type
-longrun
-EOF
-COPY <<EOF /etc/s6-overlay/s6-rc.d/kine-log/consumer-for
-kine
-EOF
-COPY <<EOF /etc/s6-overlay/s6-rc.d/kine-log/pipeline-name
-kine-pipeline
-EOF
-COPY --chmod=700 <<EOF /etc/s6-overlay/s6-rc.d/kine-log/run
-#!/command/execlineb -P
-foreground { s6-mkdir -p /var/log/kine }
-s6-log n3 s5000000 /var/log/kine
+COPY --chmod=700 <<EOF /etc/s6-overlay/s6-rc.d/masteragent/run
+#!/command/with-contenv sh
+exec /usr/local/bin/masteragent
 EOF
 
 
@@ -111,7 +91,7 @@ EOF
 COPY <<EOF /etc/s6-overlay/s6-rc.d/kube-apiserver/producer-for
 kube-apiserver-log
 EOF
-RUN touch /etc/s6-overlay/s6-rc.d/kube-apiserver/dependencies.d/kine
+RUN touch /etc/s6-overlay/s6-rc.d/kube-apiserver/dependencies.d/masteragent
 COPY --chmod=700 <<EOF /etc/s6-overlay/s6-rc.d/kube-apiserver/run
 #!/command/execlineb -P
 fdmove -c 2 1
@@ -198,7 +178,8 @@ EOF
 # ==========================================
 # Final Registration
 # ==========================================
-RUN touch /etc/s6-overlay/s6-rc.d/user/contents.d/kube-controller-manager \
+RUN touch /etc/s6-overlay/s6-rc.d/user/contents.d/masteragent \
+    && touch /etc/s6-overlay/s6-rc.d/user/contents.d/kube-controller-manager \
     && touch /etc/s6-overlay/s6-rc.d/user/contents.d/kube-scheduler \
     && touch /etc/s6-overlay/s6-rc.d/user/contents.d/bootstrap-controller
 

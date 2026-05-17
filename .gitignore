@@ -17,7 +17,7 @@ distro-setup/out/*
 
 # Go workspace file
 go.work
-
+db/*
 # Kubernetes Generated files - skip generated files, except for vendored files
 !vendor/**/zz_generated.*
 

@@ -42,15 +42,6 @@ func GenerateDeployment(runtime *controlplanev1alpha1.Runtime, layout ControlPla
 			},
 		},
 		{
-			Name: "storage",
-			VolumeSource: corev1.VolumeSource{
-				Secret: &corev1.SecretVolumeSource{
-					SecretName:  fmt.Sprintf("%s-storage", runtime.Name),
-					DefaultMode: &scriptMode,
-				},
-			},
-		},
-		{
 			Name: "config",
 			VolumeSource: corev1.VolumeSource{
 				ConfigMap: &corev1.ConfigMapVolumeSource{
@@ -73,7 +64,21 @@ func GenerateDeployment(runtime *controlplanev1alpha1.Runtime, layout ControlPla
 			},
 		},
 	}
-
+	storage := runtime.Spec.UpstreamCluster.Storage
+	var env []corev1.EnvVar
+	if storage.Type == "kine" && storage.Kine.DataSourceRef.Name != "" {
+		env = append(env, corev1.EnvVar{
+			Name: "SAMARITANO_STORAGE_ENDPOINT",
+			ValueFrom: &corev1.EnvVarSource{
+				SecretKeyRef: &corev1.SecretKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: storage.Kine.DataSourceRef.Name,
+					},
+					Key: storage.Kine.DataSourceRef.Key,
+				},
+			},
+		})
+	}
 	volumeMounts := []corev1.VolumeMount{
 		// PKI: mount the whole secret directory — all certs/keys land at /etc/kubernetes/pki/<file>.
 		{Name: "pki-auth", MountPath: "/etc/kubernetes/pki", ReadOnly: true},
@@ -81,8 +86,6 @@ func GenerateDeployment(runtime *controlplanev1alpha1.Runtime, layout ControlPla
 		{Name: "pki-auth", MountPath: layout.Auth.AdminConf.MountPath, SubPath: layout.Auth.AdminConf.SecretKey, ReadOnly: true},
 		{Name: "pki-auth", MountPath: layout.Auth.ControllerManagerConf.MountPath, SubPath: layout.Auth.ControllerManagerConf.SecretKey, ReadOnly: true},
 		{Name: "pki-auth", MountPath: layout.Auth.SchedulerConf.MountPath, SubPath: layout.Auth.SchedulerConf.SecretKey, ReadOnly: true},
-		// Storage: run-script from the storage Secret.
-		{Name: "storage", MountPath: layout.Storage.Script.MountPath, SubPath: layout.Storage.Script.SecretKey, ReadOnly: true},
 		// Config: one subPath mount per s6 run-script.
 		{Name: "config", MountPath: layout.Config.APIServer.MountPath, SubPath: layout.Config.APIServer.SecretKey, ReadOnly: true},
 		{Name: "config", MountPath: layout.Config.ControllerManager.MountPath, SubPath: layout.Config.ControllerManager.SecretKey, ReadOnly: true},
@@ -128,6 +131,7 @@ func GenerateDeployment(runtime *controlplanev1alpha1.Runtime, layout ControlPla
 							Image:        samaritano.Image,
 							Ports:        containerPorts,
 							VolumeMounts: volumeMounts,
+							Env:          env,
 						},
 					},
 					Volumes: volumes,
