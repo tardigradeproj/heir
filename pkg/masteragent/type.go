@@ -8,4 +8,5 @@ import (
 type Config struct {
 	Storage        endpoint.Config
 	StorageMetrics metrics.Config
+	Healthz        HealthzConfig
 }

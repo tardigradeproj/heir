@@ -13,6 +13,8 @@ import (
 	"github.com/tardigrade-runtime/samaritano/pkg/masteragent"
 )
 
+const etcdVersion = "3.6.6"
+
 // envBinding maps a flag name to its environment variable override.
 type envBinding struct {
 	flag string
@@ -35,6 +37,13 @@ func bindEnvs(cmd *cobra.Command, bindings []envBinding) {
 
 func Cmd() *cobra.Command {
 	cfg := masteragent.Config{
+		Healthz: masteragent.HealthzConfig{
+			Port:                  8084,
+			APIServerPort:         6443,
+			ControllerManagerPort: 10257,
+			SchedulerPort:         10259,
+			PeriodSeconds:         15,
+		},
 		Storage: endpoint.Config{
 			Listener: "0.0.0.0:2379",
 			BackendTLSConfig: tls.Config{
@@ -63,6 +72,11 @@ func Cmd() *cobra.Command {
 		{"storage-endpoint", "SAMARITANO_STORAGE_ENDPOINT"},
 		{"storage-emulated-etcd-version", "SAMARITANO_STORAGE_EMULATED_ETCD_VERSION"},
 		{"storage-metrics-bind-address", "SAMARITANO_STORAGE_METRICS_BIND_ADDRESS"},
+		{"healthz-port", "SAMARITANO_HEALTHZ_PORT"},
+		{"healthz-apiserver-port", "SAMARITANO_HEALTHZ_APISERVER_PORT"},
+		{"healthz-controller-manager-port", "SAMARITANO_HEALTHZ_CONTROLLER_MANAGER_PORT"},
+		{"healthz-scheduler-port", "SAMARITANO_HEALTHZ_SCHEDULER_PORT"},
+		{"healthz-period-seconds", "SAMARITANO_HEALTHZ_PERIOD_SECONDS"},
 	}
 
 	cmd := &cobra.Command{
@@ -74,7 +88,6 @@ func Cmd() *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Println("starting master-agent", cfg.Storage.Endpoint)
 			return masteragent.Run(cmd.Context(), cfg)
 		},
 	}
@@ -88,14 +101,44 @@ func Cmd() *cobra.Command {
 	cmd.Flags().StringVar(
 		&cfg.Storage.EmulatedETCDVersion,
 		"storage-emulated-etcd-version",
-		"3.5.13",
-		"The emulated etcd version to return on a call to the status endpoint. Defaults to 3.5.13, in order to indicate support for watch progress notifications.",
+		etcdVersion,
+		fmt.Sprintf("The emulated etcd version to return on a call to the status endpoint. Defaults to %s, in order to indicate support for watch progress notifications.", etcdVersion),
 	)
 	cmd.Flags().StringVar(
 		&cfg.StorageMetrics.ServerAddress,
 		"storage-metrics-bind-address",
 		":8081",
 		"The address the metric endpoint binds to. Default :8081, set 0 to disable metrics serving.",
+	)
+	cmd.Flags().IntVar(
+		&cfg.Healthz.Port,
+		"healthz-port",
+		8084,
+		"Port for the readyz HTTP server (env: SAMARITANO_HEALTHZ_PORT).",
+	)
+	cmd.Flags().IntVar(
+		&cfg.Healthz.APIServerPort,
+		"healthz-apiserver-port",
+		6443,
+		"Port to probe for kube-apiserver health (env: SAMARITANO_HEALTHZ_APISERVER_PORT).",
+	)
+	cmd.Flags().IntVar(
+		&cfg.Healthz.ControllerManagerPort,
+		"healthz-controller-manager-port",
+		10257,
+		"Port to probe for kube-controller-manager health (env: SAMARITANO_HEALTHZ_CONTROLLER_MANAGER_PORT).",
+	)
+	cmd.Flags().IntVar(
+		&cfg.Healthz.SchedulerPort,
+		"healthz-scheduler-port",
+		10259,
+		"Port to probe for kube-scheduler health (env: SAMARITANO_HEALTHZ_SCHEDULER_PORT).",
+	)
+	cmd.Flags().IntVar(
+		&cfg.Healthz.PeriodSeconds,
+		"healthz-period-seconds",
+		15,
+		"How often (in seconds) to probe each component (env: SAMARITANO_HEALTHZ_PERIOD_SECONDS).",
 	)
 	return cmd
 }

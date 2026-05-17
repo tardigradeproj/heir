@@ -18,11 +18,14 @@ func Run(ctx context.Context, conf Config) error {
 	log.AddHook(&kineLogHook{})
 
 	errCh := make(chan error, 1)
-	go func() {
-		errCh <- SyncKubernetesEndpoints(ctx)
-	}()
+	//go func() {
+	//	errCh <- SyncKubernetesEndpoints(ctx)
+	//}()
 	go func() {
 		errCh <- runKine(ctx, conf.Storage, conf.StorageMetrics)
+	}()
+	go func() {
+		errCh <- RunReadyz(ctx, conf.Healthz)
 	}()
 	return <-errCh
 }
