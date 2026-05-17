@@ -14,25 +14,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// GenerateStorageSecret builds the <name>-storage Secret that holds the storage backend run-script.
-// dataSource is the kine endpoint connection string; if empty, kine runs with its default storage.
-// No API calls are made; the caller is responsible for setting the owner reference and persisting the result.
-func GenerateStorageSecret(runtime *controlplanev1alpha1.Runtime, layout ControlPlaneLayout, dataSource string) *corev1.Secret {
-	args := map[string]string{}
-	if dataSource != "" {
-		args["endpoint"] = dataSource
-	}
-	return &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("%s-storage", runtime.Name),
-			Namespace: runtime.Namespace,
-		},
-		StringData: map[string]string{
-			layout.Storage.Script.SecretKey: RenderRunScript("/usr/local/bin/kine", args),
-		},
-	}
-}
-
 // GenerateControlPlaneConfig builds the <name>-config ConfigMap that holds the s6-overlay run
 // scripts for every supervised process, and returns the ConfigMap together with the hex-encoded
 // SHA-256 hash of its data. No API calls are made; the caller is responsible for setting the

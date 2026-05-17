@@ -68,10 +68,6 @@ func Provision(ctx context.Context, opts ...Option) error {
 		return fmt.Errorf("failed to setup PKI auth: %w", err)
 	}
 
-	if err := setupStorageSecret(ctx, &cleaner, client, runtime, layout); err != nil {
-		return fmt.Errorf("failed to setup storage secret: %w", err)
-	}
-
 	configHash, err := setupConfig(ctx, &cleaner, client, runtime, layout)
 	if err != nil {
 		return fmt.Errorf("failed to setup config: %w", err)
@@ -137,29 +133,6 @@ func setupPKIAuth(ctx context.Context,
 		return nil, fmt.Errorf("failed to parse admin kubeconfig: %w", err)
 	}
 	return kubeconfig, nil
-}
-
-func setupStorageSecret(ctx context.Context, cleaner *cleanup.Cleanup, client kubernetes.Interface, runtime *v1alpha1.Runtime, layout samaritanoruntime.ControlPlaneLayout) error {
-	var dataSource string
-	if ref := runtime.Spec.UpstreamCluster.Storage.Kine.DataSourceRef; ref != nil {
-		ds, err := client.CoreV1().Secrets(runtime.Namespace).Get(ctx, ref.Name, metav1.GetOptions{})
-		if err != nil {
-			return fmt.Errorf("failed to resolve storage DataSourceRef %s/%s: %w", runtime.Namespace, ref.Name, err)
-		}
-		dataSource = string(ds.Data[ref.Key])
-	}
-	secret := samaritanoruntime.GenerateStorageSecret(runtime, layout, dataSource)
-	log.WithField("secret", secret.Name).Info("creating storage secret")
-	if _, err := client.CoreV1().Secrets(runtime.Namespace).Create(ctx, secret, metav1.CreateOptions{}); err != nil {
-		return fmt.Errorf("failed to create storage secret: %w", err)
-	}
-	cleaner.Add(func() {
-		if err := client.CoreV1().Secrets(runtime.Namespace).Delete(ctx, secret.Name, metav1.DeleteOptions{}); err != nil {
-			log.WithError(err).WithField("ops", "cleanup").Error("failed to delete storage secret")
-		}
-	})
-	log.Info("storage secret created")
-	return nil
 }
 
 func setupConfig(ctx context.Context, cleaner *cleanup.Cleanup, client kubernetes.Interface, runtime *v1alpha1.Runtime, layout samaritanoruntime.ControlPlaneLayout) (string, error) {
