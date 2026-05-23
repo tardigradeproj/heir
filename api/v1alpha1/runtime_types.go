@@ -146,7 +146,7 @@ type KonnectivityAgentSpec struct {
 	// By enabling this mode, the Agent doesn't need to wait for the CNI initialisation,
 	// enabling a sort of out-of-band access to nodes for troubleshooting scenarios,
 	// or when the agent needs direct access to the host network.
-	//+kubebuilder:default=false
+	//+kubebuilder:default=true
 	HostNetwork bool `json:"hostNetwork,omitempty"`
 	// Mode allows specifying the Agent deployment mode: Deployment, or DaemonSet (default).
 	//+kubebuilder:default="DaemonSet"

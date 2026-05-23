@@ -1340,7 +1340,7 @@ spec:
                                   type: string
                                 type: object
                               hostNetwork:
-                                default: false
+                                default: true
                                 description: |-
                                   HostNetwork enables the konnectivity agent to use the Host network namespace.
                                   By enabling this mode, the Agent doesn't need to wait for the CNI initialisation,
