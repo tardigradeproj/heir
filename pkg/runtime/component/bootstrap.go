@@ -4,6 +4,7 @@ func CreateBootstrapManifest() []byte {
 	return []byte(bootstrapManifest)
 }
 
+// TODO: update system:kube-apiserver-to-kubelet to reference kubelet client CN
 const bootstrapManifest = `
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -78,4 +79,18 @@ roleRef:
   kind: ClusterRole
   name: system:certificates.k8s.io:certificatesigningrequests:selfnodeclient
   apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: system:kube-apiserver-to-kubelet
+  labels:
+    managed-by: bootstrap
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:kubelet-api-admin
+subjects:
+- kind: User
+  name: kube-apiserver
 `
