@@ -109,6 +109,9 @@ docker pull postgres:16
 docker tag postgres:16 "localhost:${reg_port}/postgres:16"
 docker push "localhost:${reg_port}/postgres:16"
 
+docker tag registry.k8s.io/kas-network-proxy/proxy-server:v0.0.37 "localhost:${reg_port}/proxy-server:v0.0.37"
+docker push "localhost:${reg_port}/proxy-server:v0.0.37"
+
 # 8. Provision PostgreSQL (secret, deployment, service) and wait until healthy
 kubectl --kubeconfig="${kubeconfig_path}" create secret generic postgres-credentials \
   --from-literal=password=kine-password \
