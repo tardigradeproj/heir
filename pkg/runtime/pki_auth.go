@@ -25,6 +25,7 @@ func APIServerAltNames(cluster controlplanev1alpha1.UpstreamCluster) []string {
 	sans = append(sans,
 		"127.0.0.1",
 		"10.96.0.1",
+		"0.0.0.0",
 		"kubernetes",
 		"kubernetes.default",
 		"kubernetes.default.svc",
