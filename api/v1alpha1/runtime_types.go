@@ -28,6 +28,8 @@ import (
 // UpstreamCluster defines how UpstreamCluster components are configured
 type UpstreamCluster struct {
 	// +kubebuilder:default={}
+	ControlPlaneEndpoint ControlPlaneEndpointSpec `json:"controlPlaneEndpoint"`
+	// +kubebuilder:default={}
 	APIServer APIServerSpec `json:"apiServer"`
 	// +kubebuilder:default={}
 	ControllerManager ControllerManagerSpec `json:"controllerManager"`
@@ -51,11 +53,28 @@ type KubeletSpec struct {
 	ConfigPatches string `json:"configPatches,omitempty"`
 }
 
+// ControlPlaneEndpointSpec describes how worker nodes reach
+// control plane components. The local LB on each worker
+// always listens on fixed local ports (6443, 8132) — this
+// struct defines what it proxies TO.
+
+type ControlPlaneEndpointSpec struct {
+	// Addresses are the hosts (IP or hostname) to connect to.
+	Addresses []string `json:"addresses,omitempty"`
+	// APIServer defines how workers reach the API server.
+	//+kubebuilder:default={port:30080}
+	APIServer ComponentEndpoint `json:"apiServer"`
+	// Konnectivity defines how workers reach the Konnectivity server.
+	//+kubebuilder:default={port:30081}
+	Konnectivity ComponentEndpoint `json:"konnectivity"`
+}
+type ComponentEndpoint struct {
+	// Port on the remote endpoint.
+	Port int32 `json:"port"`
+}
+
 // APIServerSpec defines api-server configurations
 type APIServerSpec struct {
-	// If Samaritano controllers are running behind a loadbalancer provide the loadbalancer address here. This will configure all cluster
-	// components to connect to this address and also configures this address to be used when joining new nodes into the cluster.
-	ExternalAddresses []string `json:"externalAddresses,omitempty"`
 	// sans defines a List of additional addresses to push to API servers serving certificate
 	Sans []string `json:"sans,omitempty"`
 	// extraArgs defines a Map of key-values (strings) for any extra arguments you wish to pass down to Kubernetes api-server process
@@ -86,6 +105,57 @@ type NetworkSpec struct {
 	KubeProxy KubeProxySpec `json:"kubeProxy"`
 	// +kubebuilder:default={}
 	Coredns CorednsSpec `json:"coredns"`
+	// Enables the Konnectivity addon in the Tenant Cluster, required if the worker nodes are in a different network.
+	// +kubebuilder:default={enabled:true}
+	Konnectivity KonnectivitySpec `json:"konnectivity"`
+}
+
+// KonnectivitySpec defines the spec for Konnectivity.
+type KonnectivitySpec struct {
+	// +kubebuilder:default=true
+	Enabled bool `json:"enabled"`
+	//+kubebuilder:default={image:"registry.k8s.io/kas-network-proxy/proxy-server:v0.0.37",port:8132}
+	KonnectivityServerSpec KonnectivityServerSpec `json:"server,omitempty"`
+	//+kubebuilder:default={image:"registry.k8s.io/kas-network-proxy/proxy-agent:v0.0.37",mode:"DaemonSet"}
+	KonnectivityAgentSpec KonnectivityAgentSpec `json:"agent,omitempty"`
+}
+type KonnectivityServerSpec struct {
+	// Container image used by the Konnectivity server.
+	//+kubebuilder:default="registry.k8s.io/kas-network-proxy/proxy-server:v0.0.37"
+	Image string `json:"image,omitempty"`
+	// Resources define the amount of CPU and memory to allocate to the Konnectivity server.
+	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
+	ExtraArgs map[string]string            `json:"extraArgs,omitempty"`
+}
+type KonnectivityAgentMode string
+
+var (
+	KonnectivityAgentModeDaemonSet KonnectivityAgentMode = "DaemonSet"
+)
+
+type KonnectivityAgentSpec struct {
+	// AgentImage defines the container image for Konnectivity's agent.
+	//+kubebuilder:default="registry.k8s.io/kas-network-proxy/proxy-agent:v0.0.37"
+	Image string `json:"image,omitempty"`
+	// Tolerations for the deployed agent.
+	// Can be customized to start the konnectivity-agent even if the nodes are not ready or tainted.
+	//+kubebuilder:default={{key: "CriticalAddonsOnly", operator: "Exists"}}
+	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
+	ExtraArgs   map[string]string   `json:"extraArgs,omitempty"`
+	// HostNetwork enables the konnectivity agent to use the Host network namespace.
+	// By enabling this mode, the Agent doesn't need to wait for the CNI initialisation,
+	// enabling a sort of out-of-band access to nodes for troubleshooting scenarios,
+	// or when the agent needs direct access to the host network.
+	//+kubebuilder:default=false
+	HostNetwork bool `json:"hostNetwork,omitempty"`
+	// Mode allows specifying the Agent deployment mode: Deployment, or DaemonSet (default).
+	//+kubebuilder:default="DaemonSet"
+	//+kubebuilder:validation:Enum=DaemonSet;Deployment
+	Mode KonnectivityAgentMode `json:"mode,omitempty"`
+	// Replicas defines the number of replicas when Mode is Deployment.
+	// Must be 0 if Mode is DaemonSet.
+	//+kubebuilder:validation:Optional
+	Replicas *int32 `json:"replicas,omitempty"`
 }
 type CNISpec struct {
 	// +kubebuilder:validation:Enum=flannel;custom
@@ -152,10 +222,15 @@ type ServiceSpec struct {
 	// which targets the Tenant Control Plane pods.
 	AdditionalPorts []AdditionalPort `json:"additionalPorts,omitempty"`
 	// ServiceType allows specifying how to expose the Control Plane.
+	//+kubebuilder:validation:Enum=NodePort;ClusterIP;LoadBalancer;ExternalName
+	//+kubebuilder:default="NodePort"
 	ServiceType corev1.ServiceType `json:"serviceType"`
 	// ApiServer NodePort, only use this option when serviceType is NodePort
 	//+kubebuilder:default=30080
 	ApiServerNodePort int32 `json:"apiServerNodePort"`
+	// Konnectivity NodePort, only use this option when serviceType is NodePort
+	//+kubebuilder:default=30081
+	KonnectivityNodePort int32 `json:"KonnectivityNodePort"`
 }
 type AdditionalPort struct {
 	// The name of this port within the Service created by tardigrade.

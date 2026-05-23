@@ -2,6 +2,7 @@ package runtime
 
 import (
 	controlplanev1alpha1 "github.com/tardigrade-runtime/samaritano/api/v1alpha1"
+	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/typ"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -9,9 +10,8 @@ import (
 
 // GenerateService builds the control-plane Service for the given Runtime. No API calls are made;
 // the caller is responsible for setting the owner reference and persisting the result.
-func GenerateService(runtime *controlplanev1alpha1.Runtime) (*corev1.Service, error) {
+func GenerateService(runtime *controlplanev1alpha1.Runtime, wrkCtx *typ.WorkerContext) (*corev1.Service, error) {
 	svcSpec := runtime.Spec.ControlPlane.Service
-
 	selectorLabels := map[string]string{
 		"app.kubernetes.io/name":       runtime.Name,
 		"app.kubernetes.io/managed-by": "samaritano",
@@ -24,6 +24,13 @@ func GenerateService(runtime *controlplanev1alpha1.Runtime) (*corev1.Service, er
 			TargetPort: intstr.FromInt32(6443),
 			Protocol:   corev1.ProtocolTCP,
 			NodePort:   svcSpec.ApiServerNodePort,
+		},
+		{
+			Name:       "konnectivity",
+			Port:       wrkCtx.KonnectivityProxyServerPort,
+			TargetPort: intstr.FromInt32(wrkCtx.KonnectivityProxyServerPort),
+			Protocol:   corev1.ProtocolTCP,
+			NodePort:   svcSpec.KonnectivityNodePort,
 		},
 	}
 	for _, p := range svcSpec.AdditionalPorts {
