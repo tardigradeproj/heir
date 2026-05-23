@@ -78,13 +78,17 @@ func readExternalAddressesFromNodeProfileConfigMap(ctx context.Context, client k
 	if err != nil {
 		return nil, fmt.Errorf("failed to get node profile configmap %q: %w", wrkDefaults.WorkerProfileConfigMapName, err)
 	}
-	raw, ok := cm.Data[wrkDefaults.ExternalAddressNodeProfileConfigmapKey]
+	raw, ok := cm.Data[wrkDefaults.ControlPlaneEndpointNodeProfileConfigmapKey]
 	if !ok {
 		return nil, fmt.Errorf("node profile configmap does not contain api server external addresses")
 	}
-	var addresses []string
-	if err := json.Unmarshal([]byte(raw), &addresses); err != nil {
+	var nodeProfile typ.NodeProfile
+	if err := json.Unmarshal([]byte(raw), &nodeProfile); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal external addresses: %w", err)
+	}
+	addresses := make([]string, 0, len(nodeProfile.ControlPlaneEndpoint.Addresses))
+	for _, addr := range nodeProfile.ControlPlaneEndpoint.Addresses {
+		addresses = append(addresses, fmt.Sprintf("https://%s:%d", addr, nodeProfile.ControlPlaneEndpoint.APIServer.Port))
 	}
 	return addresses, nil
 }

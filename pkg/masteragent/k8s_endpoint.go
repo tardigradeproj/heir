@@ -5,11 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
-	"net/url"
-	"strconv"
 	"time"
 
 	log "github.com/sirupsen/logrus"
+	"github.com/tardigrade-runtime/samaritano/api/v1alpha1"
 	"github.com/tardigrade-runtime/samaritano/pkg/k8s"
 	workertyp "github.com/tardigrade-runtime/samaritano/pkg/provision/worker/typ"
 	pkgruntime "github.com/tardigrade-runtime/samaritano/pkg/runtime"
@@ -23,12 +22,12 @@ const (
 	k8sSvcNamespace      = "default"
 	k8sSvcName           = "kubernetes"
 	endpointSyncInterval = 15 * time.Second
-	defaultAPIServerPort = int32(6443)
 )
 
 // SyncKubernetesEndpoints reads the node profile configmap for external addresses,
-// resolves their DNS, and keeps the kubernetes service EndpointSlice up to date.
-// It syncs immediately on start and then every 15 seconds.
+// resolves hostnames via DNS (IPs are used directly), and keeps the kubernetes
+// service EndpointSlice up to date. It syncs immediately on start and then every
+// 15 seconds.
 func SyncKubernetesEndpoints(ctx context.Context) error {
 	layout := pkgruntime.NewControlPlaneLayout()
 
@@ -63,25 +62,6 @@ type resolvedEndpoint struct {
 	port int32
 }
 
-func parseExternalAddress(addr string) (host string, port int32, err error) {
-	u, err := url.Parse(addr)
-	if err != nil {
-		return "", 0, fmt.Errorf("parse %q: %w", addr, err)
-	}
-	host = u.Hostname()
-	if host == "" {
-		return "", 0, fmt.Errorf("no hostname in %q", addr)
-	}
-	if portStr := u.Port(); portStr != "" {
-		p, err := strconv.ParseInt(portStr, 10, 32)
-		if err != nil {
-			return "", 0, fmt.Errorf("parse port in %q: %w", addr, err)
-		}
-		return host, int32(p), nil
-	}
-	return host, defaultAPIServerPort, nil
-}
-
 func doSyncEndpoints(ctx context.Context, client kubernetes.Interface, wctx *workertyp.WorkerContext) error {
 	//#TODO: use Informer
 	cm, err := client.CoreV1().ConfigMaps("kube-system").Get(ctx, wctx.WorkerProfileConfigMapName, metav1.GetOptions{})
@@ -89,26 +69,27 @@ func doSyncEndpoints(ctx context.Context, client kubernetes.Interface, wctx *wor
 		return fmt.Errorf("get configmap %q: %w", wctx.WorkerProfileConfigMapName, err)
 	}
 
-	raw, ok := cm.Data[wctx.ExternalAddressNodeProfileConfigmapKey]
+	raw, ok := cm.Data[wctx.ControlPlaneEndpointNodeProfileConfigmapKey]
 	if !ok {
-		return fmt.Errorf("configmap %q missing key %q", wctx.WorkerProfileConfigMapName, wctx.ExternalAddressNodeProfileConfigmapKey)
+		return fmt.Errorf("configmap %q missing key %q", wctx.WorkerProfileConfigMapName, wctx.ControlPlaneEndpointNodeProfileConfigmapKey)
+	}
+	log.WithField("config.size", len(raw)).Debug("sync kubernetes endpoint")
+	var cpe v1alpha1.ControlPlaneEndpointSpec
+	if err := json.Unmarshal([]byte(raw), &cpe); err != nil {
+		return fmt.Errorf("unmarshal control plane endpoint: %w", err)
 	}
 
-	var rawAddresses []string
-	if err := json.Unmarshal([]byte(raw), &rawAddresses); err != nil {
-		return fmt.Errorf("unmarshal external addresses: %w", err)
-	}
-
+	port := cpe.APIServer.Port
 	var resolved []resolvedEndpoint
-	for _, addr := range rawAddresses {
-		host, port, err := parseExternalAddress(addr)
-		if err != nil {
-			log.WithError(err).WithField("address", addr).Warn("failed to parse external address, skipping")
+	for _, addr := range cpe.Addresses {
+		log.WithField("address", addr).Debug("resolving address")
+		if net.ParseIP(addr) != nil {
+			resolved = append(resolved, resolvedEndpoint{ip: addr, port: port})
 			continue
 		}
-		ips, err := net.LookupHost(host)
+		ips, err := net.LookupHost(addr)
 		if err != nil {
-			log.WithError(err).WithField("host", host).Warn("dns resolution failed, skipping")
+			log.WithError(err).WithField("host", addr).Warn("DNS resolution failed, skipping")
 			continue
 		}
 		for _, ip := range ips {
@@ -117,7 +98,7 @@ func doSyncEndpoints(ctx context.Context, client kubernetes.Interface, wctx *wor
 	}
 
 	if len(resolved) == 0 {
-		return fmt.Errorf("no IPs resolved from external addresses %v", rawAddresses)
+		return fmt.Errorf("no endpoints resolved from addresses %v", cpe.Addresses)
 	}
 
 	ready := true
@@ -129,7 +110,7 @@ func doSyncEndpoints(ctx context.Context, client kubernetes.Interface, wctx *wor
 		})
 	}
 
-	// Collect unique ports across all resolved addresses.
+	// Collect unique ports across all resolved endpoints.
 	portSeen := map[int32]struct{}{}
 	proto := corev1.ProtocolTCP
 	portName := "https"
@@ -180,6 +161,8 @@ func doSyncEndpoints(ctx context.Context, client kubernetes.Interface, wctx *wor
 	if err != nil {
 		return fmt.Errorf("update endpoint slice: %w", err)
 	}
-	log.WithField("ips", resolvedIPs).Info("updated kubernetes endpoint slice")
+	log.WithField("ips", resolvedIPs).
+		WithField("ports", ports).
+		Info("updated kubernetes endpoint slice")
 	return nil
 }
