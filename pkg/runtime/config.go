@@ -105,6 +105,11 @@ func GenerateControlPlaneConfig(runtime *controlplanev1alpha1.Runtime, layout Co
 	}
 	if runtime.Spec.UpstreamCluster.Network.Konnectivity.Enabled {
 		data[layout.Config.Konnectivity.SecretKey] = renderKonnectivityService(workerProfile.KonnectivityUdsName)
+		konnectivityAgent, err := component.CreateKonnectivityAgentManifest(runtime, workerProfile)
+		if err != nil {
+			return nil, "", err
+		}
+		data[layout.StaticManifest.KonnectivityAgent.SecretKey] = string(konnectivityAgent)
 	}
 	if runtime.Spec.UpstreamCluster.Network.CNI.Supplier == "flannel" {
 		flannelConfig, err := component.CreateFlannelCNIManifest(runtime)

@@ -113,6 +113,7 @@ func GenerateDeployment(runtime *controlplanev1alpha1.Runtime, layout ControlPla
 		volumeMounts = append(volumeMounts,
 			corev1.VolumeMount{Name: "config", MountPath: layout.Config.Konnectivity.MountPath, SubPath: layout.Config.Konnectivity.SecretKey, ReadOnly: true},
 			corev1.VolumeMount{Name: "konnectivity-uds", MountPath: filepath.Dir(wrkCtx.KonnectivityUdsName)},
+			corev1.VolumeMount{Name: "static-config", MountPath: layout.StaticManifest.KonnectivityAgent.MountPath, SubPath: layout.StaticManifest.KonnectivityAgent.SecretKey, ReadOnly: true},
 		)
 	}
 	var runtimeClassName *string
