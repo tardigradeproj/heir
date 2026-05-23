@@ -162,7 +162,6 @@ func doSyncEndpoints(ctx context.Context, client kubernetes.Interface, wctx *wor
 		return fmt.Errorf("update endpoint slice: %w", err)
 	}
 	log.WithField("ips", resolvedIPs).
-		WithField("ports", ports).
 		Info("updated kubernetes endpoint slice")
 	return nil
 }
