@@ -135,6 +135,7 @@ data:
     healthzPort: 10248
     imageGCHighThresholdPercent: 100
     kind: KubeletConfiguration
+    serverTLSBootstrap: true
     rotateCertificates: true
     staticPodPath: {{ .KubeletStaticPodPath }}
   {{ .KubeletExtraArgsKey }}: |
