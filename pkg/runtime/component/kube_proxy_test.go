@@ -46,9 +46,6 @@ func kubeProxyRuntime(spec controlplanev1alpha1.KubeProxySpec) *controlplanev1al
 	return &controlplanev1alpha1.Runtime{
 		Spec: controlplanev1alpha1.RuntimeSpec{
 			UpstreamCluster: controlplanev1alpha1.UpstreamCluster{
-				APIServer: controlplanev1alpha1.APIServerSpec{
-					ExternalAddresses: []string{"https://api.example.com:6443"},
-				},
 				Network: controlplanev1alpha1.NetworkSpec{
 					PodCIDR:   "10.244.0.0/16",
 					KubeProxy: spec,

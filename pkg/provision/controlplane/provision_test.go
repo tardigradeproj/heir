@@ -47,7 +47,7 @@ spec:
       type: kine
 `
 
-// runtimeConfigWithExternalAddress has an API server externalAddress set.
+// runtimeConfigWithExternalAddress has a controlPlaneEndpoint address set.
 const runtimeConfigWithExternalAddress = `apiVersion: controlplane.tardigrade.runtime.io/v1alpha1
 kind: Runtime
 metadata:
@@ -63,9 +63,11 @@ spec:
     service:
       serviceType: ClusterIP
   upstreamCluster:
-    apiServer:
-      externalAddresses:
-      - "https://my-cluster.example.com:6443"
+    controlPlaneEndpoint:
+      addresses:
+      - "my-cluster.example.com"
+      apiServer:
+        port: 6443
     storage:
       type: kine
 `
