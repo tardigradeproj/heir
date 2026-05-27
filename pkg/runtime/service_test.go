@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	controlplanev1alpha1 "github.com/tardigrade-runtime/samaritano/api/v1alpha1"
+	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/typ"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -39,12 +40,12 @@ func TestGenerateService(t *testing.T) {
 			},
 		},
 		{
-			name: "apiserver port 6443 is always present",
+			name: "apiserver and konnectivity ports are always present",
 			runtime: serviceRuntime("my-cluster", "default", controlplanev1alpha1.ServiceSpec{
 				ServiceType: corev1.ServiceTypeClusterIP,
 			}),
 			validate: func(t *testing.T, svc *corev1.Service) {
-				require.Len(t, svc.Spec.Ports, 1)
+				require.Len(t, svc.Spec.Ports, 2)
 				p := svc.Spec.Ports[0]
 				assert.Equal(t, "apiserver", p.Name)
 				assert.Equal(t, int32(6443), p.Port)
@@ -72,7 +73,7 @@ func TestGenerateService(t *testing.T) {
 			},
 		},
 		{
-			name: "additional ports are appended after apiserver port",
+			name: "additional ports are appended after built-in ports",
 			runtime: serviceRuntime("my-cluster", "default", controlplanev1alpha1.ServiceSpec{
 				ServiceType: corev1.ServiceTypeNodePort,
 				AdditionalPorts: []controlplanev1alpha1.AdditionalPort{
@@ -85,10 +86,11 @@ func TestGenerateService(t *testing.T) {
 				},
 			}),
 			validate: func(t *testing.T, svc *corev1.Service) {
-				require.Len(t, svc.Spec.Ports, 2)
+				require.Len(t, svc.Spec.Ports, 3)
 				assert.Equal(t, "apiserver", svc.Spec.Ports[0].Name)
-				assert.Equal(t, "metrics", svc.Spec.Ports[1].Name)
-				assert.Equal(t, int32(9090), svc.Spec.Ports[1].Port)
+				assert.Equal(t, "konnectivity", svc.Spec.Ports[1].Name)
+				assert.Equal(t, "metrics", svc.Spec.Ports[2].Name)
+				assert.Equal(t, int32(9090), svc.Spec.Ports[2].Port)
 			},
 		},
 		{
@@ -121,7 +123,7 @@ func TestGenerateService(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			svc, err := GenerateService(tt.runtime)
+			svc, err := GenerateService(tt.runtime, typ.NewWorkerContextWithDefaults())
 			require.NoError(t, err)
 			require.NotNil(t, svc)
 			tt.validate(t, svc)

@@ -6,6 +6,7 @@
 *.so
 *.dylib
 bin/*
+distro
 Dockerfile.cross
 distro-setup/out/*
 # Test binary, built with `go test -c`

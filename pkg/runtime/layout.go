@@ -23,15 +23,17 @@ type AuthLayout struct {
 	AdminConf             MountEntry
 	ControllerManagerConf MountEntry
 	SchedulerConf         MountEntry
+	KonnectivityConf      MountEntry
 }
 
 // StaticManifest describes the manifests to be applied at the moment the cluster is initialized
 type StaticManifest struct {
-	Coredns     MountEntry
-	KubeProxy   MountEntry
-	Bootstrap   MountEntry
-	NodeProfile MountEntry
-	FlannelCNI  MountEntry
+	Coredns           MountEntry
+	KubeProxy         MountEntry
+	Bootstrap         MountEntry
+	NodeProfile       MountEntry
+	FlannelCNI        MountEntry
+	KonnectivityAgent MountEntry
 }
 
 // ConfigLayout describes the s6-overlay run-script entries stored in the <name>-config ConfigMap.
@@ -40,6 +42,7 @@ type ConfigLayout struct {
 	APIServer         MountEntry
 	ControllerManager MountEntry
 	Scheduler         MountEntry
+	Konnectivity      MountEntry
 }
 
 // ControlPlaneLayout groups all Secret/ConfigMap keys and their container mount paths for a
@@ -68,18 +71,21 @@ func NewControlPlaneLayout() ControlPlaneLayout {
 			AdminConf:             MountEntry{SecretKey: "admin.conf", MountPath: "/etc/kubernetes/admin.conf"},
 			ControllerManagerConf: MountEntry{SecretKey: "kube-controller-manager.conf", MountPath: "/etc/kubernetes/kube-controller-manager.conf"},
 			SchedulerConf:         MountEntry{SecretKey: "kube-scheduler.conf", MountPath: "/etc/kubernetes/kube-scheduler.conf"},
+			KonnectivityConf:      MountEntry{SecretKey: "konnectivity.conf", MountPath: "/etc/kubernetes/konnectivity.conf"},
 		},
 		StaticManifest: StaticManifest{
-			Coredns:     MountEntry{SecretKey: "coredns.yaml", MountPath: "/etc/kubernetes/manifests/manifests.d/coredns.yaml"},
-			KubeProxy:   MountEntry{SecretKey: "kubeproxy.yaml", MountPath: "/etc/kubernetes/manifests/manifests.d/kubeproxy.yaml"},
-			Bootstrap:   MountEntry{SecretKey: "tlsbootstrap.yaml", MountPath: "/etc/kubernetes/manifests/manifests.d/tlsbootstrap.yaml"},
-			NodeProfile: MountEntry{SecretKey: "nodeprofile.yaml", MountPath: "/etc/kubernetes/manifests/manifests.d/nodeprofile.yaml"},
-			FlannelCNI:  MountEntry{SecretKey: "flannelcni.yaml", MountPath: "/etc/kubernetes/manifests/manifests.d/flannelcni.yaml"},
+			Coredns:           MountEntry{SecretKey: "coredns.yaml", MountPath: "/etc/kubernetes/manifests/manifests.d/coredns.yaml"},
+			KubeProxy:         MountEntry{SecretKey: "kubeproxy.yaml", MountPath: "/etc/kubernetes/manifests/manifests.d/kubeproxy.yaml"},
+			Bootstrap:         MountEntry{SecretKey: "tlsbootstrap.yaml", MountPath: "/etc/kubernetes/manifests/manifests.d/tlsbootstrap.yaml"},
+			NodeProfile:       MountEntry{SecretKey: "nodeprofile.yaml", MountPath: "/etc/kubernetes/manifests/manifests.d/nodeprofile.yaml"},
+			FlannelCNI:        MountEntry{SecretKey: "flannelcni.yaml", MountPath: "/etc/kubernetes/manifests/manifests.d/flannelcni.yaml"},
+			KonnectivityAgent: MountEntry{SecretKey: "konnectivity-agent.yaml", MountPath: "/etc/kubernetes/manifests/manifests.d/konnectivity-agent.yaml"},
 		},
 		Config: ConfigLayout{
 			APIServer:         MountEntry{SecretKey: "kube-apiserver.sh", MountPath: "/etc/kubernetes/manifests/kube-apiserver.sh"},
 			ControllerManager: MountEntry{SecretKey: "kube-controller-manager.sh", MountPath: "/etc/kubernetes/manifests/kube-controller-manager.sh"},
 			Scheduler:         MountEntry{SecretKey: "kube-scheduler.sh", MountPath: "/etc/kubernetes/manifests/kube-scheduler.sh"},
+			Konnectivity:      MountEntry{SecretKey: "egress-selector-configuration.yaml", MountPath: "/etc/kubernetes/egress-selector-configuration.yaml"},
 		},
 	}
 }

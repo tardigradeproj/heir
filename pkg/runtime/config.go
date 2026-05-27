@@ -34,30 +34,36 @@ func GenerateControlPlaneConfig(runtime *controlplanev1alpha1.Runtime, layout Co
 	if err != nil {
 		return nil, "", err
 	}
+
+	apiServerParameters := map[string]string{
+		"advertise-address":                "",
+		"allow-privileged":                 "true",
+		"endpoint-reconciler-type":         "none",
+		"authorization-mode":               "Node,RBAC",
+		"bind-address":                     "0.0.0.0",
+		"client-ca-file":                   layout.PKI.CACert.MountPath,
+		"enable-admission-plugins":         "NamespaceLifecycle,NodeRestriction,LimitRanger,ServiceAccount,DefaultStorageClass,ResourceQuota",
+		"etcd-servers":                     "http://127.0.0.1:2379",
+		"enable-bootstrap-token-auth":      "true",
+		"event-ttl":                        "1h",
+		"kubelet-certificate-authority":    layout.PKI.CACert.MountPath,
+		"kubelet-client-certificate":       layout.PKI.APIServerCert.MountPath,
+		"kubelet-client-key":               layout.PKI.APIServerKey.MountPath,
+		"runtime-config":                   "api/all=true",
+		"service-account-issuer":           "https://kubernetes.default.svc.cluster.local",
+		"service-account-key-file":         layout.PKI.ServiceAccountCert.MountPath,
+		"service-account-signing-key-file": layout.PKI.ServiceAccountKey.MountPath,
+		"service-cluster-ip-range":         net.ServiceCIDR,
+		"service-node-port-range":          "30000-32767",
+		"tls-cert-file":                    layout.PKI.APIServerCert.MountPath,
+		"tls-private-key-file":             layout.PKI.APIServerKey.MountPath,
+		"v":                                "2",
+	}
+	if runtime.Spec.UpstreamCluster.Network.Konnectivity.Enabled {
+		apiServerParameters["egress-selector-config-file"] = layout.Config.Konnectivity.MountPath
+	}
 	apiserverScript := RenderRunScript("/usr/local/bin/kube-apiserver",
-		MergeArgs(map[string]string{
-			"advertise-address":                "",
-			"allow-privileged":                 "true",
-			"authorization-mode":               "Node,RBAC",
-			"bind-address":                     "0.0.0.0",
-			"client-ca-file":                   layout.PKI.CACert.MountPath,
-			"enable-admission-plugins":         "NamespaceLifecycle,NodeRestriction,LimitRanger,ServiceAccount,DefaultStorageClass,ResourceQuota",
-			"etcd-servers":                     "http://127.0.0.1:2379",
-			"enable-bootstrap-token-auth":      "true",
-			"event-ttl":                        "1h",
-			"kubelet-certificate-authority":    layout.PKI.CACert.MountPath,
-			"kubelet-client-certificate":       layout.PKI.APIServerCert.MountPath,
-			"kubelet-client-key":               layout.PKI.APIServerKey.MountPath,
-			"runtime-config":                   "api/all=true",
-			"service-account-issuer":           "https://kubernetes.default.svc.cluster.local",
-			"service-account-key-file":         layout.PKI.ServiceAccountCert.MountPath,
-			"service-account-signing-key-file": layout.PKI.ServiceAccountKey.MountPath,
-			"service-cluster-ip-range":         net.ServiceCIDR,
-			"service-node-port-range":          "30000-32767",
-			"tls-cert-file":                    layout.PKI.APIServerCert.MountPath,
-			"tls-private-key-file":             layout.PKI.APIServerKey.MountPath,
-			"v":                                "2",
-		}, runtime.Spec.UpstreamCluster.APIServer.ExtraArgs),
+		MergeArgs(apiServerParameters, runtime.Spec.UpstreamCluster.APIServer.ExtraArgs),
 	)
 
 	controllerManagerScript := RenderRunScript("/usr/local/bin/kube-controller-manager",
@@ -97,7 +103,14 @@ func GenerateControlPlaneConfig(runtime *controlplanev1alpha1.Runtime, layout Co
 		layout.StaticManifest.Coredns.SecretKey:     string(coredns),
 		layout.StaticManifest.KubeProxy.SecretKey:   string(kubeproxy),
 	}
-
+	if runtime.Spec.UpstreamCluster.Network.Konnectivity.Enabled {
+		data[layout.Config.Konnectivity.SecretKey] = renderKonnectivityService(workerProfile.KonnectivityUdsName)
+		konnectivityAgent, err := component.CreateKonnectivityAgentManifest(runtime, workerProfile)
+		if err != nil {
+			return nil, "", err
+		}
+		data[layout.StaticManifest.KonnectivityAgent.SecretKey] = string(konnectivityAgent)
+	}
 	if runtime.Spec.UpstreamCluster.Network.CNI.Supplier == "flannel" {
 		flannelConfig, err := component.CreateFlannelCNIManifest(runtime)
 		if err != nil {
@@ -143,6 +156,19 @@ func MergeArgs(defaults, extra map[string]string) map[string]string {
 		merged[k] = v
 	}
 	return merged
+}
+func renderKonnectivityService(udsName string) string {
+	return fmt.Sprintf(`
+apiVersion: apiserver.k8s.io/v1beta1
+kind: EgressSelectorConfiguration
+egressSelections:
+- name: cluster
+  connection:
+    proxyProtocol: GRPC
+    transport:
+      uds:
+        udsName: %s
+`, udsName)
 }
 
 // RenderRunScript produces a shell run-script for the given binary and args.

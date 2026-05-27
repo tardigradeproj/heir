@@ -425,13 +425,13 @@ spec:
 			},
 		},
 		{
-			name: "apiServer externalAddress is preserved",
+			name: "controlPlaneEndpoint addresses are preserved",
 			makeConfig: func(t *testing.T) string {
 				return writeTempRuntimeConfig(t, runtimeConfigWithExternalAddress)
 			},
 			validate: func(t *testing.T, r *v1alpha1.Runtime) {
-				assert.Equal(t, []string{"https://my-cluster.example.com:6443"},
-					r.Spec.UpstreamCluster.APIServer.ExternalAddresses)
+				assert.Equal(t, []string{"my-cluster.example.com"},
+					r.Spec.UpstreamCluster.ControlPlaneEndpoint.Addresses)
 			},
 		},
 	}

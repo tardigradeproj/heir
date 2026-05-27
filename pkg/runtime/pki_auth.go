@@ -2,11 +2,9 @@ package runtime
 
 import (
 	"fmt"
-	"net/url"
 	"slices"
 	"time"
 
-	log "github.com/sirupsen/logrus"
 	controlplanev1alpha1 "github.com/tardigrade-runtime/samaritano/api/v1alpha1"
 	"github.com/tardigrade-runtime/samaritano/pkg/pki"
 	corev1 "k8s.io/api/core/v1"
@@ -20,10 +18,14 @@ var CertificateDuration = time.Duration(8760) * time.Hour
 
 // APIServerAltNames builds the full list of Subject Alternative Names for the
 // kube-apiserver certificate, merging user-supplied SANs with the required defaults.
-func APIServerAltNames(apiserver controlplanev1alpha1.APIServerSpec) []string {
-	sans := append([]string{}, apiserver.Sans...)
+func APIServerAltNames(cluster controlplanev1alpha1.UpstreamCluster) []string {
+	apiServer := cluster.APIServer
+	controlPlaneEndpoint := cluster.ControlPlaneEndpoint
+	sans := append([]string{}, apiServer.Sans...)
 	sans = append(sans,
 		"127.0.0.1",
+		"10.96.0.1",
+		"0.0.0.0",
 		"kubernetes",
 		"kubernetes.default",
 		"kubernetes.default.svc",
@@ -31,14 +33,9 @@ func APIServerAltNames(apiserver controlplanev1alpha1.APIServerSpec) []string {
 		"server.kubernetes.local",
 		"api-server.kubernetes.local",
 	)
-	for _, externalAddress := range apiserver.ExternalAddresses {
+	for _, externalAddress := range controlPlaneEndpoint.Addresses {
 		if externalAddress != "" {
-			u, err := url.Parse(externalAddress)
-			if err != nil {
-				log.WithField("spec.externalAddress", externalAddress).
-					Warningf("failed to parse spec.externalAddress: %v", err)
-			}
-			sans = append(sans, u.Hostname())
+			sans = append(sans, externalAddress)
 		}
 	}
 
@@ -63,7 +60,7 @@ func GeneratePKIAuthSecret(runtime *controlplanev1alpha1.Runtime, layout Control
 		Name:      "kubernetes",
 		O:         "kubernetes",
 		CN:        "kube-apiserver",
-		Hostnames: APIServerAltNames(runtime.Spec.UpstreamCluster.APIServer),
+		Hostnames: APIServerAltNames(runtime.Spec.UpstreamCluster),
 	}, CertificateDuration)
 	if err != nil {
 		return nil, err
@@ -116,23 +113,38 @@ func GeneratePKIAuthSecret(runtime *controlplanev1alpha1.Runtime, layout Control
 	if err != nil {
 		return nil, err
 	}
-
+	data := map[string][]byte{
+		layout.PKI.CACert.SecretKey:                 ca.Cert,
+		layout.PKI.CAKey.SecretKey:                  ca.Key,
+		layout.PKI.APIServerCert.SecretKey:          apiserverCert.Cert,
+		layout.PKI.APIServerKey.SecretKey:           apiserverCert.Key,
+		layout.PKI.ServiceAccountCert.SecretKey:     serviceAccountCert.Cert,
+		layout.PKI.ServiceAccountKey.SecretKey:      serviceAccountCert.Key,
+		layout.Auth.AdminConf.SecretKey:             adminConf,
+		layout.Auth.ControllerManagerConf.SecretKey: controllerManagerConf,
+		layout.Auth.SchedulerConf.SecretKey:         schedulerConf,
+	}
+	if runtime.Spec.UpstreamCluster.Network.Konnectivity.Enabled {
+		konnectivityCert, err := pki.SignCSR(*ca, pki.CSR{
+			CN:        "system:konnectivity-server",
+			O:         "system:konnectivity-server",
+			Hostnames: []string{},
+		}, CertificateDuration)
+		if err != nil {
+			return nil, err
+		}
+		konnectivityConf, err := generateKubeconfig("system:konnectivity-server", ca.Cert, konnectivityCert)
+		if err != nil {
+			return nil, err
+		}
+		data[layout.Auth.KonnectivityConf.SecretKey] = konnectivityConf
+	}
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      fmt.Sprintf("%s-pki-auth", runtime.Name),
 			Namespace: runtime.Namespace,
 		},
-		Data: map[string][]byte{
-			layout.PKI.CACert.SecretKey:                 ca.Cert,
-			layout.PKI.CAKey.SecretKey:                  ca.Key,
-			layout.PKI.APIServerCert.SecretKey:          apiserverCert.Cert,
-			layout.PKI.APIServerKey.SecretKey:           apiserverCert.Key,
-			layout.PKI.ServiceAccountCert.SecretKey:     serviceAccountCert.Cert,
-			layout.PKI.ServiceAccountKey.SecretKey:      serviceAccountCert.Key,
-			layout.Auth.AdminConf.SecretKey:             adminConf,
-			layout.Auth.ControllerManagerConf.SecretKey: controllerManagerConf,
-			layout.Auth.SchedulerConf.SecretKey:         schedulerConf,
-		},
+		Data: data,
 	}, nil
 }
 

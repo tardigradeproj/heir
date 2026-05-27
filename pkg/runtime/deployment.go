@@ -2,8 +2,11 @@ package runtime
 
 import (
 	"fmt"
+	"path/filepath"
+	"sort"
 
 	controlplanev1alpha1 "github.com/tardigrade-runtime/samaritano/api/v1alpha1"
+	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/typ"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -15,7 +18,7 @@ import (
 func GenerateDeployment(runtime *controlplanev1alpha1.Runtime, layout ControlPlaneLayout, configHash string) (*appsv1.Deployment, error) {
 	deploySpec := runtime.Spec.ControlPlane.Deployment
 	samaritano := runtime.Spec.ControlPlane.Samaritano
-
+	wrkCtx := typ.NewWorkerContextWithDefaults()
 	labels := map[string]string{
 		"app.kubernetes.io/name":       runtime.Name,
 		"app.kubernetes.io/managed-by": "samaritano",
@@ -66,18 +69,20 @@ func GenerateDeployment(runtime *controlplanev1alpha1.Runtime, layout ControlPla
 	}
 	storage := runtime.Spec.UpstreamCluster.Storage
 	var env []corev1.EnvVar
-	if storage.Type == "kine" && storage.Kine.DataSourceRef.Name != "" {
-		env = append(env, corev1.EnvVar{
-			Name: "SAMARITANO_STORAGE_ENDPOINT",
-			ValueFrom: &corev1.EnvVarSource{
-				SecretKeyRef: &corev1.SecretKeySelector{
-					LocalObjectReference: corev1.LocalObjectReference{
-						Name: storage.Kine.DataSourceRef.Name,
+	if storage.Type == "kine" {
+		if storage.Kine != nil && storage.Kine.DataSourceRef.Name != "" {
+			env = append(env, corev1.EnvVar{
+				Name: "SAMARITANO_STORAGE_ENDPOINT",
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: storage.Kine.DataSourceRef.Name,
+						},
+						Key: storage.Kine.DataSourceRef.Key,
 					},
-					Key: storage.Kine.DataSourceRef.Key,
 				},
-			},
-		})
+			})
+		}
 	}
 	volumeMounts := []corev1.VolumeMount{
 		// PKI: mount the whole secret directory — all certs/keys land at /etc/kubernetes/pki/<file>.
@@ -102,9 +107,33 @@ func GenerateDeployment(runtime *controlplanev1alpha1.Runtime, layout ControlPla
 		)
 	}
 
+	if runtime.Spec.UpstreamCluster.Network.Konnectivity.Enabled {
+		volumes = append(volumes, corev1.Volume{
+			Name:         "konnectivity-uds",
+			VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
+		})
+		volumeMounts = append(volumeMounts,
+			corev1.VolumeMount{Name: "config", MountPath: layout.Config.Konnectivity.MountPath, SubPath: layout.Config.Konnectivity.SecretKey, ReadOnly: true},
+			corev1.VolumeMount{Name: "konnectivity-uds", MountPath: filepath.Dir(wrkCtx.KonnectivityUdsName)},
+			corev1.VolumeMount{Name: "static-config", MountPath: layout.StaticManifest.KonnectivityAgent.MountPath, SubPath: layout.StaticManifest.KonnectivityAgent.SecretKey, ReadOnly: true},
+		)
+	}
 	var runtimeClassName *string
 	if deploySpec.RuntimeClassName != "" {
 		runtimeClassName = &deploySpec.RuntimeClassName
+	}
+
+	containers := []corev1.Container{
+		{
+			Name:         "samaritano",
+			Image:        samaritano.Image,
+			Ports:        containerPorts,
+			VolumeMounts: volumeMounts,
+			Env:          env,
+		},
+	}
+	if runtime.Spec.UpstreamCluster.Network.Konnectivity.Enabled {
+		containers = append(containers, konnectivitySidecar(runtime.Spec.UpstreamCluster.Network.Konnectivity.KonnectivityServerSpec, layout, wrkCtx))
 	}
 
 	return &appsv1.Deployment{
@@ -125,20 +154,67 @@ func GenerateDeployment(runtime *controlplanev1alpha1.Runtime, layout ControlPla
 					RuntimeClassName:   runtimeClassName,
 					Tolerations:        deploySpec.Tolerations,
 					Affinity:           deploySpec.Affinity,
-					Containers: []corev1.Container{
-						{
-							Name:         "samaritano",
-							Image:        samaritano.Image,
-							Ports:        containerPorts,
-							VolumeMounts: volumeMounts,
-							Env:          env,
-						},
-					},
-					Volumes: volumes,
+					Containers:         containers,
+					Volumes:            volumes,
 				},
 			},
 		},
 	}, nil
+}
+
+// konnectivitySidecar builds the konnectivity-server container that shares the UDS socket
+// volume with the samaritano container. The UDS socket is used by the API server egress
+// selector to proxy traffic to worker nodes via the konnectivity-agent.
+func konnectivitySidecar(spec controlplanev1alpha1.KonnectivityServerSpec, layout ControlPlaneLayout, wrkCtx *typ.WorkerContext) corev1.Container {
+	udsDir := filepath.Dir(wrkCtx.KonnectivityUdsName)
+
+	defaults := map[string]string{
+		"logtostderr":             "true",
+		"uds-name":                wrkCtx.KonnectivityUdsName,
+		"cluster-cert":            layout.PKI.APIServerCert.MountPath,
+		"cluster-key":             layout.PKI.APIServerKey.MountPath,
+		"server-port":             "0",
+		"agent-port":              fmt.Sprintf("%d", wrkCtx.KonnectivityProxyServerPort),
+		"health-port":             "8134",
+		"admin-port":              "8133",
+		"mode":                    "grpc",
+		"agent-namespace":         "kube-system",
+		"agent-service-account":   "konnectivity-agent",
+		"kubeconfig":              layout.Auth.KonnectivityConf.MountPath,
+		"authentication-audience": "system:konnectivity-server",
+	}
+	merged := MergeArgs(defaults, spec.ExtraArgs)
+
+	keys := make([]string, 0, len(merged))
+	for k, _ := range merged {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	args := make([]string, 0, len(merged))
+	for _, k := range keys {
+		args = append(args, fmt.Sprintf("--%s=%s", k, merged[k]))
+	}
+	c := corev1.Container{
+		Name:    "konnectivity-server",
+		Image:   spec.Image,
+		Command: []string{"/proxy-server"},
+		Args:    args,
+		Ports: []corev1.ContainerPort{
+			{Name: "agent", ContainerPort: wrkCtx.KonnectivityProxyServerPort, Protocol: corev1.ProtocolTCP},
+			{Name: "healthport", ContainerPort: 8134, Protocol: corev1.ProtocolTCP},
+			{Name: "adminport", ContainerPort: 8133, Protocol: corev1.ProtocolTCP},
+		},
+		VolumeMounts: []corev1.VolumeMount{
+			{Name: "pki-auth", MountPath: "/etc/kubernetes/pki", ReadOnly: true},
+			{Name: "pki-auth", MountPath: layout.Auth.KonnectivityConf.MountPath, SubPath: layout.Auth.KonnectivityConf.SecretKey, ReadOnly: true},
+			{Name: "konnectivity-uds", MountPath: udsDir},
+		},
+	}
+	if spec.Resources != nil {
+		c.Resources = *spec.Resources
+	}
+	return c
 }
 
 // deploymentPorts converts AdditionalPort entries from the spec into corev1.ContainerPort values

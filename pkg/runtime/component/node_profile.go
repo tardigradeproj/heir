@@ -49,7 +49,7 @@ func getNodeProfileConfig(wrkCtx *typ.WorkerContext, runtime *controlplanev1alph
 	coredns := runtime.Spec.UpstreamCluster.Network.Coredns
 	kubelet := runtime.Spec.UpstreamCluster.Kubelet
 	cni := runtime.Spec.UpstreamCluster.Network.CNI
-	externalAddresses, err := json.Marshal(runtime.Spec.UpstreamCluster.APIServer.ExternalAddresses)
+	controlPlaneEndpoint, err := json.Marshal(runtime.Spec.UpstreamCluster.ControlPlaneEndpoint)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal API server external addresses: %w", err)
 	}
@@ -71,8 +71,8 @@ func getNodeProfileConfig(wrkCtx *typ.WorkerContext, runtime *controlplanev1alph
 		KubeletConfigurationKey:  wrkCtx.KubeletConfigurationNodeProfileConfigmapKey,
 		KubeletExtraArgsKey:      wrkCtx.KubeletExtraArgsNodeProfileConfigmapKey,
 		KubeletExtraArgs:         string(extraArgsYAML),
-		ExternalAddressKey:       wrkCtx.ExternalAddressNodeProfileConfigmapKey,
-		ExternalAddresses:        string(externalAddresses),
+		ControlPlaneEndpointKey:  wrkCtx.ControlPlaneEndpointNodeProfileConfigmapKey,
+		ControlPlaneEndpoint:     string(controlPlaneEndpoint),
 		CNIProvider:              cni.Supplier,
 		CNIProviderKey:           wrkCtx.CNIEnableProviderNodeProfileConfigmapKey,
 	}, nil
@@ -87,8 +87,8 @@ type NodeProfileConfig struct {
 	KubeletConfigurationKey  string
 	KubeletExtraArgsKey      string
 	KubeletExtraArgs         string
-	ExternalAddressKey       string
-	ExternalAddresses        string
+	ControlPlaneEndpointKey  string
+	ControlPlaneEndpoint     string
 	CNIProviderKey           string
 	CNIProvider              string
 }
@@ -102,8 +102,8 @@ metadata:
     managed-by: bootstrap
 data:
   {{ .CNIProviderKey }}: {{ .CNIProvider }}
-  {{ .ExternalAddressKey }}: |
-{{ .ExternalAddresses | indent 4 }}
+  {{ .ControlPlaneEndpointKey }}: |
+{{ .ControlPlaneEndpoint | indent 4 }}
   {{ .KubeletConfigurationKey }}: |
     apiVersion: kubelet.config.k8s.io/v1beta1
     authentication:
@@ -119,6 +119,7 @@ data:
       webhook:
         cacheAuthorizedTTL: 0s
         cacheUnauthorizedTTL: 0s
+    resolvConf: /run/systemd/resolve/resolv.conf
     cgroupDriver: systemd
     enforceNodeAllocatable: []
     clusterDNS:
@@ -134,6 +135,7 @@ data:
     healthzPort: 10248
     imageGCHighThresholdPercent: 100
     kind: KubeletConfiguration
+    serverTLSBootstrap: true
     rotateCertificates: true
     staticPodPath: {{ .KubeletStaticPodPath }}
   {{ .KubeletExtraArgsKey }}: |

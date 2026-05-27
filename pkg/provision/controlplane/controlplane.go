@@ -8,6 +8,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 	"github.com/tardigrade-runtime/samaritano/api/v1alpha1"
+	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/typ"
 	samaritanoruntime "github.com/tardigrade-runtime/samaritano/pkg/runtime"
 	"gvisor.dev/gvisor/pkg/cleanup"
 	apiextensions "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions"
@@ -32,7 +33,7 @@ func Provision(ctx context.Context, opts ...Option) error {
 	for _, opt := range opts {
 		opt(pCtx)
 	}
-
+	wrkCtx := typ.NewWorkerContextWithDefaults()
 	runtime, err := parseConfig(pCtx.config)
 	if err != nil {
 		return fmt.Errorf("failed to parse config: %w", err)
@@ -73,7 +74,7 @@ func Provision(ctx context.Context, opts ...Option) error {
 		return fmt.Errorf("failed to setup config: %w", err)
 	}
 
-	if err := setupService(ctx, &cleaner, client, runtime); err != nil {
+	if err := setupService(ctx, &cleaner, client, runtime, wrkCtx); err != nil {
 		return fmt.Errorf("failed to setup service: %w", err)
 	}
 
@@ -81,7 +82,12 @@ func Provision(ctx context.Context, opts ...Option) error {
 		return fmt.Errorf("failed to setup deployment: %w", err)
 	}
 	if pCtx.clusterKubeconfig != "" {
-		if err := writeKubeconfig(kubeconfig, pCtx.clusterKubeconfig, runtime.Spec.UpstreamCluster.APIServer.ExternalAddresses); err != nil {
+		controlPlaneEndpoint := runtime.Spec.UpstreamCluster.ControlPlaneEndpoint
+		apiServerAddresses := make([]string, 0, len(controlPlaneEndpoint.Addresses))
+		for _, addr := range controlPlaneEndpoint.Addresses {
+			apiServerAddresses = append(apiServerAddresses, fmt.Sprintf("https://%s:%d", addr, controlPlaneEndpoint.APIServer.Port))
+		}
+		if err := writeKubeconfig(kubeconfig, pCtx.clusterKubeconfig, apiServerAddresses); err != nil {
 			return fmt.Errorf("failed to write kubeconfig to %s: %w", pCtx.clusterKubeconfig, err)
 		}
 		log.WithField("path", pCtx.clusterKubeconfig).Info("kubeconfig written")
@@ -153,8 +159,8 @@ func setupConfig(ctx context.Context, cleaner *cleanup.Cleanup, client kubernete
 	return configHash, nil
 }
 
-func setupService(ctx context.Context, cleaner *cleanup.Cleanup, client kubernetes.Interface, runtime *v1alpha1.Runtime) error {
-	svc, err := samaritanoruntime.GenerateService(runtime)
+func setupService(ctx context.Context, cleaner *cleanup.Cleanup, client kubernetes.Interface, runtime *v1alpha1.Runtime, wrkCtx *typ.WorkerContext) error {
+	svc, err := samaritanoruntime.GenerateService(runtime, wrkCtx)
 	if err != nil {
 		return err
 	}
@@ -195,8 +201,8 @@ func setupDeployment(ctx context.Context, cleaner *cleanup.Cleanup, client kuber
 func writeKubeconfig(kubeconfig *clientcmdapi.Config, path string, clusterExternalUrls []string) error {
 	if len(clusterExternalUrls) == 0 {
 		log.Warn("the generated kubeconfig does not contain a server address and cannot be used to communicate with the Kubernetes API server; " +
-			"to resolve this, set spec.upstreamCluster.apiServer.externalAddresses to the externally reachable address of the control plane " +
-			"(e.g. [https://my-cluster.example.com:6443]) and re-provision")
+			"to resolve this, set spec.upstreamCluster.controlPlaneEndpoint.addresses and spec.upstreamCluster.controlPlaneEndpoint.apiServer.port " +
+			" to the externally reachable address of the control plane.")
 	} else {
 		// Expand the single generated cluster entry into one entry per external URL.
 		// The first URL keeps the original cluster name; subsequent URLs get a numeric suffix.

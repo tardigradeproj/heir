@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -20,40 +22,42 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
+const (
+	apiServerStream    = "apiserver"
+	konnectivityStream = "konnectivity"
+)
+
 func Run(ctx context.Context, opts ...typ.Option) error {
+	var proxyErr chan error
 	workerCtx := typ.NewWorkerContextWithDefaults()
 	for _, opt := range opts {
 		opt(workerCtx)
 	}
+
 	log := logrus.WithField("hostname", hostname)
 	log.Info("starting worker node provisioning")
 
-	log.Debug("creating required directories")
 	if err := createDirectories(workerCtx); err != nil {
 		return fmt.Errorf("failed to create config directories: %w", err)
 	}
-
-	log.Debug("configuring host system")
 	if err := sys.Configure(); err != nil {
-		return fmt.Errorf("failed to setup host: %w", err)
+		return fmt.Errorf("failed to configure host system: %w", err)
 	}
 
-	log.Debug("configuring API server local proxy")
-	apiServerProxy, err := proxy.New([]string{})
+	// Phase 1 — start the API server proxy before TLS bootstrap so the kubelet
+	// bootstrap client can reach the API server through the local proxy.
+	proxyManager := proxy.NewManager(ctx)
+	initialEndpoints, err := resolveInitialAPIServerEndpoints(log, workerCtx)
 	if err != nil {
-		return fmt.Errorf("failed to setup API server proxy: %w", err)
+		return fmt.Errorf("failed to resolve initial API server endpoints: %w", err)
 	}
-	apiServerProxyCh := make(chan error)
-	if err := registerApiServerExternalAddressOnLocalProxy(log, workerCtx, apiServerProxy); err != nil {
-		return fmt.Errorf("failed to create base conditions to start local API server proxy: %w", err)
-	}
-	ctx, cancelApiServerProxy := context.WithCancel(ctx)
+	apiUpstream := proxyManager.AddUpstream(apiServerStream, initialEndpoints)
+	proxyManager.AddDownstream(apiServerStream, workerCtx.ApiServerWorkerProxyServerAddress)
 	go func() {
-		log.WithField("api.server.address", workerCtx.ApiServerLocalAddress).Info("starting API server proxy")
-		if err := apiServerProxy.Run(ctx); err != nil {
-			log.WithError(err).Error("failed to start/run API server local TCP proxy")
-			apiServerProxyCh <- err
-			cancelApiServerProxy()
+		log.WithField("addr", workerCtx.ApiServerWorkerProxyServerAddress).Info("starting local proxy manager")
+		if err := proxyManager.Link(apiServerStream, apiServerStream); err != nil {
+			proxyErr <- err
+			log.WithError(err).Error("proxy manager exited with error")
 		}
 	}()
 
@@ -68,18 +72,28 @@ func Run(ctx context.Context, opts ...typ.Option) error {
 		return fmt.Errorf("failed to read worker node profile: %w", err)
 	}
 
-	log.Debug("updating API server local proxy target addresses")
-	if err := apiServerProxy.UpdateServers(profile.ApiServerExternalAddress); err != nil {
-		return fmt.Errorf("failed to update API server local proxy target addresses: %w", err)
-	}
-
-	log.Debug("decompressing CNI plugins")
+	// Phase 2 — update the API server upstream with definitive addresses from
+	// the profile, then bring up the konnectivity proxy now that its port is known.
+	apiUpstream.Update(endpointsFromAddresses(
+		profile.ControlPlaneEndpoint.Addresses,
+		int(profile.ControlPlaneEndpoint.APIServer.Port),
+	))
+	proxyManager.AddUpstream(konnectivityStream, endpointsFromAddresses(
+		profile.ControlPlaneEndpoint.Addresses,
+		int(profile.ControlPlaneEndpoint.Konnectivity.Port),
+	))
+	proxyManager.AddDownstream(konnectivityStream, workerCtx.KonnectivityWorkerProxyServerAddress)
+	go func() {
+		if err := proxyManager.Link(konnectivityStream, konnectivityStream); err != nil {
+			proxyErr <- err
+			log.WithError(err).Error("konnectivity proxy manager exited with error")
+		}
+	}()
 
 	runners := []Runner{
 		component.NewContainerd(workerCtx),
 		component.NewKubelet(workerCtx, profile, hostname),
 	}
-	// only install CNI plugins bin when CNI is flannel
 	if slices.Contains([]string{"flannel"}, profile.CNIProvider) {
 		runners = append(runners, component.NewCni(workerCtx))
 	}
@@ -87,7 +101,7 @@ func Run(ctx context.Context, opts ...typ.Option) error {
 	log.Debug("setting up components")
 	for _, rn := range runners {
 		if err := rn.Setup(); err != nil {
-			return fmt.Errorf("failed to setup component: %w", err)
+			return fmt.Errorf("failed to setup %T: %w", rn, err)
 		}
 	}
 
@@ -96,7 +110,7 @@ func Run(ctx context.Context, opts ...typ.Option) error {
 	for _, rn := range runners {
 		go func(r Runner) {
 			if err := r.Run(ctx); err != nil {
-				errCh <- err
+				errCh <- fmt.Errorf("%T: %w", r, err)
 			}
 		}(rn)
 	}
@@ -107,14 +121,14 @@ func Run(ctx context.Context, opts ...typ.Option) error {
 
 	var runErr error
 	select {
-	case apiServerProxyErr := <-apiServerProxyCh:
-		log.WithError(apiServerProxyErr).Error("API server proxy failure")
+	case proxyErr := <-proxyErr:
+		log.WithError(proxyErr).Error("proxy manager exited with error")
 	case sig := <-sigCh:
-		log.WithField("signal", sig).Info("received termination signal, tearing down")
+		log.WithField("signal", sig).Info("received shutdown signal")
 	case runErr = <-errCh:
-		log.WithError(runErr).Error("component exited with error, tearing down")
+		log.WithError(runErr).Error("component exited with error")
 	case <-ctx.Done():
-		log.Debug("context cancelled, tearing down")
+		log.Debug("context cancelled")
 	}
 
 	log.Info("tearing down components")
@@ -123,7 +137,7 @@ func Run(ctx context.Context, opts ...typ.Option) error {
 
 	for _, rn := range runners {
 		if err := rn.Teardown(teardownCtx); err != nil {
-			log.WithError(err).Error("failed to teardown component")
+			log.WithError(err).WithField("component", fmt.Sprintf("%T", rn)).Error("teardown failed")
 		}
 	}
 
@@ -131,73 +145,72 @@ func Run(ctx context.Context, opts ...typ.Option) error {
 	return runErr
 }
 
-// registerApiServerExternalAddressOnLocalProxy seeds the local API server proxy with upstream
-// addresses before TLS bootstrap runs. This allows the proxy to forward traffic to the API
-// server even on the very first startup when no node profile has been written yet.
-//
-// Resolution order:
-//  1. If the node profile file (NodeProfileLocalFilePath) exists, load it and use the
-//     apiServerExternalAddress list it contains.
-//  2. If the node profile file is absent, fall back to the bootstrap kubeconfig
-//     (KubeletBootstrapKubeconfigPath) and read the additionalApiServerProxyAddresses
-//     extension from the current cluster entry.
-func registerApiServerExternalAddressOnLocalProxy(log *logrus.Entry, workerContext *typ.WorkerContext, apiServerProxy *proxy.APIServerProxy) error {
-	log.Info("registering API server external address on local proxy")
-
-	_, err := os.Stat(workerContext.NodeProfileLocalFilePath)
-	if err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("failed to stat node profile file: %w", err)
+// resolveInitialAPIServerEndpoints returns the endpoints used to seed the API
+// server proxy before TLS bootstrap. It prefers the cached node profile on disk;
+// if absent it falls back to parsing the bootstrap kubeconfig server URL.
+func resolveInitialAPIServerEndpoints(log *logrus.Entry, workerCtx *typ.WorkerContext) ([]proxy.Endpoint, error) {
+	_, statErr := os.Stat(workerCtx.NodeProfileLocalFilePath)
+	if statErr == nil {
+		nodeProfile := &typ.NodeProfile{}
+		if err := nodeProfile.Load(workerCtx.NodeProfileLocalFilePath); err != nil {
+			return nil, err
 		}
-
-		// Node profile has not been written yet (pre-bootstrap). Read the
-		// additionalApiServerProxyAddresses extension from the bootstrap kubeconfig so
-		// the proxy has at least the addresses that were baked in at join time.
-		log.Warn("node profile file does not exist, reading external API server proxy addresses from bootstrap kubeconfig")
-		addresses, err := readAdditionalApiServerProxyAddresses(workerContext.KubeletBootstrapKubeconfigPath)
-		if err != nil {
-			return fmt.Errorf("failed to read additionalApiServerProxyAddresses from bootstrap kubeconfig: %w", err)
-		}
-		if len(addresses) > 0 {
-			log.WithField("external.address.ln", len(addresses)).
-				WithField("external.addresses", addresses).
-				Debug("updating external addresses on apiServer proxy from bootstrap kubeconfig")
-			if err := apiServerProxy.UpdateServers(addresses); err != nil {
-				return err
-			}
-		}
-		return nil
+		log.WithField("source", "node-profile").Debug("seeding API server proxy from cached profile")
+		return endpointsFromAddresses(
+			nodeProfile.ControlPlaneEndpoint.Addresses,
+			int(nodeProfile.ControlPlaneEndpoint.APIServer.Port),
+		), nil
+	}
+	if !errors.Is(statErr, os.ErrNotExist) {
+		return nil, fmt.Errorf("failed to stat node profile: %w", statErr)
 	}
 
-	// Node profile exists — load it and apply the addresses it contains.
-	nodeProfile := &typ.NodeProfile{}
-	if err := nodeProfile.Load(workerContext.NodeProfileLocalFilePath); err != nil {
-		return err
-	}
-	logrus.WithField("external.address.ln", len(nodeProfile.ApiServerExternalAddress)).
-		WithField("external.addresses", nodeProfile.ApiServerExternalAddress).
-		Debug("updating external addresses on apiServer proxy")
-	if err := apiServerProxy.UpdateServers(nodeProfile.ApiServerExternalAddress); err != nil {
-		return err
-	}
-	return nil
+	log.WithField("source", "bootstrap-kubeconfig").Warn("node profile not found, seeding API server proxy from bootstrap kubeconfig")
+	return parseEndpointsFromBootstrapKubeconfig(workerCtx.KubeletBootstrapKubeconfigPath)
 }
 
-// readAdditionalApiServerProxyAddresses loads a kubeconfig file, collects the server
-// URL from every cluster object.
-func readAdditionalApiServerProxyAddresses(kubeconfigPath string) ([]string, error) {
+// parseEndpointsFromBootstrapKubeconfig extracts unique API server endpoints
+// by parsing the server URL from each cluster entry of the kubeconfig.
+func parseEndpointsFromBootstrapKubeconfig(kubeconfigPath string) ([]proxy.Endpoint, error) {
 	cfg, err := clientcmd.LoadFromFile(kubeconfigPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load kubeconfig: %w", err)
+		return nil, fmt.Errorf("failed to load bootstrap kubeconfig: %w", err)
 	}
 
-	var servers []string
+	seen := map[string]bool{}
+	var endpoints []proxy.Endpoint
 	for _, cluster := range cfg.Clusters {
-		if cluster.Server != "" {
-			servers = append(servers, cluster.Server)
+		if cluster.Server == "" {
+			continue
 		}
+		u, err := url.Parse(cluster.Server)
+		if err != nil || u.Hostname() == "" {
+			continue
+		}
+		host := u.Hostname()
+		if seen[host] {
+			continue
+		}
+		seen[host] = true
+		port := 443
+		if p := u.Port(); p != "" {
+			if n, err := strconv.Atoi(p); err == nil {
+				port = n
+			}
+		}
+		endpoints = append(endpoints, proxy.Endpoint{Host: host, Port: port})
 	}
-	return servers, nil
+	return endpoints, nil
+}
+
+// endpointsFromAddresses converts a list of hosts sharing a common port into
+// a slice of proxy.Endpoint values.
+func endpointsFromAddresses(hosts []string, port int) []proxy.Endpoint {
+	eps := make([]proxy.Endpoint, len(hosts))
+	for i, h := range hosts {
+		eps[i] = proxy.Endpoint{Host: h, Port: port}
+	}
+	return eps
 }
 
 func createDirectories(workerCtx *typ.WorkerContext) error {

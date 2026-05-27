@@ -8,6 +8,7 @@ import (
 
 	retry "github.com/avast/retry-go"
 	log "github.com/sirupsen/logrus"
+	"github.com/tardigrade-runtime/samaritano/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
@@ -49,9 +50,9 @@ func ReadWorkerNodeProfile(ctx context.Context, wrkCtx *typ.WorkerContext) (*typ
 			if !ok {
 				return retry.Unrecoverable(fmt.Errorf("worker profile configmap %q has no %q key", wrkCtx.WorkerProfileConfigMapName, wrkCtx.KubeletExtraArgsNodeProfileConfigmapKey))
 			}
-			apiServerExternalAddressesInfo, ok := cm.Data[wrkCtx.ExternalAddressNodeProfileConfigmapKey]
+			controlPlaneEndpointNodeProfileInfo, ok := cm.Data[wrkCtx.ControlPlaneEndpointNodeProfileConfigmapKey]
 			if !ok {
-				return retry.Unrecoverable(fmt.Errorf("worker profile configmap %q has no %q key", wrkCtx.WorkerProfileConfigMapName, wrkCtx.ExternalAddressNodeProfileConfigmapKey))
+				return retry.Unrecoverable(fmt.Errorf("worker profile configmap %q has no %q key", wrkCtx.WorkerProfileConfigMapName, wrkCtx.ControlPlaneEndpointNodeProfileConfigmapKey))
 			}
 			cniProvider, ok := cm.Data[wrkCtx.CNIEnableProviderNodeProfileConfigmapKey]
 			if !ok {
@@ -63,13 +64,13 @@ func ReadWorkerNodeProfile(ctx context.Context, wrkCtx *typ.WorkerContext) (*typ
 				return retry.Unrecoverable(fmt.Errorf("failed to unmarshal kubelet extra args content: %v", err))
 			}
 
-			apiServerExternalAddresses := []string{}
-			if err = json.Unmarshal([]byte(apiServerExternalAddressesInfo), &apiServerExternalAddresses); err != nil {
+			controlPlaneEndpointNodeProfile := v1alpha1.ControlPlaneEndpointSpec{}
+			if err = json.Unmarshal([]byte(controlPlaneEndpointNodeProfileInfo), &controlPlaneEndpointNodeProfile); err != nil {
 				log.WithError(err).Errorf("failed to unmarshal API server external address content: %v", err)
 				return retry.Unrecoverable(fmt.Errorf("failed to unmarshal API server external address content: %v", err))
 			}
 
-			profile = &typ.NodeProfile{KubeletConfiguration: kubeletConfig, KubeletExtraArgs: extraArgs, ApiServerExternalAddress: apiServerExternalAddresses, CNIProvider: cniProvider}
+			profile = &typ.NodeProfile{KubeletConfiguration: kubeletConfig, KubeletExtraArgs: extraArgs, ControlPlaneEndpoint: controlPlaneEndpointNodeProfile, CNIProvider: cniProvider}
 			return nil
 		},
 		retry.Attempts(4),

@@ -5,16 +5,18 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"strconv"
 	"time"
 
 	log "github.com/sirupsen/logrus"
+	"github.com/tardigrade-runtime/samaritano/api/v1alpha1"
 )
 
 type NodeProfile struct {
-	KubeletConfiguration     string            `json:"kubeletConfiguration"`
-	KubeletExtraArgs         map[string]string `json:"KubeletExtraArgs"`
-	ApiServerExternalAddress []string          `json:"apiServerExternalAddress"`
-	CNIProvider              string            `json:"CNIProvider"`
+	KubeletConfiguration string                            `json:"kubeletConfiguration"`
+	KubeletExtraArgs     map[string]string                 `json:"KubeletExtraArgs"`
+	ControlPlaneEndpoint v1alpha1.ControlPlaneEndpointSpec `json:"controlPlaneEndpoint"`
+	CNIProvider          string                            `json:"CNIProvider"`
 }
 
 // Save marshals the NodeProfile to JSON and writes it to path.
@@ -68,7 +70,7 @@ type WorkerContext struct {
 
 	ApiServerLocalAddress string `default:"https://127.0.0.1:6443"`
 
-	ExternalAddressNodeProfileConfigmapKey      string `default:"externalAddress"`
+	ControlPlaneEndpointNodeProfileConfigmapKey string `default:"control.plane.endpoint"`
 	KubeletExtraArgsNodeProfileConfigmapKey     string `default:"kubelet.extraArgs"`
 	KubeletConfigurationNodeProfileConfigmapKey string `default:"kubelet.configuration"`
 	NodeProfileLocalFilePath                    string `default:"/etc/samaritano/node-profile.json"`
@@ -76,6 +78,11 @@ type WorkerContext struct {
 	CNIEnableProviderNodeProfileConfigmapKey string `default:"cni.provider"`
 
 	CNIBinFolderPath string `default:"/opt/cni/bin"`
+
+	KonnectivityUdsName                  string `default:"/etc/kubernetes/konnectivity-server/konnectivity-server.socket"`
+	KonnectivityProxyServerPort          int32  `default:"8132"`
+	ApiServerWorkerProxyServerAddress    string `default:"0.0.0.0:6443"`
+	KonnectivityWorkerProxyServerAddress string `default:"0.0.0.0:8132"`
 }
 
 func NewWorkerContextWithDefaults() *WorkerContext {
@@ -85,8 +92,21 @@ func NewWorkerContextWithDefaults() *WorkerContext {
 	t := reflect.TypeOf(*wc)
 	v := reflect.ValueOf(wc).Elem()
 	for i := 0; i < t.NumField(); i++ {
-		if defaultVal, ok := t.Field(i).Tag.Lookup("default"); ok {
-			v.Field(i).SetString(defaultVal)
+		defaultVal, ok := t.Field(i).Tag.Lookup("default")
+		if !ok {
+			continue
+		}
+		field := v.Field(i)
+		switch field.Kind() {
+		case reflect.String:
+			field.SetString(defaultVal)
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			n, err := strconv.ParseInt(defaultVal, 10, 64)
+			if err != nil {
+				log.Warnf("invalid default value %q for field %s: %v", defaultVal, t.Field(i).Name, err)
+				continue
+			}
+			field.SetInt(n)
 		}
 	}
 

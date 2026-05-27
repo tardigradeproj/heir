@@ -153,7 +153,7 @@ func (s *SamaritanoSuite) sshToNode(name string) *SSHConn {
 	return conn
 }
 
-func (s *SamaritanoSuite) TestProvisionControlPlane() {
+func (s *SamaritanoSuite) _TestProvisionControlPlane() {
 	ctx := context.Background()
 	t := s.T()
 
@@ -206,6 +206,6 @@ func (s *SamaritanoSuite) TestProvisionControlPlane() {
 
 	time.Sleep(2 * time.Hour)
 }
-func TestSamaritanoSuite(t *testing.T) {
+func _TestSamaritanoSuite(t *testing.T) {
 	suite.Run(t, new(SamaritanoSuite))
 }

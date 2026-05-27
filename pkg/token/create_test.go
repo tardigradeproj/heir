@@ -75,7 +75,7 @@ func writeKubeconfig(t *testing.T, serverURL, contextName string, caData []byte)
 // fakeAPIServer returns an httptest.Server that handles the two endpoints
 // CreateBootstrapToken exercises:
 //   - GET  .../namespaces/kube-system/configmaps/worker-profile  — always 200;
-//     the externalAddress key is always present (empty JSON array when nil).
+//     the "control.plane.endpoint" key holds a NodeProfile JSON with the given addresses and port 6443.
 //   - POST .../namespaces/kube-system/secrets — responds with secretStatusCode.
 func fakeAPIServer(t *testing.T, secretStatusCode int, externalAddresses []string) *httptest.Server {
 	t.Helper()
@@ -87,10 +87,16 @@ func fakeAPIServer(t *testing.T, secretStatusCode int, externalAddresses []strin
 			if addrs == nil {
 				addrs = []string{}
 			}
-			addrsJSON, _ := json.Marshal(addrs)
+			nodeProfile := map[string]interface{}{
+				"controlPlaneEndpoint": map[string]interface{}{
+					"addresses": addrs,
+					"apiServer": map[string]interface{}{"port": 6443},
+				},
+			}
+			nodeProfileJSON, _ := json.Marshal(nodeProfile)
 			cm := &corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{Name: "worker-profile", Namespace: "kube-system"},
-				Data:       map[string]string{"externalAddress": string(addrsJSON)},
+				Data:       map[string]string{"control.plane.endpoint": string(nodeProfileJSON)},
 			}
 			w.WriteHeader(http.StatusOK)
 			_ = json.NewEncoder(w).Encode(cm)
@@ -234,11 +240,11 @@ func TestCreateBootstrapToken(t *testing.T) {
 			wantErrMsg: "failed to create bootstrap token secret",
 		},
 		{
-			// external addresses are stored as-is (no https prefix) under bootstrap-1, bootstrap-2, …
+			// external addresses are returned as https://<host>:<port> under bootstrap-1, bootstrap-2, …
 			// addresses that equal the primary server URL are deduplicated and skipped.
 			name: "external addresses from configmap appear as bootstrap-N cluster entries",
 			setup: func(t *testing.T) (string, string) {
-				srv := fakeAPIServer(t, http.StatusCreated, []string{"10.0.0.1:6443", "10.0.0.2:6443"})
+				srv := fakeAPIServer(t, http.StatusCreated, []string{"10.0.0.1", "10.0.0.2"})
 				t.Cleanup(srv.Close)
 				return writeKubeconfig(t, srv.URL, "samaritano", caPEM), "samaritano"
 			},
@@ -251,7 +257,7 @@ func TestCreateBootstrapToken(t *testing.T) {
 				if got := len(cfg.Clusters); got != 3 {
 					t.Errorf("expected 3 cluster entries (1 primary + 2 external), got %d", got)
 				}
-				for i, addr := range []string{"10.0.0.1:6443", "10.0.0.2:6443"} {
+				for i, addr := range []string{"https://10.0.0.1:6443", "https://10.0.0.2:6443"} {
 					name := fmt.Sprintf("bootstrap-%d", i+1)
 					cluster, ok := cfg.Clusters[name]
 					if !ok {

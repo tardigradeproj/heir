@@ -48,6 +48,8 @@ nodes:
   extraPortMappings:
   - containerPort: 30080
     hostPort: 30080
+  - containerPort: 30081
+    hostPort: 30081
 containerdConfigPatches:
 - |-
   [plugins."io.containerd.grpc.v1.cri".registry]
@@ -108,6 +110,11 @@ docker push "localhost:${reg_port}/samaritano-base:v0.0.1"
 docker pull postgres:16
 docker tag postgres:16 "localhost:${reg_port}/postgres:16"
 docker push "localhost:${reg_port}/postgres:16"
+
+docker tag registry.k8s.io/kas-network-proxy/proxy-server:v0.0.37 "localhost:${reg_port}/proxy-server:v0.0.37"
+docker push "localhost:${reg_port}/proxy-server:v0.0.37"
+docker tag registry.k8s.io/kas-network-proxy/proxy-agent:v0.0.37 "localhost:${reg_port}/proxy-agent:v0.0.37"
+docker push "localhost:${reg_port}/proxy-agent:v0.0.37"
 
 # 8. Provision PostgreSQL (secret, deployment, service) and wait until healthy
 kubectl --kubeconfig="${kubeconfig_path}" create secret generic postgres-credentials \

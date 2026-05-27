@@ -1089,6 +1089,12 @@ spec:
                     type: object
                   service:
                     properties:
+                      KonnectivityNodePort:
+                        default: 30081
+                        description: Konnectivity NodePort, only use this option when
+                          serviceType is NodePort
+                        format: int32
+                        type: integer
                       additionalMetadata:
                         properties:
                           annotations:
@@ -1156,10 +1162,17 @@ spec:
                         format: int32
                         type: integer
                       serviceType:
+                        default: NodePort
                         description: ServiceType allows specifying how to expose the
                           Control Plane.
+                        enum:
+                        - NodePort
+                        - ClusterIP
+                        - LoadBalancer
+                        - ExternalName
                         type: string
                     required:
+                    - KonnectivityNodePort
                     - apiServerNodePort
                     - serviceType
                     type: object
@@ -1175,13 +1188,6 @@ spec:
                     default: {}
                     description: APIServerSpec defines api-server configurations
                     properties:
-                      externalAddresses:
-                        description: |-
-                          If Samaritano controllers are running behind a loadbalancer provide the loadbalancer address here. This will configure all cluster
-                          components to connect to this address and also configures this address to be used when joining new nodes into the cluster.
-                        items:
-                          type: string
-                        type: array
                       extraArgs:
                         additionalProperties:
                           type: string
@@ -1195,6 +1201,44 @@ spec:
                         items:
                           type: string
                         type: array
+                    type: object
+                  controlPlaneEndpoint:
+                    default: {}
+                    properties:
+                      addresses:
+                        description: Addresses are the hosts (IP or hostname) to connect
+                          to.
+                        items:
+                          type: string
+                        type: array
+                      apiServer:
+                        default:
+                          port: 30080
+                        description: APIServer defines how workers reach the API server.
+                        properties:
+                          port:
+                            description: Port on the remote endpoint.
+                            format: int32
+                            type: integer
+                        required:
+                        - port
+                        type: object
+                      konnectivity:
+                        default:
+                          port: 30081
+                        description: Konnectivity defines how workers reach the Konnectivity
+                          server.
+                        properties:
+                          port:
+                            description: Port on the remote endpoint.
+                            format: int32
+                            type: integer
+                        required:
+                        - port
+                        type: object
+                    required:
+                    - apiServer
+                    - konnectivity
                     type: object
                   controllerManager:
                     default: {}
@@ -1278,6 +1322,177 @@ spec:
                             format: int32
                             minimum: 1
                             type: integer
+                        type: object
+                      konnectivity:
+                        default:
+                          enabled: true
+                        description: Enables the Konnectivity addon in the Tenant
+                          Cluster, required if the worker nodes are in a different
+                          network.
+                        properties:
+                          agent:
+                            default:
+                              image: registry.k8s.io/kas-network-proxy/proxy-agent:v0.0.37
+                              mode: DaemonSet
+                            properties:
+                              extraArgs:
+                                additionalProperties:
+                                  type: string
+                                type: object
+                              hostNetwork:
+                                default: true
+                                description: |-
+                                  HostNetwork enables the konnectivity agent to use the Host network namespace.
+                                  By enabling this mode, the Agent doesn't need to wait for the CNI initialisation,
+                                  enabling a sort of out-of-band access to nodes for troubleshooting scenarios,
+                                  or when the agent needs direct access to the host network.
+                                type: boolean
+                              image:
+                                default: registry.k8s.io/kas-network-proxy/proxy-agent:v0.0.37
+                                description: AgentImage defines the container image
+                                  for Konnectivity's agent.
+                                type: string
+                              mode:
+                                default: DaemonSet
+                                description: 'Mode allows specifying the Agent deployment
+                                  mode: Deployment, or DaemonSet (default).'
+                                enum:
+                                - DaemonSet
+                                - Deployment
+                                type: string
+                              replicas:
+                                description: |-
+                                  Replicas defines the number of replicas when Mode is Deployment.
+                                  Must be 0 if Mode is DaemonSet.
+                                format: int32
+                                type: integer
+                              tolerations:
+                                default:
+                                - key: CriticalAddonsOnly
+                                  operator: Exists
+                                description: |-
+                                  Tolerations for the deployed agent.
+                                  Can be customized to start the konnectivity-agent even if the nodes are not ready or tainted.
+                                items:
+                                  description: |-
+                                    The pod this Toleration is attached to tolerates any taint that matches
+                                    the triple <key,value,effect> using the matching operator <operator>.
+                                  properties:
+                                    effect:
+                                      description: |-
+                                        Effect indicates the taint effect to match. Empty means match all taint effects.
+                                        When specified, allowed values are NoSchedule, PreferNoSchedule and NoExecute.
+                                      type: string
+                                    key:
+                                      description: |-
+                                        Key is the taint key that the toleration applies to. Empty means match all taint keys.
+                                        If the key is empty, operator must be Exists; this combination means to match all values and all keys.
+                                      type: string
+                                    operator:
+                                      description: |-
+                                        Operator represents a key's relationship to the value.
+                                        Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal.
+                                        Exists is equivalent to wildcard for value, so that a pod can
+                                        tolerate all taints of a particular category.
+                                        Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).
+                                      type: string
+                                    tolerationSeconds:
+                                      description: |-
+                                        TolerationSeconds represents the period of time the toleration (which must be
+                                        of effect NoExecute, otherwise this field is ignored) tolerates the taint. By default,
+                                        it is not set, which means tolerate the taint forever (do not evict). Zero and
+                                        negative values will be treated as 0 (evict immediately) by the system.
+                                      format: int64
+                                      type: integer
+                                    value:
+                                      description: |-
+                                        Value is the taint value the toleration matches to.
+                                        If the operator is Exists, the value should be empty, otherwise just a regular string.
+                                      type: string
+                                  type: object
+                                type: array
+                            type: object
+                          enabled:
+                            default: true
+                            type: boolean
+                          server:
+                            default:
+                              image: registry.k8s.io/kas-network-proxy/proxy-server:v0.0.37
+                              port: 8132
+                            properties:
+                              extraArgs:
+                                additionalProperties:
+                                  type: string
+                                type: object
+                              image:
+                                default: registry.k8s.io/kas-network-proxy/proxy-server:v0.0.37
+                                description: Container image used by the Konnectivity
+                                  server.
+                                type: string
+                              resources:
+                                description: Resources define the amount of CPU and
+                                  memory to allocate to the Konnectivity server.
+                                properties:
+                                  claims:
+                                    description: |-
+                                      Claims lists the names of resources, defined in spec.resourceClaims,
+                                      that are used by this container.
+
+                                      This field depends on the
+                                      DynamicResourceAllocation feature gate.
+
+                                      This field is immutable. It can only be set for containers.
+                                    items:
+                                      description: ResourceClaim references one entry
+                                        in PodSpec.ResourceClaims.
+                                      properties:
+                                        name:
+                                          description: |-
+                                            Name must match the name of one entry in pod.spec.resourceClaims of
+                                            the Pod where this field is used. It makes that resource available
+                                            inside a container.
+                                          type: string
+                                        request:
+                                          description: |-
+                                            Request is the name chosen for a request in the referenced claim.
+                                            If empty, everything from the claim is made available, otherwise
+                                            only the result of this request.
+                                          type: string
+                                      required:
+                                      - name
+                                      type: object
+                                    type: array
+                                    x-kubernetes-list-map-keys:
+                                    - name
+                                    x-kubernetes-list-type: map
+                                  limits:
+                                    additionalProperties:
+                                      anyOf:
+                                      - type: integer
+                                      - type: string
+                                      pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                      x-kubernetes-int-or-string: true
+                                    description: |-
+                                      Limits describes the maximum amount of compute resources allowed.
+                                      More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                                    type: object
+                                  requests:
+                                    additionalProperties:
+                                      anyOf:
+                                      - type: integer
+                                      - type: string
+                                      pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                      x-kubernetes-int-or-string: true
+                                    description: |-
+                                      Requests describes the minimum amount of compute resources required.
+                                      If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                                      otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                                      More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                                    type: object
+                                type: object
+                            type: object
+                        required:
+                        - enabled
                         type: object
                       kubeProxy:
                         default: {}
@@ -1393,6 +1608,7 @@ spec:
                         type: string
                     required:
                     - coredns
+                    - konnectivity
                     - kubeProxy
                     type: object
                   scheduler:
@@ -1455,6 +1671,7 @@ spec:
                     type: object
                 required:
                 - apiServer
+                - controlPlaneEndpoint
                 - controllerManager
                 - extraResources
                 - kubelet

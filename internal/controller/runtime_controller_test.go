@@ -184,7 +184,6 @@ var _ = Describe("Runtime Controller PKI", func() {
 						},
 						UpstreamCluster: controlplanev1alpha1.UpstreamCluster{
 							APIServer: controlplanev1alpha1.APIServerSpec{
-								ExternalAddresses: []string{"tardigrader.com"},
 								Sans: []string{
 									"tardigrade.vm.co.mz",
 								},

@@ -33,6 +33,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	controlplanev1alpha1 "github.com/tardigrade-runtime/samaritano/api/v1alpha1"
+	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/typ"
 	samaritanoruntime "github.com/tardigrade-runtime/samaritano/pkg/runtime"
 )
 
@@ -154,7 +155,7 @@ func (r *RuntimeReconciler) setupService(
 	ctx context.Context,
 	controlPlaneRuntime *controlplanev1alpha1.Runtime,
 ) error {
-	desired, err := samaritanoruntime.GenerateService(controlPlaneRuntime)
+	desired, err := samaritanoruntime.GenerateService(controlPlaneRuntime, typ.NewWorkerContextWithDefaults())
 	if err != nil {
 		return err
 	}
