@@ -164,3 +164,8 @@ vagrant-ssh: ## Open an SSH session into the Vagrant VM
 copy-masteragent: ## Build masteragent on vagrant and copy binary back to host
 	vagrant ssh -c "cd samaritano && make build-masteragent"
 	vagrant scp default:~/samaritano/artifacts/masteragent $(ARTIFACTS_DIR)/masteragent
+
+
+.PHONY: test-distro
+test-distro:
+	go test $$(go list ./... | grep -v -e 'internal/controller' -e 'cmd')
