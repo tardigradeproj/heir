@@ -25,11 +25,13 @@ func TestAPIServerAltNames(t *testing.T) {
 			name:    "defaults only when no extra SANs provided",
 			cluster: controlplanev1alpha1.UpstreamCluster{},
 			expected: []string{
+				"0.0.0.0",
 				"10.96.0.1",
 				"127.0.0.1",
 				"api-server.kubernetes.local",
 				"kubernetes",
 				"kubernetes.default",
+				"kubernetes.default.cluster",
 				"kubernetes.default.svc",
 				"server.kubernetes.local",
 			},
@@ -42,12 +44,14 @@ func TestAPIServerAltNames(t *testing.T) {
 				},
 			},
 			expected: []string{
+				"0.0.0.0",
 				"10.0.0.1",
 				"10.96.0.1",
 				"127.0.0.1",
 				"api-server.kubernetes.local",
 				"kubernetes",
 				"kubernetes.default",
+				"kubernetes.default.cluster",
 				"kubernetes.default.svc",
 				"my-cluster.example.com",
 				"server.kubernetes.local",
@@ -61,11 +65,13 @@ func TestAPIServerAltNames(t *testing.T) {
 				},
 			},
 			expected: []string{
+				"0.0.0.0",
 				"10.96.0.1",
 				"127.0.0.1",
 				"api-server.kubernetes.local",
 				"kubernetes",
 				"kubernetes.default",
+				"kubernetes.default.cluster",
 				"kubernetes.default.svc",
 				"my-cluster.example.com",
 				"server.kubernetes.local",
@@ -82,11 +88,13 @@ func TestAPIServerAltNames(t *testing.T) {
 				},
 			},
 			expected: []string{
+				"0.0.0.0",
 				"10.96.0.1",
 				"127.0.0.1",
 				"api-server.kubernetes.local",
 				"kubernetes",
 				"kubernetes.default",
+				"kubernetes.default.cluster",
 				"kubernetes.default.svc",
 				"server.kubernetes.local",
 			},
@@ -99,11 +107,13 @@ func TestAPIServerAltNames(t *testing.T) {
 				},
 			},
 			expected: []string{
+				"0.0.0.0",
 				"10.96.0.1",
 				"127.0.0.1",
 				"api-server.kubernetes.local",
 				"kubernetes",
 				"kubernetes.default",
+				"kubernetes.default.cluster",
 				"kubernetes.default.svc",
 				"server.kubernetes.local",
 				"valid.example.com",
@@ -139,13 +149,13 @@ func TestGeneratePKIAuthSecret(t *testing.T) {
 	layout := NewControlPlaneLayout()
 
 	tests := []struct {
-		name      string
-		runtime   *controlplanev1alpha1.Runtime
-		validate  func(t *testing.T, secret map[string][]byte)
+		name     string
+		runtime  *controlplanev1alpha1.Runtime
+		validate func(t *testing.T, secret map[string][]byte)
 	}{
 		{
-			name:    "secret name and namespace match the runtime",
-			runtime: pkiAuthRuntime("my-cluster", "default", controlplanev1alpha1.UpstreamCluster{}),
+			name:     "secret name and namespace match the runtime",
+			runtime:  pkiAuthRuntime("my-cluster", "default", controlplanev1alpha1.UpstreamCluster{}),
 			validate: func(t *testing.T, _ map[string][]byte) {},
 		},
 		{

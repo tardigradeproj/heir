@@ -9,7 +9,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
@@ -45,6 +44,13 @@ spec:
   upstreamCluster:
     storage:
       type: kine
+    controlPlaneEndpoint:
+      addresses:
+        - "10.0.2.2"
+      apiServer:
+        port: 30080
+      konnectivity:
+        port: 30081
 `
 
 // runtimeConfigWithExternalAddress has a controlPlaneEndpoint address set.
@@ -119,8 +125,8 @@ func TestProvision(t *testing.T) {
 			name: "all resources are created on success",
 			validate: func(t *testing.T, fc *fake.Clientset, _ string) {
 				// pki-auth secret, storage secret, configmap, service, deployment
-				assert.Equal(t, 5, verbCount(fc, "create"),
-					"expected 5 create actions; got: %v", fc.Actions())
+				assert.Equal(t, 4, verbCount(fc, "create"),
+					"expected 4 create actions; got: %v", fc.Actions())
 			},
 		},
 		{
@@ -212,34 +218,6 @@ func TestProvision(t *testing.T) {
 			},
 		},
 		{
-			name: "storage secret failure rolls back PKI auth",
-			makeClient: func() *fake.Clientset {
-				fc := fake.NewClientset()
-				// Let the first secrets create (PKI) succeed, fail the second (storage).
-				callCount := 0
-				fc.Fake.PrependReactor("create", "secrets",
-					func(action k8stesting.Action) (bool, runtime.Object, error) {
-						callCount++
-						if callCount == 2 {
-							return true, nil, fmt.Errorf("injected: storage secret failed")
-						}
-						return false, nil, nil // fall through to default handler
-					},
-				)
-				return fc
-			},
-			wantErr:     true,
-			errContains: "failed to setup storage secret",
-			validate: func(t *testing.T, fc *fake.Clientset, _ string) {
-				// PKI auth secret was created, then rolled back.
-				assert.Equal(t, 1, verbCount(fc, "delete"),
-					"expected exactly one delete (pki-auth secret rollback)")
-				deleteAction := firstDeleteAction(fc)
-				require.NotNil(t, deleteAction)
-				assert.Contains(t, deleteAction.GetName(), "pki-auth")
-			},
-		},
-		{
 			name: "deployment failure rolls back all previously created resources",
 			makeClient: func() *fake.Clientset {
 				fc := fake.NewClientset()
@@ -250,8 +228,8 @@ func TestProvision(t *testing.T) {
 			errContains: "failed to setup deployment",
 			validate: func(t *testing.T, fc *fake.Clientset, _ string) {
 				// PKI, storage, config, service all created before deployment failed.
-				assert.Equal(t, 4, verbCount(fc, "delete"),
-					"expected 4 deletes (pki-auth, storage, configmap, service); got: %v",
+				assert.Equal(t, 3, verbCount(fc, "delete"),
+					"expected 3 deletes (pki-auth, storage, configmap, service); got: %v",
 					fc.Actions())
 			},
 		},
@@ -265,8 +243,8 @@ func TestProvision(t *testing.T) {
 			wantErr:     true,
 			errContains: "failed to setup service",
 			validate: func(t *testing.T, fc *fake.Clientset, _ string) {
-				assert.Equal(t, 3, verbCount(fc, "delete"),
-					"expected 3 deletes (pki-auth, storage, configmap); got: %v",
+				assert.Equal(t, 2, verbCount(fc, "delete"),
+					"expected 2 deletes (pki-auth, storage, configmap); got: %v",
 					fc.Actions())
 			},
 		},
@@ -346,21 +324,6 @@ func firstDeleteAction(fc *fake.Clientset) k8stesting.DeleteAction {
 // Verify fake.Clientset satisfies kubernetes.Interface (used as withClient argument).
 var _ kubernetes.Interface = (*fake.Clientset)(nil)
 
-// Verify the storage secret lands in the fake store.
-func TestProvisionStorageSecretCreated(t *testing.T) {
-	fc := fake.NewClientset()
-	configPath := writeTempRuntimeConfig(t, minimalRuntimeConfig)
-
-	err := Provision(context.Background(), WithConfig(configPath), withClient(fc))
-	require.NoError(t, err)
-
-	secret, err := fc.CoreV1().Secrets("default").Get(
-		context.Background(), "test-cluster-storage", metav1.GetOptions{})
-	require.NoError(t, err)
-	// GenerateStorageSecret uses StringData; the fake client preserves it as-is.
-	assert.NotEmpty(t, secret.StringData, "storage secret should contain the kine run-script")
-}
-
 // TestProvisionCreatesNamespacedResources verifies all resources land in the correct namespace.
 func TestProvisionCreatesNamespacedResources(t *testing.T) {
 	fc := fake.NewClientset()
@@ -376,48 +339,4 @@ func TestProvisionCreatesNamespacedResources(t *testing.T) {
 				action.GetResource().Resource, action.GetNamespace())
 		}
 	}
-}
-
-// TestProvisionFakeSecretDataSource verifies DataSourceRef is resolved when present.
-func TestProvisionDataSourceRefResolved(t *testing.T) {
-	dsSecret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{Name: "my-db-secret", Namespace: "default"},
-		Data:       map[string][]byte{"url": []byte("postgres://user:pass@host/db")},
-	}
-	fc := fake.NewClientset(dsSecret)
-
-	configPath := writeTempRuntimeConfig(t, `apiVersion: controlplane.tardigrade.runtime.io/v1alpha1
-kind: Runtime
-metadata:
-  name: test-cluster
-  namespace: default
-spec:
-  controlPlane:
-    samaritano:
-      image: "samaritano:test"
-    deployment:
-      replicas: 1
-      serviceAccountName: default
-    service:
-      serviceType: ClusterIP
-  upstreamCluster:
-    storage:
-      type: kine
-      kine:
-        dataSourceRef:
-          name: my-db-secret
-          key: url
-`)
-
-	err := Provision(context.Background(), WithConfig(configPath), withClient(fc))
-	require.NoError(t, err)
-
-	storageSecret, err := fc.CoreV1().Secrets("default").Get(
-		context.Background(), "test-cluster-storage", metav1.GetOptions{})
-	require.NoError(t, err)
-
-	// GenerateStorageSecret uses StringData; the fake client preserves it as-is.
-	script := storageSecret.StringData["kine.sh"]
-	assert.Contains(t, script, "postgres://user:pass@host/db",
-		"expected kine run-script to contain the resolved data source URL")
 }

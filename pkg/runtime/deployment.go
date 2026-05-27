@@ -69,18 +69,20 @@ func GenerateDeployment(runtime *controlplanev1alpha1.Runtime, layout ControlPla
 	}
 	storage := runtime.Spec.UpstreamCluster.Storage
 	var env []corev1.EnvVar
-	if storage.Type == "kine" && storage.Kine.DataSourceRef.Name != "" {
-		env = append(env, corev1.EnvVar{
-			Name: "SAMARITANO_STORAGE_ENDPOINT",
-			ValueFrom: &corev1.EnvVarSource{
-				SecretKeyRef: &corev1.SecretKeySelector{
-					LocalObjectReference: corev1.LocalObjectReference{
-						Name: storage.Kine.DataSourceRef.Name,
+	if storage.Type == "kine" {
+		if storage.Kine != nil && storage.Kine.DataSourceRef.Name != "" {
+			env = append(env, corev1.EnvVar{
+				Name: "SAMARITANO_STORAGE_ENDPOINT",
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: storage.Kine.DataSourceRef.Name,
+						},
+						Key: storage.Kine.DataSourceRef.Key,
 					},
-					Key: storage.Kine.DataSourceRef.Key,
 				},
-			},
-		})
+			})
+		}
 	}
 	volumeMounts := []corev1.VolumeMount{
 		// PKI: mount the whole secret directory — all certs/keys land at /etc/kubernetes/pki/<file>.

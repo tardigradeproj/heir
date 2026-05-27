@@ -168,7 +168,7 @@ type StorageSpec struct {
 	//+kubebuilder:default="kine"
 	Type string `json:"type"`
 	// Kine holds kine configuration
-	Kine KineSpec `json:"kine"`
+	Kine *KineSpec `json:"kine"`
 }
 type KineSpec struct {
 	// DataSourceRef points to a Secret containing the Kine data source URL.
