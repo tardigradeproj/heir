@@ -39,3 +39,5 @@ integration-test/bastion-kubeconfig.yaml
 integration-test/kubeconfig.yaml
 .junie
 .local-cred
+# Added by goreleaser init:
+dist/
