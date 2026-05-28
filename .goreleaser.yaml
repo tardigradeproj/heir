@@ -16,6 +16,8 @@ builds:
   - main: cmd/distro.go
     id: distro
     binary: distro
+    flags:
+      - -tags=embedartifacts
     env:
       - CGO_ENABLED=0
     hooks:
