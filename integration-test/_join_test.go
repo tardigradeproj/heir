@@ -15,14 +15,14 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
-type SamaritanoSuite struct {
+type HeirSuite struct {
 	suite.Suite
 	clusterDir string
 	cluster    *cluster.Cluster
 	cfg        config.Config
 }
 
-func (s *SamaritanoSuite) SetupSuite() {
+func (s *HeirSuite) SetupSuite() {
 
 	dir, err := os.MkdirTemp("", "bootloose-*")
 	s.Require().NoError(err)
@@ -30,14 +30,14 @@ func (s *SamaritanoSuite) SetupSuite() {
 
 	cfg := config.Config{
 		Cluster: config.Cluster{
-			Name:       "samaritano-test",
+			Name:       "heir-test",
 			PrivateKey: filepath.Join(dir, "id_rsa"),
 		},
 		Machines: []config.MachineReplicas{
 			{
 				Count: 1,
 				Spec: &config.Machine{
-					Image:      "samaritano-integration-test:v1",
+					Image:      "heir-integration-test:v1",
 					Name:       "bastion%d",
 					Privileged: true,
 					PortMappings: []config.PortMapping{
@@ -46,7 +46,7 @@ func (s *SamaritanoSuite) SetupSuite() {
 					Networks: []string{"kind"},
 					Volumes: []config.Volume{
 						{
-							// Mount the samaritano distro binary built by make build-distro
+							// Mount the heir distro binary built by make build-distro
 							Type:        "bind",
 							Source:      "./tardigrade",
 							Destination: "/usr/local/bin/tardigrade",
@@ -71,7 +71,7 @@ func (s *SamaritanoSuite) SetupSuite() {
 					Networks: []string{"kind"},
 					Volumes: []config.Volume{
 						{
-							// Mount the samaritano distro binary built by make build-distro
+							// Mount the heir distro binary built by make build-distro
 							Type:        "bind",
 							Source:      "./tardigrade",
 							Destination: "/usr/local/bin/tardigrade",
@@ -95,7 +95,7 @@ func (s *SamaritanoSuite) SetupSuite() {
 	s.Require().NoError(err)
 	s.ConfigureVM(controlPlaneIP)
 }
-func (s *SamaritanoSuite) TearDownSuite() {
+func (s *HeirSuite) TearDownSuite() {
 	if s.cluster != nil {
 		_ = s.cluster.Delete()
 	}
@@ -104,7 +104,7 @@ func (s *SamaritanoSuite) TearDownSuite() {
 	}
 	_ = os.RemoveAll(tardigradeClusterKubeConfigPath)
 }
-func (s *SamaritanoSuite) ConfigureVM(kindContainerIP string) {
+func (s *HeirSuite) ConfigureVM(kindContainerIP string) {
 	machines, err := s.cluster.Inspect(nil)
 	s.Require().NoError(err)
 
@@ -112,13 +112,13 @@ func (s *SamaritanoSuite) ConfigureVM(kindContainerIP string) {
 		func() {
 			conn := s.sshToNode(machine.Hostname())
 			defer conn.Close()
-			out, err := conn.Run(context.Background(), fmt.Sprintf("echo '%s %s' >> /etc/hosts", kindContainerIP, samaritanoExternalAddress))
+			out, err := conn.Run(context.Background(), fmt.Sprintf("echo '%s %s' >> /etc/hosts", kindContainerIP, heirExternalAddress))
 			s.Require().NoError(err, out)
 		}()
 	}
 }
 
-func (s *SamaritanoSuite) sshToNode(name string) *SSHConn {
+func (s *HeirSuite) sshToNode(name string) *SSHConn {
 	machines, err := s.cluster.Inspect(nil)
 	s.Require().NoError(err)
 
@@ -153,7 +153,7 @@ func (s *SamaritanoSuite) sshToNode(name string) *SSHConn {
 	return conn
 }
 
-func (s *SamaritanoSuite) _TestProvisionControlPlane() {
+func (s *HeirSuite) _TestProvisionControlPlane() {
 	ctx := context.Background()
 	t := s.T()
 
@@ -178,7 +178,7 @@ func (s *SamaritanoSuite) _TestProvisionControlPlane() {
 	ctx30, cancel30 := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel30()
 	for {
-		out, err = bastionSSHConnection.Run(ctx30, fmt.Sprintf("curl -kfs https://%s:%d/readyz", samaritanoExternalAddress, samaritanoApiServerPort))
+		out, err = bastionSSHConnection.Run(ctx30, fmt.Sprintf("curl -kfs https://%s:%d/readyz", heirExternalAddress, heirApiServerPort))
 		t.Log(out)
 		if err == nil && strings.TrimSpace(out) == "ok" {
 			t.Log("API server is ready")
@@ -194,7 +194,7 @@ func (s *SamaritanoSuite) _TestProvisionControlPlane() {
 	t.Log("generating join command")
 	joinScript, err := bastionSSHConnection.Run(ctx, "tardigrade token generate"+
 		" --kubeconfig /tmp/tardigrade-kubeconfig.yaml"+
-		" --name samaritano-my-cluster@kubernetes"+
+		" --name heir-my-cluster@kubernetes"+
 		" --expiry 3h")
 	require.NoError(t, err, joinScript)
 
@@ -206,6 +206,6 @@ func (s *SamaritanoSuite) _TestProvisionControlPlane() {
 
 	time.Sleep(2 * time.Hour)
 }
-func _TestSamaritanoSuite(t *testing.T) {
-	suite.Run(t, new(SamaritanoSuite))
+func _TestHeirSuite(t *testing.T) {
+	suite.Run(t, new(HeirSuite))
 }

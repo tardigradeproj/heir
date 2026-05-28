@@ -33,7 +33,7 @@ import (
 
 var (
 	// managerImage is the manager image to be built and loaded for testing.
-	managerImage = "example.com/samaritano:v0.0.1"
+	managerImage = "example.com/heir:v0.0.1"
 	// shouldCleanupCertManager tracks whether CertManager was installed by this suite.
 	shouldCleanupCertManager = false
 )
@@ -44,7 +44,7 @@ var (
 // To skip CertManager installation, set: CERT_MANAGER_INSTALL_SKIP=true
 func TestE2E(t *testing.T) {
 	RegisterFailHandler(Fail)
-	_, _ = fmt.Fprintf(GinkgoWriter, "Starting samaritano e2e test suite\n")
+	_, _ = fmt.Fprintf(GinkgoWriter, "Starting heir e2e test suite\n")
 	RunSpecs(t, "e2e suite")
 }
 

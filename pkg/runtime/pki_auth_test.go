@@ -252,7 +252,7 @@ func TestGeneratePKIAuthSecret(t *testing.T) {
 			validate: func(t *testing.T, data map[string][]byte) {
 				cfg, err := clientcmd.Load(data[layout.Auth.AdminConf.SecretKey])
 				require.NoError(t, err)
-				assert.Equal(t, "samaritano-prod-cluster@kubernetes", cfg.CurrentContext)
+				assert.Equal(t, "heir-prod-cluster@kubernetes", cfg.CurrentContext)
 			},
 		},
 	}

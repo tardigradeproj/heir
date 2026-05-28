@@ -101,7 +101,7 @@ func GeneratePKIAuthSecret(runtime *controlplanev1alpha1.Runtime, layout Control
 		return nil, err
 	}
 
-	adminConf, err := generateKubeconfig(fmt.Sprintf("samaritano-%s", runtime.Name), ca.Cert, adminCert)
+	adminConf, err := generateKubeconfig(fmt.Sprintf("heir-%s", runtime.Name), ca.Cert, adminCert)
 	if err != nil {
 		return nil, err
 	}

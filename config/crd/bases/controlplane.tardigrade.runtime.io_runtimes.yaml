@@ -1080,8 +1080,8 @@ spec:
                       ingressClassName:
                         type: string
                     type: object
-                  samaritano:
-                    description: Samaritano provides details about the distribution
+                  heir:
+                    description: Heir provides details about the distribution
                       to install
                     properties:
                       image:
@@ -1177,7 +1177,7 @@ spec:
                     - serviceType
                     type: object
                 required:
-                - samaritano
+                - heir
                 type: object
               upstreamCluster:
                 default: {}

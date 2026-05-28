@@ -1,7 +1,7 @@
 ## Distro artifact targets — included by the root Makefile
 
 IMAGE_REGISTRY ?= ghcr.io/tardigrade
-IMAGE_NAME     ?= samaritano-base
+IMAGE_NAME     ?= heir-base
 IMAGE_TAG      ?= latest
 
 ARCH               ?= arm64
@@ -151,7 +151,7 @@ build-integration-test-image: ## Build the bootloose worker image with kubectl
 	docker build \
 		--build-arg KUBE_VERSION=$(KUBE_VERSION) \
 		--build-arg TARGETARCH=$(ARCH) \
-		-t samaritano-integration-test:v1 \
+		-t heir-integration-test:v1 \
 		integration-test
 
 .PHONY: integration-test
@@ -195,8 +195,8 @@ vagrant-ssh: ## Open an SSH session into the Vagrant VM
 
 .PHONY: copy-masteragent
 copy-masteragent: ## Build masteragent on vagrant and copy binary back to host
-	vagrant ssh -c "cd samaritano && make build-masteragent"
-	vagrant scp default:~/samaritano/artifacts/masteragent $(ARTIFACTS_DIR)/masteragent
+	vagrant ssh -c "cd heir && make build-masteragent"
+	vagrant scp default:~/heir/artifacts/masteragent $(ARTIFACTS_DIR)/masteragent
 
 
 .PHONY: test-distro

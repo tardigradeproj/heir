@@ -49,7 +49,7 @@ def start_local_container() -> str:
     Returns the container name so it can be passed to copy_to_container.
     """
     container_name = "local-test"
-    image = "samaritano-base:v3"
+    image = "heir-base:v3"
 
     result = subprocess.run(
         ["docker", "ps", "-a", "--filter", f"name=^{container_name}$", "--format", "{{.Names}}"],

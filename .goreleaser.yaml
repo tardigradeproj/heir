@@ -57,12 +57,12 @@ archives:
         formats: [zip]
 
 dockers_v2:
-  - id: samaritano-base
+  - id: heir-base
     dockerfile: images/base/Dockerfile
     extra_files:
       - images/base/bootstrap.sh
     images:
-      - ghcr.io/tardigrade/samaritano-base
+      - ghcr.io/tardigrade/heir-base
     tags:
       - "{{ .Tag }}"
       - "{{ if not .IsNightly }}latest{{ end }}"
@@ -70,14 +70,14 @@ dockers_v2:
       - linux/amd64
       - linux/arm64
 
-  - id: samaritano-controlplane
+  - id: heir-controlplane
     dockerfile: images/controlplane/Dockerfile
     ids:
       - masteragent
     extra_files:
       - artifacts/controlplane
     images:
-      - ghcr.io/tardigrade/samaritano-controlplane
+      - ghcr.io/tardigrade/heir-controlplane
     tags:
       - "{{ .Tag }}"
       - "{{ if not .IsNightly }}latest{{ end }}"
@@ -85,7 +85,7 @@ dockers_v2:
       - linux/amd64
       - linux/arm64
     build_args:
-      BASE_IMAGE: "ghcr.io/tardigrade/samaritano-base:{{ .Tag }}"
+      BASE_IMAGE: "ghcr.io/tardigrade/heir-base:{{ .Tag }}"
     hooks:
       pre:
         - cmd: make setup-controlplane-artifacts ARCH=amd64

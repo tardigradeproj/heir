@@ -17,16 +17,16 @@ import (
 // the result.
 func GenerateDeployment(runtime *controlplanev1alpha1.Runtime, layout ControlPlaneLayout, configHash string) (*appsv1.Deployment, error) {
 	deploySpec := runtime.Spec.ControlPlane.Deployment
-	samaritano := runtime.Spec.ControlPlane.Samaritano
+	heir := runtime.Spec.ControlPlane.Heir
 	wrkCtx := typ.NewWorkerContextWithDefaults()
 	labels := map[string]string{
 		"app.kubernetes.io/name":       runtime.Name,
-		"app.kubernetes.io/managed-by": "samaritano",
+		"app.kubernetes.io/managed-by": "heir",
 	}
 
 	podLabels := mergeMaps(labels, deploySpec.AdditionalMetadata.Labels)
 	podAnnotations := mergeMaps(
-		map[string]string{"samaritano.tardigrade.runtime.io/s6-overlay-config-hash": configHash},
+		map[string]string{"heir.tardigrade.runtime.io/s6-overlay-config-hash": configHash},
 		deploySpec.AdditionalMetadata.Annotations,
 	)
 
@@ -72,7 +72,7 @@ func GenerateDeployment(runtime *controlplanev1alpha1.Runtime, layout ControlPla
 	if storage.Type == "kine" {
 		if storage.Kine != nil && storage.Kine.DataSourceRef.Name != "" {
 			env = append(env, corev1.EnvVar{
-				Name: "SAMARITANO_STORAGE_ENDPOINT",
+				Name: "HEIR_STORAGE_ENDPOINT",
 				ValueFrom: &corev1.EnvVarSource{
 					SecretKeyRef: &corev1.SecretKeySelector{
 						LocalObjectReference: corev1.LocalObjectReference{
@@ -125,8 +125,8 @@ func GenerateDeployment(runtime *controlplanev1alpha1.Runtime, layout ControlPla
 
 	containers := []corev1.Container{
 		{
-			Name:         "samaritano",
-			Image:        samaritano.Image,
+			Name:         "heir",
+			Image:        heir.Image,
 			Ports:        containerPorts,
 			VolumeMounts: volumeMounts,
 			Env:          env,
@@ -163,7 +163,7 @@ func GenerateDeployment(runtime *controlplanev1alpha1.Runtime, layout ControlPla
 }
 
 // konnectivitySidecar builds the konnectivity-server container that shares the UDS socket
-// volume with the samaritano container. The UDS socket is used by the API server egress
+// volume with the heir container. The UDS socket is used by the API server egress
 // selector to proxy traffic to worker nodes via the konnectivity-agent.
 func konnectivitySidecar(spec controlplanev1alpha1.KonnectivityServerSpec, layout ControlPlaneLayout, wrkCtx *typ.WorkerContext) corev1.Container {
 	udsDir := filepath.Dir(wrkCtx.KonnectivityUdsName)

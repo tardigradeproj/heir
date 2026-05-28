@@ -87,9 +87,9 @@ func TestCreateNodeProfileManifest(t *testing.T) {
 
 				auth, _ := kubeletCfg["authentication"].(map[string]interface{})
 				x509, _ := auth["x509"].(map[string]interface{})
-				assert.Equal(t, "/etc/samaritano/pki/ca.crt", x509["clientCAFile"])
-				assert.Equal(t, "/run/samaritano/containerd.sock", kubeletCfg["containerRuntimeEndpoint"])
-				assert.Equal(t, "/etc/samaritano/manifests", kubeletCfg["staticPodPath"])
+				assert.Equal(t, "/etc/heir/pki/ca.crt", x509["clientCAFile"])
+				assert.Equal(t, "/run/heir/containerd.sock", kubeletCfg["containerRuntimeEndpoint"])
+				assert.Equal(t, "/etc/heir/manifests", kubeletCfg["staticPodPath"])
 
 				dns, _ := kubeletCfg["clusterDNS"].([]interface{})
 				require.Len(t, dns, 1)
@@ -120,8 +120,8 @@ func TestCreateNodeProfileManifest(t *testing.T) {
 				require.NoError(t, sigsyaml.Unmarshal([]byte(cm.Data["kubelet.configuration"]), &kubeletCfg))
 				assert.Equal(t, "cgroupfs", kubeletCfg["cgroupDriver"])
 				// staticPodPath and containerRuntimeEndpoint must still be present
-				assert.Equal(t, "/etc/samaritano/manifests", kubeletCfg["staticPodPath"])
-				assert.Equal(t, "/run/samaritano/containerd.sock", kubeletCfg["containerRuntimeEndpoint"])
+				assert.Equal(t, "/etc/heir/manifests", kubeletCfg["staticPodPath"])
+				assert.Equal(t, "/run/heir/containerd.sock", kubeletCfg["containerRuntimeEndpoint"])
 			},
 		},
 		{

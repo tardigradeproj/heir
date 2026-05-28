@@ -8,7 +8,7 @@
 
 ### Description
 
-CNI (Container Network Interface) plugin configuration is not working correctly on provisioned clusters. Worker nodes joined via `samaritano provision worker` fail to have functional pod networking due to misconfigured or missing CNI setup.
+CNI (Container Network Interface) plugin configuration is not working correctly on provisioned clusters. Worker nodes joined via `heir provision worker` fail to have functional pod networking due to misconfigured or missing CNI setup.
 
 ### Current Behavior
 
@@ -75,13 +75,13 @@ The `provision worker` command (`pkg/provision/join.go`, `pkg/cmd/provision/work
 
 ---
 
-## 4. Relocate Kubernetes Manifests and Artifacts to `/etc/kubernetes/samaritano`
+## 4. Relocate Kubernetes Manifests and Artifacts to `/etc/kubernetes/heir`
 
 **Labels:** `enhancement`, `breaking-change`
 
 ### Description
 
-Currently, Kubernetes manifests and artifacts (certificates, kubeconfigs, static pod manifests, binaries) are placed directly under `/etc/kubernetes/`. To avoid conflicts with other Kubernetes tooling (e.g. kubeadm) and to clearly namespace Samaritano-managed files, all paths should be moved under `/etc/kubernetes/samaritano/`.
+Currently, Kubernetes manifests and artifacts (certificates, kubeconfigs, static pod manifests, binaries) are placed directly under `/etc/kubernetes/`. To avoid conflicts with other Kubernetes tooling (e.g. kubeadm) and to clearly namespace Heir-managed files, all paths should be moved under `/etc/kubernetes/heir/`.
 
 ### Affected Areas
 
@@ -92,8 +92,8 @@ Currently, Kubernetes manifests and artifacts (certificates, kubeconfigs, static
 
 ### Acceptance Criteria
 
-- [ ] All Samaritano-managed files are written to `/etc/kubernetes/samaritano/`
-- [ ] No files are written directly to `/etc/kubernetes/` by Samaritano
+- [ ] All Heir-managed files are written to `/etc/kubernetes/heir/`
+- [ ] No files are written directly to `/etc/kubernetes/` by Heir
 - [ ] Existing provisioning flow works correctly with new paths
 - [ ] Documentation and comments updated to reflect new paths
 - [ ] Verified on a fresh Vagrant VM and Kind-based test environment
@@ -145,18 +145,18 @@ Resources created to support the distro (ConfigMaps and Secrets for scripts, con
 
 ---
 
-## 7. Implement `create cluster` for Kubernetes (bare-metal/VM) via Samaritano CLI
+## 7. Implement `create cluster` for Kubernetes (bare-metal/VM) via Heir CLI
 
 **Labels:** `feature`, `cli`
 
 ### Description
 
-Add a `samaritano create cluster` subcommand that provisions a full Kubernetes cluster (control plane + workers) on bare-metal or VM targets using the existing Samaritano provisioning logic. This command should orchestrate the full lifecycle: bootstrapping the control plane, generating tokens, and joining worker nodes.
+Add a `heir create cluster` subcommand that provisions a full Kubernetes cluster (control plane + workers) on bare-metal or VM targets using the existing Heir provisioning logic. This command should orchestrate the full lifecycle: bootstrapping the control plane, generating tokens, and joining worker nodes.
 
 ### Proposed Interface
 
 ```
-samaritano create cluster \
+heir create cluster \
   --name <cluster-name> \
   --control-plane <host> \
   --workers <host1,host2,...> \
@@ -214,18 +214,18 @@ Worker node provisioning (`pkg/provision/worker/join.go`) currently performs a b
 
 ---
 
-## 8. Implement `create cluster` for Docker via Samaritano CLI
+## 8. Implement `create cluster` for Docker via Heir CLI
 
 **Labels:** `feature`, `cli`
 
 ### Description
 
-Add support for `samaritano create cluster --driver docker` (or a dedicated subcommand) that spins up a local Kubernetes cluster using Docker containers as nodes. This is similar to Kind but driven by Samaritano's own control plane image and provisioning logic, enabling local development and testing workflows without a VM.
+Add support for `heir create cluster --driver docker` (or a dedicated subcommand) that spins up a local Kubernetes cluster using Docker containers as nodes. This is similar to Kind but driven by Heir's own control plane image and provisioning logic, enabling local development and testing workflows without a VM.
 
 ### Proposed Interface
 
 ```
-samaritano create cluster \
+heir create cluster \
   --driver docker \
   --name <cluster-name> \
   [--workers <count>] \
@@ -242,9 +242,9 @@ samaritano create cluster \
 ### Acceptance Criteria
 
 - [ ] Command creates a functional local cluster using Docker
-- [ ] Control plane runs as a container using the Samaritano control plane image
+- [ ] Control plane runs as a container using the Heir control plane image
 - [ ] Worker nodes are Docker containers that successfully join the cluster
 - [ ] Kubeconfig is written locally and usable with `kubectl`
-- [ ] `samaritano delete cluster --driver docker --name <name>` tears down the cluster
+- [ ] `heir delete cluster --driver docker --name <name>` tears down the cluster
 - [ ] Works on macOS and Linux (primary dev environments)
 - [ ] Documented with `--help` output and usage examples

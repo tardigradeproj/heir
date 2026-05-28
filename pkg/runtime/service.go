@@ -14,7 +14,7 @@ func GenerateService(runtime *controlplanev1alpha1.Runtime, wrkCtx *typ.WorkerCo
 	svcSpec := runtime.Spec.ControlPlane.Service
 	selectorLabels := map[string]string{
 		"app.kubernetes.io/name":       runtime.Name,
-		"app.kubernetes.io/managed-by": "samaritano",
+		"app.kubernetes.io/managed-by": "heir",
 	}
 
 	ports := []corev1.ServicePort{

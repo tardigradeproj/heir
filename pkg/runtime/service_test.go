@@ -69,7 +69,7 @@ func TestGenerateService(t *testing.T) {
 			}),
 			validate: func(t *testing.T, svc *corev1.Service) {
 				assert.Equal(t, "my-cluster", svc.Spec.Selector["app.kubernetes.io/name"])
-				assert.Equal(t, "samaritano", svc.Spec.Selector["app.kubernetes.io/managed-by"])
+				assert.Equal(t, "heir", svc.Spec.Selector["app.kubernetes.io/managed-by"])
 			},
 		},
 		{

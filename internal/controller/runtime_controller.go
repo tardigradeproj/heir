@@ -34,14 +34,14 @@ import (
 
 	controlplanev1alpha1 "github.com/tardigradeproj/heir/api/v1alpha1"
 	"github.com/tardigradeproj/heir/pkg/provision/worker/typ"
-	samaritanoruntime "github.com/tardigradeproj/heir/pkg/runtime"
+	heirruntime "github.com/tardigradeproj/heir/pkg/runtime"
 )
 
 const (
 	typeAvailableRuntime = "Available"
 )
 
-var layout = samaritanoruntime.NewControlPlaneLayout()
+var layout = heirruntime.NewControlPlaneLayout()
 
 // RuntimeReconciler reconciles a Runtime object
 type RuntimeReconciler struct {
@@ -155,7 +155,7 @@ func (r *RuntimeReconciler) setupService(
 	ctx context.Context,
 	controlPlaneRuntime *controlplanev1alpha1.Runtime,
 ) error {
-	desired, err := samaritanoruntime.GenerateService(controlPlaneRuntime, typ.NewWorkerContextWithDefaults())
+	desired, err := heirruntime.GenerateService(controlPlaneRuntime, typ.NewWorkerContextWithDefaults())
 	if err != nil {
 		return err
 	}
@@ -196,7 +196,7 @@ func (r *RuntimeReconciler) setupDeployment(
 	controlPlaneRuntime *controlplanev1alpha1.Runtime,
 	configHash string,
 ) error {
-	desired, err := samaritanoruntime.GenerateDeployment(controlPlaneRuntime, layout, configHash)
+	desired, err := heirruntime.GenerateDeployment(controlPlaneRuntime, layout, configHash)
 	if err != nil {
 		return err
 	}
@@ -231,7 +231,7 @@ func (r *RuntimeReconciler) setupControlPlaneConfiguration(
 ) (string, error) {
 	log := logf.FromContext(ctx)
 
-	desired, desiredHash, err := samaritanoruntime.GenerateControlPlaneConfig(controlPlaneRuntime, layout)
+	desired, desiredHash, err := heirruntime.GenerateControlPlaneConfig(controlPlaneRuntime, layout)
 	if err != nil {
 		return "", err
 	}
@@ -248,7 +248,7 @@ func (r *RuntimeReconciler) setupControlPlaneConfiguration(
 		return "", err
 	}
 
-	existingHash, err := samaritanoruntime.HashConfigData(existing.Data)
+	existingHash, err := heirruntime.HashConfigData(existing.Data)
 	if err != nil {
 		return "", err
 	}
@@ -280,7 +280,7 @@ func (r *RuntimeReconciler) setupPKIAuthConfiguration(
 		return err
 	}
 
-	secret, err := samaritanoruntime.GeneratePKIAuthSecret(controlPlaneRuntime, layout)
+	secret, err := heirruntime.GeneratePKIAuthSecret(controlPlaneRuntime, layout)
 	if err != nil {
 		return err
 	}

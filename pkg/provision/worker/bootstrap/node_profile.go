@@ -16,7 +16,7 @@ import (
 	"github.com/tardigradeproj/heir/pkg/provision/worker/typ"
 )
 
-// After TLS bootstrap, samaritano uses the freshly-written kubelet.conf to talk to the Kubernetes API and fetch the worker profile.
+// After TLS bootstrap, heir uses the freshly-written kubelet.conf to talk to the Kubernetes API and fetch the worker profile.
 // A ConfigMap in kube-system that contains the full configuration the worker node should use. The profile contains kubelet and containerd mirrors configuration.
 
 const (

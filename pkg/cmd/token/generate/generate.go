@@ -39,7 +39,7 @@ func NewCommand() *cobra.Command {
 	cmd.Flags().StringVar(
 		&flags.Name,
 		"name",
-		"samaritano",
+		"heir",
 		"the context name",
 	)
 	cmd.Flags().DurationVar(

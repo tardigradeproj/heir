@@ -6,8 +6,8 @@ cliVersion: 4.11.1
 domain: tardigrade.runtime.io
 layout:
 - go.kubebuilder.io/v4
-projectName: samaritano
-repo: github.com/tardigrade-runtime/samaritano
+projectName: heir
+repo: github.com/tardigradeproj/heir
 resources:
 - api:
     crdVersion: v1
@@ -16,6 +16,6 @@ resources:
   domain: tardigrade.runtime.io
   group: controlplane
   kind: Runtime
-  path: github.com/tardigrade-runtime/samaritano/api/v1alpha1
+  path: github.com/tardigradeproj/heir/api/v1alpha1
   version: v1alpha1
 version: "3"

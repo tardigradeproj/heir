@@ -7,7 +7,7 @@ Vagrant.configure("2") do |config|
     vb.cpus = 2
   end
 
-  config.vm.synced_folder "./", "/home/vagrant/samaritano", type: "rsync",
+  config.vm.synced_folder "./", "/home/vagrant/heir", type: "rsync",
     rsync__exclude: [".git/", ".DS_Store", "vendor/"]
 
   # In VirtualBox NAT networking the host is always        .
@@ -62,7 +62,7 @@ Vagrant.configure("2") do |config|
     done
   SHELL
 #   config.vm.provision "shell", name: "provision-kind-cluster", inline: <<-SHELL
-#     kind create cluster --name samaritano
+#     kind create cluster --name heir
 #   SHELL
 
   config.vm.provision "shell", name: "resize-fs", inline: <<-SHELL

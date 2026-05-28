@@ -199,16 +199,16 @@ type RuntimeSpec struct {
 // ControlPlaneSpec defines how control plane must be created in the Admin UpstreamCluster,
 // such as the number of Pod replicas, the Service resource, or the Ingress.
 type ControlPlaneSpec struct {
-	// Samaritano provides details about the distribution to install
+	// Heir provides details about the distribution to install
 	// +required
-	Samaritano SamaritanoSpec `json:"samaritano,omitempty"`
+	Heir HeirSpec `json:"heir,omitempty"`
 	// Defining the options for Deployment resource.
 	Deployment DeploymentSpec `json:"deployment,omitempty"`
 	// Defining the options for an Optional Ingress which will expose API Server of the Tenant Control Plane
 	Ingress *IngressSpec `json:"ingress,omitempty"`
 	Service ServiceSpec  `json:"service,omitempty"`
 }
-type SamaritanoSpec struct {
+type HeirSpec struct {
 	Image string `json:"image,omitempty"`
 }
 type IngressSpec struct {

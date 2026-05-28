@@ -115,7 +115,7 @@ func (a *CSRAutoApprover) validateAndApprove(ctx context.Context, csr *certifica
 		Type:           certificatesv1.CertificateApproved,
 		Status:         corev1.ConditionTrue,
 		Reason:         "AutoApproved",
-		Message:        "approved by samaritano masteragent: all SANs validated against node addresses",
+		Message:        "approved by heir masteragent: all SANs validated against node addresses",
 		LastUpdateTime: metav1.Now(),
 	})
 	if _, err := a.client.CertificatesV1().CertificateSigningRequests().UpdateApproval(

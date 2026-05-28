@@ -34,8 +34,8 @@ metadata:
   namespace: default
 spec:
   controlPlane:
-    samaritano:
-      image: "samaritano:test"
+    heir:
+      image: "heir:test"
     deployment:
       replicas: 1
       serviceAccountName: default
@@ -61,8 +61,8 @@ metadata:
   namespace: default
 spec:
   controlPlane:
-    samaritano:
-      image: "samaritano:test"
+    heir:
+      image: "heir:test"
     deployment:
       replicas: 1
       serviceAccountName: default
@@ -139,7 +139,7 @@ func TestProvision(t *testing.T) {
 		{
 			name: "invalid config path returns error",
 			makeConfig: func(_ *testing.T) string {
-				return "/tmp/samaritano-provision-test-no-such-file.yaml"
+				return "/tmp/heir-provision-test-no-such-file.yaml"
 			},
 			wantErr:     true,
 			errContains: "failed to parse config",
@@ -186,7 +186,7 @@ func TestProvision(t *testing.T) {
 				require.NoError(t, err, "kubeconfig file should exist at %s", clusterKubeconfigPath)
 				cfg, err := clientcmd.LoadFromFile(clusterKubeconfigPath)
 				require.NoError(t, err)
-				assert.Equal(t, "samaritano-test-cluster@kubernetes", cfg.CurrentContext)
+				assert.Equal(t, "heir-test-cluster@kubernetes", cfg.CurrentContext)
 			},
 		},
 		{
