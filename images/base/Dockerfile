@@ -1,10 +1,13 @@
 FROM ubuntu:22.04
+ARG TARGETPLATFORM
+ARG TARGETARCH
+
 ARG S6_OVERLAY_VERSION=3.2.2.0
 
-RUN apt-get update && apt-get install -y --no-install-recommends curl xz-utils ca-certificates \
-    && S6_ARCH=$(uname -m) \
+RUN ARCH=$([ "${TARGETARCH}" = "amd64" ] && echo "x86_64" || echo "${TARGETARCH}") \
+    && apt-get update && apt-get install -y --no-install-recommends curl xz-utils ca-certificates \
     && curl -sL "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-noarch.tar.xz" | tar -C / -Jxpf - \
-    && curl -sL "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-${S6_ARCH}.tar.xz" | tar -C / -Jxpf - \
+    && curl -sL "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-${ARCH}.tar.xz" | tar -C / -Jxpf - \
     && apt-get remove -y xz-utils \
     && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
@@ -29,7 +32,7 @@ RUN mkdir -p \
 # ==========================================
 # Service: apply-manifests (Oneshot)
 # ==========================================
-COPY --chmod=700 bootstrap.sh /usr/local/bin/bootstrap.sh
+COPY --chmod=700 images/base/bootstrap.sh /usr/local/bin/bootstrap.sh
 
 COPY <<EOF /etc/s6-overlay/s6-rc.d/bootstrap-controller/type
 longrun
