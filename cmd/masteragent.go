@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/tardigrade-runtime/samaritano/cmd/masteragent"
+	"github.com/tardigradeproj/heir/cmd/masteragent"
 )
 
 // create a routine to setup kubernetes service

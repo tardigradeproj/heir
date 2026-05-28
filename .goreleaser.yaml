@@ -8,8 +8,6 @@
 project_name: tardigrade
 version: 2
 
-nightly:
-  version_template: "{{ incpatch .Version }}-{{ .ShortCommit }}-nightly"
 
 before:
   hooks:

@@ -10,8 +10,8 @@ import (
 	"github.com/BurntSushi/toml"
 	criconfig "github.com/containerd/containerd/pkg/cri/config"
 	log "github.com/sirupsen/logrus"
-	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/procmgr"
-	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/typ"
+	"github.com/tardigradeproj/heir/pkg/provision/worker/procmgr"
+	"github.com/tardigradeproj/heir/pkg/provision/worker/typ"
 )
 
 type Containerd struct {

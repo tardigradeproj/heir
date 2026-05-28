@@ -11,8 +11,8 @@ import (
 	"github.com/coreos/go-systemd/v22/dbus"
 	sdunit "github.com/coreos/go-systemd/v22/unit"
 	"github.com/sirupsen/logrus"
-	btsp "github.com/tardigrade-runtime/samaritano/pkg/provision/worker/bootstrap"
-	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/typ"
+	btsp "github.com/tardigradeproj/heir/pkg/provision/worker/bootstrap"
+	"github.com/tardigradeproj/heir/pkg/provision/worker/typ"
 )
 
 const (

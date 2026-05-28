@@ -31,7 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	controlplanev1alpha1 "github.com/tardigrade-runtime/samaritano/api/v1alpha1"
+	controlplanev1alpha1 "github.com/tardigradeproj/heir/api/v1alpha1"
 )
 
 var _ = Describe("Runtime Controller", func() {

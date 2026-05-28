@@ -28,7 +28,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/tardigrade-runtime/samaritano/test/utils"
+	"github.com/tardigradeproj/heir/test/utils"
 )
 
 var (

@@ -16,7 +16,7 @@ import (
 
 	"github.com/avast/retry-go"
 	"github.com/sirupsen/logrus"
-	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/typ"
+	"github.com/tardigradeproj/heir/pkg/provision/worker/typ"
 	certificatesv1 "k8s.io/api/certificates/v1"
 	"k8s.io/apimachinery/pkg/types"
 	clientset "k8s.io/client-go/kubernetes"

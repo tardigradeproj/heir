@@ -5,8 +5,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	controlplanev1alpha1 "github.com/tardigrade-runtime/samaritano/api/v1alpha1"
-	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/typ"
+	controlplanev1alpha1 "github.com/tardigradeproj/heir/api/v1alpha1"
+	"github.com/tardigradeproj/heir/pkg/provision/worker/typ"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"

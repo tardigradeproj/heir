@@ -7,9 +7,9 @@ import (
 	"os"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/tardigrade-runtime/samaritano/api/v1alpha1"
-	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/typ"
-	samaritanoruntime "github.com/tardigrade-runtime/samaritano/pkg/runtime"
+	"github.com/tardigradeproj/heir/api/v1alpha1"
+	"github.com/tardigradeproj/heir/pkg/provision/worker/typ"
+	samaritanoruntime "github.com/tardigradeproj/heir/pkg/runtime"
 	"gvisor.dev/gvisor/pkg/cleanup"
 	apiextensions "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"

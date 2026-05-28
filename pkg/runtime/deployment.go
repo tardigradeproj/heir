@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"sort"
 
-	controlplanev1alpha1 "github.com/tardigrade-runtime/samaritano/api/v1alpha1"
-	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/typ"
+	controlplanev1alpha1 "github.com/tardigradeproj/heir/api/v1alpha1"
+	"github.com/tardigradeproj/heir/pkg/provision/worker/typ"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

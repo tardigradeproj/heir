@@ -33,7 +33,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	controlplanev1alpha1 "github.com/tardigrade-runtime/samaritano/api/v1alpha1"
+	controlplanev1alpha1 "github.com/tardigradeproj/heir/api/v1alpha1"
 	// +kubebuilder:scaffold:imports
 )
 

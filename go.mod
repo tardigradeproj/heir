@@ -1,4 +1,4 @@
-module github.com/tardigrade-runtime/samaritano
+module github.com/tardigradeproj/heir
 
 go 1.26.0
 

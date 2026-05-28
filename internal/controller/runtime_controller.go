@@ -32,9 +32,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	controlplanev1alpha1 "github.com/tardigrade-runtime/samaritano/api/v1alpha1"
-	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/typ"
-	samaritanoruntime "github.com/tardigrade-runtime/samaritano/pkg/runtime"
+	controlplanev1alpha1 "github.com/tardigradeproj/heir/api/v1alpha1"
+	"github.com/tardigradeproj/heir/pkg/provision/worker/typ"
+	samaritanoruntime "github.com/tardigradeproj/heir/pkg/runtime"
 )
 
 const (

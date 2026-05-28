@@ -3,8 +3,8 @@ package component
 import (
 	"context"
 
-	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/procmgr"
-	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/typ"
+	"github.com/tardigradeproj/heir/pkg/provision/worker/procmgr"
+	"github.com/tardigradeproj/heir/pkg/provision/worker/typ"
 )
 
 type Containerd struct {

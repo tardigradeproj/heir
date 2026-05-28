@@ -6,7 +6,7 @@ import (
 	"path"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/typ"
+	"github.com/tardigradeproj/heir/pkg/provision/worker/typ"
 )
 
 type Cni struct {

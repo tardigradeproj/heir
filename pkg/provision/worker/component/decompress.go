@@ -7,7 +7,7 @@ import (
 	"runtime"
 	"strings"
 
-	artifact "github.com/tardigrade-runtime/samaritano/artifacts"
+	artifact "github.com/tardigradeproj/heir/artifacts"
 )
 
 // embedPath maps a caller-supplied path of the form "worker/foo" to the

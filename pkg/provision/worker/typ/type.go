@@ -9,7 +9,7 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/tardigrade-runtime/samaritano/api/v1alpha1"
+	"github.com/tardigradeproj/heir/api/v1alpha1"
 )
 
 type NodeProfile struct {

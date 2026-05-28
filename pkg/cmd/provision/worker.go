@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker"
-	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/typ"
+	"github.com/tardigradeproj/heir/pkg/provision/worker"
+	"github.com/tardigradeproj/heir/pkg/provision/worker/typ"
 )
 
 type workerFlagpole struct {

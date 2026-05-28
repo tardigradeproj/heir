@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/tardigrade-runtime/samaritano/pkg/token"
+	"github.com/tardigradeproj/heir/pkg/token"
 )
 
 type flagpole struct {

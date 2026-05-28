@@ -10,7 +10,7 @@ import (
 	"github.com/k3s-io/kine/pkg/metrics"
 	"github.com/k3s-io/kine/pkg/tls"
 	"github.com/spf13/cobra"
-	"github.com/tardigrade-runtime/samaritano/pkg/masteragent"
+	"github.com/tardigradeproj/heir/pkg/masteragent"
 )
 
 const etcdVersion = "3.6.6"

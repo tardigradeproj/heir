@@ -9,8 +9,8 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/tardigrade-runtime/samaritano/pkg/k8s"
-	pkgruntime "github.com/tardigrade-runtime/samaritano/pkg/runtime"
+	"github.com/tardigradeproj/heir/pkg/k8s"
+	pkgruntime "github.com/tardigradeproj/heir/pkg/runtime"
 	certificatesv1 "k8s.io/api/certificates/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

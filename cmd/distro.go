@@ -5,9 +5,9 @@ import (
 
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
-	"github.com/tardigrade-runtime/samaritano/pkg/cmd/build"
-	"github.com/tardigrade-runtime/samaritano/pkg/cmd/provision"
-	"github.com/tardigrade-runtime/samaritano/pkg/cmd/token"
+	"github.com/tardigradeproj/heir/pkg/cmd/build"
+	"github.com/tardigradeproj/heir/pkg/cmd/provision"
+	"github.com/tardigradeproj/heir/pkg/cmd/token"
 )
 
 func init() {

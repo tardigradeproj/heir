@@ -8,12 +8,12 @@ import (
 
 	retry "github.com/avast/retry-go"
 	log "github.com/sirupsen/logrus"
-	"github.com/tardigrade-runtime/samaritano/api/v1alpha1"
+	"github.com/tardigradeproj/heir/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 
-	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/typ"
+	"github.com/tardigradeproj/heir/pkg/provision/worker/typ"
 )
 
 // After TLS bootstrap, samaritano uses the freshly-written kubelet.conf to talk to the Kubernetes API and fetch the worker profile.

@@ -11,7 +11,7 @@ import (
 	"k8s.io/utils/ptr"
 	sigsyaml "sigs.k8s.io/yaml"
 
-	controlplanev1alpha1 "github.com/tardigrade-runtime/samaritano/api/v1alpha1"
+	controlplanev1alpha1 "github.com/tardigradeproj/heir/api/v1alpha1"
 )
 
 func corednsRuntime(spec controlplanev1alpha1.CorednsSpec) *controlplanev1alpha1.Runtime {

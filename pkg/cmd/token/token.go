@@ -4,7 +4,7 @@ import (
 	"errors"
 
 	"github.com/spf13/cobra"
-	"github.com/tardigrade-runtime/samaritano/pkg/cmd/token/generate"
+	"github.com/tardigradeproj/heir/pkg/cmd/token/generate"
 )
 
 // NewCommand returns a new cobra.Command for token management

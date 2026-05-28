@@ -8,8 +8,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	sigsyaml "sigs.k8s.io/yaml"
 
-	controlplanev1alpha1 "github.com/tardigrade-runtime/samaritano/api/v1alpha1"
-	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/typ"
+	controlplanev1alpha1 "github.com/tardigradeproj/heir/api/v1alpha1"
+	"github.com/tardigradeproj/heir/pkg/provision/worker/typ"
 )
 
 func defaultNodeProfileRuntime(kubelet controlplanev1alpha1.KubeletSpec) *controlplanev1alpha1.Runtime {

@@ -9,14 +9,14 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/tardigrade-runtime/samaritano/pkg/k8s"
+	"github.com/tardigradeproj/heir/pkg/k8s"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 
-	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/typ"
+	"github.com/tardigradeproj/heir/pkg/provision/worker/typ"
 )
 
 type Token struct {
