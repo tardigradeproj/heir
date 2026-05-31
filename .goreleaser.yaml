@@ -31,7 +31,7 @@ builds:
     id: masteragent
     binary: masteragent
     env:
-      - CGO_ENABLED=0
+      - CGO_ENABLED=1
     goos:
       - linux
     goarch:
@@ -56,33 +56,22 @@ archives:
 dockers_v2:
   - id: heir-base
     dockerfile: images/base/Dockerfile
-    extra_files:
-      - images/base/bootstrap.sh
-    images:
-      - ghcr.io/tardigrade/heir-base
-    tags:
-      - "{{ .Tag }}"
-      - "{{ if not .IsNightly }}latest{{ end }}"
-    platforms:
-      - linux/amd64
-      - linux/arm64
-
-  - id: heir-controlplane
-    dockerfile: images/controlplane/Dockerfile
     ids:
       - masteragent
     extra_files:
+      - images/base/bootstrap.sh
       - artifacts/controlplane
     images:
-      - ghcr.io/tardigrade/heir-controlplane
+      - ghcr.io/tardigradeproj/heir
     tags:
       - "{{ .Tag }}"
       - "{{ if not .IsNightly }}latest{{ end }}"
     platforms:
       - linux/amd64
       - linux/arm64
-    build_args:
-      BASE_IMAGE: "ghcr.io/tardigrade/heir-base:{{ .Tag }}"
+#    build_args:
+#      BASE_IMAGE: "ghcr.io/tardigradeproj/heir-base:{{ .Tag }}"
+
 changelog:
   sort: asc
   filters:

@@ -1,13 +1,12 @@
 FROM ubuntu:22.04
 ARG TARGETPLATFORM
 ARG TARGETARCH
-
 ARG S6_OVERLAY_VERSION=3.2.2.0
 
-RUN ARCH=$([ "${TARGETARCH}" = "amd64" ] && echo "x86_64" || echo "${TARGETARCH}") \
+RUN ARCH=$([ "${TARGETARCH}" = "amd64" ] && echo "x86_64" || echo "aarch64") \
     && apt-get update && apt-get install -y --no-install-recommends curl xz-utils ca-certificates \
-    && curl -sL "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-noarch.tar.xz" | tar -C / -Jxpf - \
-    && curl -sL "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-${ARCH}.tar.xz" | tar -C / -Jxpf - \
+    && curl --fail -sL "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-noarch.tar.xz" | tar -C / -Jxpf - \
+    && curl --fail -sL "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-${ARCH}.tar.xz" | tar -C / -Jxpf - \
     && apt-get remove -y xz-utils \
     && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
@@ -185,5 +184,14 @@ RUN touch /etc/s6-overlay/s6-rc.d/user/contents.d/masteragent \
     && touch /etc/s6-overlay/s6-rc.d/user/contents.d/kube-controller-manager \
     && touch /etc/s6-overlay/s6-rc.d/user/contents.d/kube-scheduler \
     && touch /etc/s6-overlay/s6-rc.d/user/contents.d/bootstrap-controller
+
+
+COPY artifacts/controlplane/${TARGETARCH}/kubectl  /usr/local/bin/kubectl
+COPY artifacts/controlplane/${TARGETARCH}/kube-apiserver  /usr/local/bin/kube-apiserver
+COPY artifacts/controlplane/${TARGETARCH}/kube-controller-manager   /usr/local/bin/kube-controller-manager
+COPY artifacts/controlplane/${TARGETARCH}/kube-scheduler   /usr/local/bin/kube-scheduler
+COPY ${TARGETPLATFORM}/masteragent /usr/local/bin/masteragent
+
+
 
 ENTRYPOINT ["/init"]
