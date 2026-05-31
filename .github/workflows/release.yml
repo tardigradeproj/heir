@@ -48,7 +48,7 @@ jobs:
         uses: goreleaser/goreleaser-action@v6
         with:
           version: '~> v2'
-          args: release --nightly --clean
+          args: release  --clean
 
       - name: Run GoReleaser (Publish Production Release)
         if: github.event_name != 'pull_request'
