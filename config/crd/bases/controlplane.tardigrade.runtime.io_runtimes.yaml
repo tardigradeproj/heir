@@ -1060,6 +1060,12 @@ spec:
                           type: object
                         type: array
                     type: object
+                  heir:
+                    description: Heir provides details about the distribution to install
+                    properties:
+                      image:
+                        type: string
+                    type: object
                   ingress:
                     description: Defining the options for an Optional Ingress which
                       will expose API Server of the Tenant Control Plane
@@ -1078,13 +1084,6 @@ spec:
                       hostname:
                         type: string
                       ingressClassName:
-                        type: string
-                    type: object
-                  heir:
-                    description: Heir provides details about the distribution
-                      to install
-                    properties:
-                      image:
                         type: string
                     type: object
                   service:
