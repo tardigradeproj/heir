@@ -46,7 +46,8 @@ builds:
       - amd64
 
 archives:
-  - formats: [tar.gz]
+  - id: distro
+    formats: [tar.gz]
     ids:
       - distro
     # this name template makes the OS and Arch compatible with the results of `uname`.
@@ -61,7 +62,8 @@ archives:
     format_overrides:
       - goos: windows
         formats: [zip]
-  - formats: [tar.gz]
+  - id: masteragent
+    formats: [tar.gz]
     ids:
       - masteragent
     # this name template makes the OS and Arch compatible with the results of `uname`.
