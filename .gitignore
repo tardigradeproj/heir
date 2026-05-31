@@ -33,9 +33,11 @@ db/*
 *.kubeconfig
 
 artifacts/*
-!artifacts/embed.go
+!artifacts/embed*.go
 integration-test/tardigrade
 integration-test/bastion-kubeconfig.yaml
 integration-test/kubeconfig.yaml
 .junie
 .local-cred
+# Added by goreleaser init:
+dist/

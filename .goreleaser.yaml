@@ -1,0 +1,114 @@
+# This is an example .goreleaser.yml file with some sensible defaults.
+# Make sure to check the documentation at https://goreleaser.com
+
+# The lines below are called `modelines`. See `:help modeline`
+# Feel free to remove those if you don't want/need to use them.
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+# vim: set ts=2 sw=2 tw=0 fo=cnqoj
+project_name: tardigrade
+version: 2
+
+
+before:
+  hooks:
+    - go mod tidy
+    - make download-all-artifacts ARCH=amd64
+    - make download-all-artifacts ARCH=arm64
+builds:
+  - main: cmd/distro.go
+    id: distro
+    binary: distro
+    flags:
+      - -tags=embedartifacts
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - arm64
+      - amd64
+  - main: cmd/masteragent.go
+    id: masteragent
+    binary: masteragent
+    env:
+      - CGO_ENABLED=1
+    overrides:
+      - goos: linux
+        goarch: arm64
+        env:
+          - CGO_ENABLED=1
+          - CC=aarch64-linux-gnu-gcc
+          - CXX=aarch64-linux-gnu-g++
+    goos:
+      - linux
+    goarch:
+      - arm64
+      - amd64
+
+archives:
+  - id: distro
+    formats: [tar.gz]
+    ids:
+      - distro
+    # this name template makes the OS and Arch compatible with the results of `uname`.
+    name_template: >-
+      {{ .ProjectName }}_distro_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    # use zip for windows archives
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+  - id: masteragent
+    formats: [tar.gz]
+    ids:
+      - masteragent
+    # this name template makes the OS and Arch compatible with the results of `uname`.
+    name_template: >-
+      {{ .ProjectName }}_masteragent_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    # use zip for windows archives
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+dockers_v2:
+  - id: heir-base
+    dockerfile: images/base/Dockerfile
+    ids:
+      - masteragent
+    extra_files:
+      - images/base/bootstrap.sh
+      - artifacts/controlplane
+    images:
+      - ghcr.io/tardigradeproj/heir
+    tags:
+      - "{{ .Tag }}"
+      - "{{ if not .IsNightly }}latest{{ end }}"
+    platforms:
+      - linux/amd64
+      - linux/arm64
+#    build_args:
+#      BASE_IMAGE: "ghcr.io/tardigradeproj/heir-base:{{ .Tag }}"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+release:
+  footer: >-
+
+    ---
+
+    Released by [GoReleaser](https://github.com/goreleaser/goreleaser).
+

@@ -35,8 +35,8 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	controlplanev1alpha1 "github.com/tardigrade-runtime/samaritano/api/v1alpha1"
-	"github.com/tardigrade-runtime/samaritano/internal/controller"
+	controlplanev1alpha1 "github.com/tardigradeproj/heir/api/v1alpha1"
+	"github.com/tardigradeproj/heir/internal/controller"
 	// +kubebuilder:scaffold:imports
 )
 

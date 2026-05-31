@@ -1,10 +1,10 @@
 # Worker Node OS Requirements
 
 This document describes every OS-level validation and configuration change that
-`samaritano provision worker` must verify or apply before and during node
+`heir provision worker` must verify or apply before and during node
 provisioning.
 
-Samaritano is a self-contained distro. It embeds all Kubernetes binaries
+Heir is a self-contained distro. It embeds all Kubernetes binaries
 (kubelet, containerd, containerd-shim-runc-v2, runc, crictl, ctr) and extracts
 them at join time. No `apt`, `yum`, or external package repository is needed or
 allowed.
@@ -17,7 +17,7 @@ allowed.
 
 | Check | Why |
 |---|---|
-| Process is running as `root` (UID 0) | Required to write to `/usr/local/bin/`, `/etc/systemd/system/`, `/etc/samaritano/`, `/var/lib/samaritano/`, `/opt/cni/bin/` |
+| Process is running as `root` (UID 0) | Required to write to `/usr/local/bin/`, `/etc/systemd/system/`, `/etc/heir/`, `/var/lib/heir/`, `/opt/cni/bin/` |
 
 Fail early with a clear error if not root. Everything else depends on it.
 
@@ -184,8 +184,8 @@ wrong.
 | Check | Why |
 |---|---|
 | `/usr/local/bin/` is writable | All six binaries are placed here |
-| `/etc/samaritano/kubernetes/` can be created | kubeconfig, CA cert, containerd config |
-| `/var/lib/samaritano/kubelet/` can be created | kubelet config and cert dir |
+| `/etc/heir/kubernetes/` can be created | kubeconfig, CA cert, containerd config |
+| `/var/lib/heir/kubelet/` can be created | kubelet config and cert dir |
 | `/opt/cni/bin/` can be created | CNI plugin binaries |
 | `/etc/cni/net.d/` can be created | CNI configuration files |
 | `/etc/systemd/system/` is writable | Unit files for `containerd.service` and `kubelet.service` |
@@ -227,7 +227,7 @@ modprobe overlay
 modprobe br_netfilter
 
 # Persist
-cat > /etc/modules-load.d/samaritano.conf << EOF
+cat > /etc/modules-load.d/heir.conf << EOF
 overlay
 br_netfilter
 EOF
@@ -249,7 +249,7 @@ sysctl -w net.bridge.bridge-nf-call-iptables=1
 sysctl -w net.bridge.bridge-nf-call-ip6tables=1
 
 # Persist
-cat > /etc/sysctl.d/99-samaritano.conf << EOF
+cat > /etc/sysctl.d/99-heir.conf << EOF
 net.ipv4.ip_forward = 1
 net.bridge.bridge-nf-call-iptables = 1
 net.bridge.bridge-nf-call-ip6tables = 1
@@ -285,8 +285,8 @@ it is cleaner to pre-create all paths in a single pass:
 
 ```
 /usr/local/bin/
-/etc/samaritano/kubernetes/pki/
-/var/lib/samaritano/kubelet/pki/
+/etc/heir/kubernetes/pki/
+/var/lib/heir/kubelet/pki/
 /opt/cni/bin/
 /etc/cni/net.d/
 /etc/systemd/system/

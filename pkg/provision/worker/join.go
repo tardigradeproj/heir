@@ -11,14 +11,14 @@ import (
 	"github.com/coreos/go-systemd/v22/dbus"
 	sdunit "github.com/coreos/go-systemd/v22/unit"
 	"github.com/sirupsen/logrus"
-	btsp "github.com/tardigrade-runtime/samaritano/pkg/provision/worker/bootstrap"
-	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/typ"
+	btsp "github.com/tardigradeproj/heir/pkg/provision/worker/bootstrap"
+	"github.com/tardigradeproj/heir/pkg/provision/worker/typ"
 )
 
 const (
-	installPath = "/usr/local/bin/samaritano"
-	unitName    = "samaritano.service"
-	unitPath    = "/etc/systemd/system/samaritano.service"
+	installPath = "/usr/local/bin/heir"
+	unitName    = "heir.service"
+	unitPath    = "/etc/systemd/system/heir.service"
 )
 
 func Join(ctx context.Context, token string, opts ...typ.Option) error {
@@ -88,7 +88,7 @@ func installSystemdUnit(ctx context.Context, workerCtx *typ.WorkerContext) error
 	}
 
 	opts := []*sdunit.UnitOption{
-		sdunit.NewUnitOption("Unit", "Description", "Samaritano Worker Node Agent"),
+		sdunit.NewUnitOption("Unit", "Description", "Heir Worker Node Agent"),
 		sdunit.NewUnitOption("Unit", "After", "network-online.target"),
 		sdunit.NewUnitOption("Unit", "Wants", "network-online.target"),
 		sdunit.NewUnitOption("Service", "ExecStart", execStart),

@@ -5,8 +5,8 @@ metadata:
   namespace: default
 spec:
   controlPlane:
-    samaritano:
-      image: samaritano-base:v3
+    heir:
+      image: heir-base:v3
     deployment:
       replicas: 1
       serviceAccountName: default

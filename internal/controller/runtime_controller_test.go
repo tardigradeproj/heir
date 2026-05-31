@@ -31,7 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	controlplanev1alpha1 "github.com/tardigrade-runtime/samaritano/api/v1alpha1"
+	controlplanev1alpha1 "github.com/tardigradeproj/heir/api/v1alpha1"
 )
 
 var _ = Describe("Runtime Controller", func() {
@@ -109,7 +109,7 @@ var _ = Describe("Runtime Controller Config", func() {
 					},
 					Spec: controlplanev1alpha1.RuntimeSpec{
 						ControlPlane: controlplanev1alpha1.ControlPlaneSpec{
-							Samaritano: controlplanev1alpha1.SamaritanoSpec{
+							Heir: controlplanev1alpha1.HeirSpec{
 								Image: "v1.32.0",
 							},
 							Service: controlplanev1alpha1.ServiceSpec{
@@ -175,7 +175,7 @@ var _ = Describe("Runtime Controller PKI", func() {
 					},
 					Spec: controlplanev1alpha1.RuntimeSpec{
 						ControlPlane: controlplanev1alpha1.ControlPlaneSpec{
-							Samaritano: controlplanev1alpha1.SamaritanoSpec{
+							Heir: controlplanev1alpha1.HeirSpec{
 								Image: "v1.32.0",
 							},
 							Service: controlplanev1alpha1.ServiceSpec{
@@ -276,7 +276,7 @@ var _ = Describe("Runtime Controller Service", func() {
 				},
 				Spec: controlplanev1alpha1.RuntimeSpec{
 					ControlPlane: controlplanev1alpha1.ControlPlaneSpec{
-						Samaritano: controlplanev1alpha1.SamaritanoSpec{Image: "v1.32.0"},
+						Heir: controlplanev1alpha1.HeirSpec{Image: "v1.32.0"},
 						Service:    svcSpec,
 					},
 				},
@@ -348,7 +348,7 @@ var _ = Describe("Runtime Controller Service", func() {
 			svc := reconcileAndGetService(name)
 
 			Expect(svc.Spec.Selector).To(HaveKeyWithValue("app.kubernetes.io/name", name))
-			Expect(svc.Spec.Selector).To(HaveKeyWithValue("app.kubernetes.io/managed-by", "samaritano"))
+			Expect(svc.Spec.Selector).To(HaveKeyWithValue("app.kubernetes.io/managed-by", "heir"))
 		})
 
 		It("should update ports when the spec changes", func() {

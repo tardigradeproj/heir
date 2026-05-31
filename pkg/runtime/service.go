@@ -1,8 +1,8 @@
 package runtime
 
 import (
-	controlplanev1alpha1 "github.com/tardigrade-runtime/samaritano/api/v1alpha1"
-	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/typ"
+	controlplanev1alpha1 "github.com/tardigradeproj/heir/api/v1alpha1"
+	"github.com/tardigradeproj/heir/pkg/provision/worker/typ"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -14,7 +14,7 @@ func GenerateService(runtime *controlplanev1alpha1.Runtime, wrkCtx *typ.WorkerCo
 	svcSpec := runtime.Spec.ControlPlane.Service
 	selectorLabels := map[string]string{
 		"app.kubernetes.io/name":       runtime.Name,
-		"app.kubernetes.io/managed-by": "samaritano",
+		"app.kubernetes.io/managed-by": "heir",
 	}
 
 	ports := []corev1.ServicePort{

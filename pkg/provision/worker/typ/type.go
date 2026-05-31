@@ -9,7 +9,7 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/tardigrade-runtime/samaritano/api/v1alpha1"
+	"github.com/tardigradeproj/heir/api/v1alpha1"
 )
 
 type NodeProfile struct {
@@ -49,23 +49,23 @@ type WorkerContext struct {
 	LogLevel                   log.Level
 	Token                      string
 	WorkerProfileConfigMapName string `default:"worker-profile"`
-	BinDir                     string `default:"/var/lib/samaritano/bin/"`
+	BinDir                     string `default:"/var/lib/heir/bin/"`
 
-	KubeletStateDir                string `default:"/etc/samaritano/kubelet"`
-	KubeletBootstrapKubeconfigPath string `default:"/etc/samaritano/kubelet/bootstrap-kubeconfig.conf"`
-	KubeletKubeConfigPath          string `default:"/etc/samaritano/kubelet/config.yaml"`
-	KubeletPKIPath                 string `default:"/etc/samaritano/kubelet/pki"`
-	KubeletPKICaCertPath           string `default:"/etc/samaritano/pki/ca.crt"`
+	KubeletStateDir                string `default:"/etc/heir/kubelet"`
+	KubeletBootstrapKubeconfigPath string `default:"/etc/heir/kubelet/bootstrap-kubeconfig.conf"`
+	KubeletKubeConfigPath          string `default:"/etc/heir/kubelet/config.yaml"`
+	KubeletPKIPath                 string `default:"/etc/heir/kubelet/pki"`
+	KubeletPKICaCertPath           string `default:"/etc/heir/pki/ca.crt"`
 	KubeletExtraArgs               map[string]string
-	KubeletConfigFile              string `default:"/var/lib/samaritano/kubelet/config.yaml"`
-	KubeletLogFile                 string `default:"/var/log/samaritano/kubelet.log"`
-	KubeletStaticPodPath           string `default:"/etc/samaritano/manifests"`
+	KubeletConfigFile              string `default:"/var/lib/heir/kubelet/config.yaml"`
+	KubeletLogFile                 string `default:"/var/log/heir/kubelet.log"`
+	KubeletStaticPodPath           string `default:"/etc/heir/manifests"`
 
-	ContainerdAddress        string        `default:"/run/samaritano/containerd.sock"`
-	ContainerdState          string        `default:"/run/samaritano/containerd"`
-	ContainerdRoot           string        `default:"/var/lib/samaritano/containerd"`
-	ContainerdConfig         string        `default:"/etc/lib/samaritano/containerd/config.toml"`
-	ContainerdLogFile        string        `json:"/var/log/samaritano/containerd.log"`
+	ContainerdAddress        string        `default:"/run/heir/containerd.sock"`
+	ContainerdState          string        `default:"/run/heir/containerd"`
+	ContainerdRoot           string        `default:"/var/lib/heir/containerd"`
+	ContainerdConfig         string        `default:"/etc/lib/heir/containerd/config.toml"`
+	ContainerdLogFile        string        `json:"/var/log/heir/containerd.log"`
 	ContainerdStartupTimeout time.Duration // default: 90s, set in NewWorkerContextWithDefaults
 
 	ApiServerLocalAddress string `default:"https://127.0.0.1:6443"`
@@ -73,7 +73,7 @@ type WorkerContext struct {
 	ControlPlaneEndpointNodeProfileConfigmapKey string `default:"control.plane.endpoint"`
 	KubeletExtraArgsNodeProfileConfigmapKey     string `default:"kubelet.extraArgs"`
 	KubeletConfigurationNodeProfileConfigmapKey string `default:"kubelet.configuration"`
-	NodeProfileLocalFilePath                    string `default:"/etc/samaritano/node-profile.json"`
+	NodeProfileLocalFilePath                    string `default:"/etc/heir/node-profile.json"`
 
 	CNIEnableProviderNodeProfileConfigmapKey string `default:"cni.provider"`
 

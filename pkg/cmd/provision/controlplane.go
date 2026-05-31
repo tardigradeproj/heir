@@ -2,7 +2,7 @@ package provision
 
 import (
 	"github.com/spf13/cobra"
-	"github.com/tardigrade-runtime/samaritano/pkg/provision/controlplane"
+	"github.com/tardigradeproj/heir/pkg/provision/controlplane"
 )
 
 type controlplaneFlagpole struct {
@@ -42,7 +42,7 @@ func controlplaneProvisionCommand() *cobra.Command {
 		&flags.Config,
 		"config",
 		"",
-		"path to a samaritano config file",
+		"path to a heir config file",
 	)
 	cmd.Flags().StringVar(
 		&flags.Kubeconfig,

@@ -9,7 +9,7 @@ const bootstrapManifest = `
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: samaritano:worker-profile-reader
+  name: heir:worker-profile-reader
   namespace: kube-system
   labels:
     managed-by: bootstrap
@@ -22,7 +22,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: samaritano:worker-profile-reader
+  name: heir:worker-profile-reader
   namespace: kube-system
   labels:
     managed-by: bootstrap
@@ -32,13 +32,13 @@ subjects:
     apiGroup: rbac.authorization.k8s.io
 roleRef:
   kind: Role
-  name: samaritano:worker-profile-reader
+  name: heir:worker-profile-reader
   apiGroup: rbac.authorization.k8s.io
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: samaritano:kubelet-bootstrap
+  name: heir:kubelet-bootstrap
   labels:
     managed-by: bootstrap
 subjects:
@@ -53,7 +53,7 @@ roleRef:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: samaritano:kubelet-bootstrap-auto-approve-csrs
+  name: heir:kubelet-bootstrap-auto-approve-csrs
   labels:
     managed-by: bootstrap
 subjects:
@@ -68,7 +68,7 @@ roleRef:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: samaritano:kubelet-cert-renew
+  name: heir:kubelet-cert-renew
   labels:
     managed-by: bootstrap
 subjects:

@@ -1,4 +1,4 @@
-# samaritano - AI Agent Guide
+# heir - AI Agent Guide
 
 ## Project Structure
 

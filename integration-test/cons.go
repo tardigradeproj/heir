@@ -9,11 +9,11 @@ import (
 
 const (
 	kindClusterName                 = "integration-test"
-	samaritanoExternalAddress       = "control-plane"
+	heirExternalAddress       = "control-plane"
 	postgresSecretName              = "postgres-credentials"
 	hostClusterKubeConfigPath       = "./kubeconfig.yaml"
 	tardigradeClusterKubeConfigPath = "./tardigrade-kubeconfig.yaml"
-	samaritanoApiServerPort         = 30080
+	heirApiServerPort         = 30080
 )
 
 func buildRuntimeConfig() string {
@@ -24,8 +24,8 @@ metadata:
   namespace: default
 spec:
   controlPlane:
-    samaritano:
-      image: localhost:5001/samaritano-base:v3
+    heir:
+      image: localhost:5001/heir-base:v3
     deployment:
       replicas: 1
       serviceAccountName: default
@@ -34,7 +34,7 @@ spec:
       apiServerNodePort: 30080
   upstreamCluster:
     apiServer:
-      externalAddress: "https://` + samaritanoExternalAddress + `:30080"
+      externalAddress: "https://` + heirExternalAddress + `:30080"
       sans: ["master0"]
       extraArgs: {}
     controllerManager:

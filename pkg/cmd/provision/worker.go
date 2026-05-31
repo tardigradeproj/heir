@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker"
-	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/typ"
+	"github.com/tardigradeproj/heir/pkg/provision/worker"
+	"github.com/tardigradeproj/heir/pkg/provision/worker/typ"
 )
 
 type workerFlagpole struct {
@@ -18,7 +18,7 @@ func workerProvisionCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "worker",
 		Short: "Set up worker node bootstrap prerequisites",
-		Long:  "Prepares all required prerequisites for worker node bootstrap and starts the long-running Samaritano process responsible for managing and maintaining worker node dependencies",
+		Long:  "Prepares all required prerequisites for worker node bootstrap and starts the long-running Heir process responsible for managing and maintaining worker node dependencies",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			err := worker.Join(cmd.Context(), flags.Token,
 				typ.WithKubeletExtraArgs(flags.KubeletExtraArgs),

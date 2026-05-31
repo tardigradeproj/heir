@@ -4,9 +4,9 @@ import (
 	"fmt"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/tardigrade-runtime/samaritano/pkg/build/controlplaneimage/internal/container/docker"
-	"github.com/tardigrade-runtime/samaritano/pkg/build/controlplaneimage/internal/kube"
-	"github.com/tardigrade-runtime/samaritano/pkg/version"
+	"github.com/tardigradeproj/heir/pkg/build/controlplaneimage/internal/container/docker"
+	"github.com/tardigradeproj/heir/pkg/build/controlplaneimage/internal/kube"
+	"github.com/tardigradeproj/heir/pkg/version"
 
 	"math/rand"
 	"net/url"

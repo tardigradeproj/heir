@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"fmt"
 
-	controlplanev1alpha1 "github.com/tardigrade-runtime/samaritano/api/v1alpha1"
-	"github.com/tardigrade-runtime/samaritano/pkg/templatewriter"
+	controlplanev1alpha1 "github.com/tardigradeproj/heir/api/v1alpha1"
+	"github.com/tardigradeproj/heir/pkg/templatewriter"
 )
 
 func CreateFlannelCNIManifest(runtime *controlplanev1alpha1.Runtime) ([]byte, error) {

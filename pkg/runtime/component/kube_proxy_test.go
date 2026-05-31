@@ -13,7 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/yaml"
 	sigsyaml "sigs.k8s.io/yaml"
 
-	controlplanev1alpha1 "github.com/tardigrade-runtime/samaritano/api/v1alpha1"
+	controlplanev1alpha1 "github.com/tardigradeproj/heir/api/v1alpha1"
 )
 
 // parseManifest splits a multi-document YAML manifest and returns a map of "Kind/name" -> raw JSON bytes.

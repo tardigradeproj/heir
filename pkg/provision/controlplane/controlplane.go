@@ -7,9 +7,9 @@ import (
 	"os"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/tardigrade-runtime/samaritano/api/v1alpha1"
-	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/typ"
-	samaritanoruntime "github.com/tardigrade-runtime/samaritano/pkg/runtime"
+	"github.com/tardigradeproj/heir/api/v1alpha1"
+	"github.com/tardigradeproj/heir/pkg/provision/worker/typ"
+	heirruntime "github.com/tardigradeproj/heir/pkg/runtime"
 	"gvisor.dev/gvisor/pkg/cleanup"
 	apiextensions "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -62,7 +62,7 @@ func Provision(ctx context.Context, opts ...Option) error {
 		client = cs
 	}
 
-	layout := samaritanoruntime.NewControlPlaneLayout()
+	layout := heirruntime.NewControlPlaneLayout()
 
 	kubeconfig, err := setupPKIAuth(ctx, &cleaner, client, runtime, layout)
 	if err != nil {
@@ -114,9 +114,9 @@ func setupPKIAuth(ctx context.Context,
 	cleaner *cleanup.Cleanup,
 	client kubernetes.Interface,
 	runtime *v1alpha1.Runtime,
-	layout samaritanoruntime.ControlPlaneLayout,
+	layout heirruntime.ControlPlaneLayout,
 ) (*clientcmdapi.Config, error) {
-	secret, err := samaritanoruntime.GeneratePKIAuthSecret(runtime, layout)
+	secret, err := heirruntime.GeneratePKIAuthSecret(runtime, layout)
 	if err != nil {
 		return nil, err
 	}
@@ -141,8 +141,8 @@ func setupPKIAuth(ctx context.Context,
 	return kubeconfig, nil
 }
 
-func setupConfig(ctx context.Context, cleaner *cleanup.Cleanup, client kubernetes.Interface, runtime *v1alpha1.Runtime, layout samaritanoruntime.ControlPlaneLayout) (string, error) {
-	cm, configHash, err := samaritanoruntime.GenerateControlPlaneConfig(runtime, layout)
+func setupConfig(ctx context.Context, cleaner *cleanup.Cleanup, client kubernetes.Interface, runtime *v1alpha1.Runtime, layout heirruntime.ControlPlaneLayout) (string, error) {
+	cm, configHash, err := heirruntime.GenerateControlPlaneConfig(runtime, layout)
 	if err != nil {
 		return "", err
 	}
@@ -160,7 +160,7 @@ func setupConfig(ctx context.Context, cleaner *cleanup.Cleanup, client kubernete
 }
 
 func setupService(ctx context.Context, cleaner *cleanup.Cleanup, client kubernetes.Interface, runtime *v1alpha1.Runtime, wrkCtx *typ.WorkerContext) error {
-	svc, err := samaritanoruntime.GenerateService(runtime, wrkCtx)
+	svc, err := heirruntime.GenerateService(runtime, wrkCtx)
 	if err != nil {
 		return err
 	}
@@ -177,8 +177,8 @@ func setupService(ctx context.Context, cleaner *cleanup.Cleanup, client kubernet
 	return nil
 }
 
-func setupDeployment(ctx context.Context, cleaner *cleanup.Cleanup, client kubernetes.Interface, runtime *v1alpha1.Runtime, layout samaritanoruntime.ControlPlaneLayout, configHash string) error {
-	deploy, err := samaritanoruntime.GenerateDeployment(runtime, layout, configHash)
+func setupDeployment(ctx context.Context, cleaner *cleanup.Cleanup, client kubernetes.Interface, runtime *v1alpha1.Runtime, layout heirruntime.ControlPlaneLayout, configHash string) error {
+	deploy, err := heirruntime.GenerateDeployment(runtime, layout, configHash)
 	if err != nil {
 		return err
 	}
@@ -245,7 +245,7 @@ func writeKubeconfig(kubeconfig *clientcmdapi.Config, path string, clusterExtern
 func parseConfig(path string) (*v1alpha1.Runtime, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read samaritano config file: %w", err)
+		return nil, fmt.Errorf("failed to read heir config file: %w", err)
 	}
 
 	// Unmarshal into a raw map so we can run the structural schema defaulter
@@ -257,7 +257,7 @@ func parseConfig(path string) (*v1alpha1.Runtime, error) {
 
 	ss, err := structuralSchema()
 	if err != nil {
-		return nil, fmt.Errorf("that issue is with samaritano itself, please contact the maintainers. Failed to load CRD schema: %w", err)
+		return nil, fmt.Errorf("that issue is with heir itself, please contact the maintainers. Failed to load CRD schema: %w", err)
 	}
 	// Apply the same OpenAPI defaulting the API server runs on admission.
 	defaulting.Default(raw, ss)

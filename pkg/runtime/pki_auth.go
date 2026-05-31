@@ -5,8 +5,8 @@ import (
 	"slices"
 	"time"
 
-	controlplanev1alpha1 "github.com/tardigrade-runtime/samaritano/api/v1alpha1"
-	"github.com/tardigrade-runtime/samaritano/pkg/pki"
+	controlplanev1alpha1 "github.com/tardigradeproj/heir/api/v1alpha1"
+	"github.com/tardigradeproj/heir/pkg/pki"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientcmd "k8s.io/client-go/tools/clientcmd"
@@ -101,7 +101,7 @@ func GeneratePKIAuthSecret(runtime *controlplanev1alpha1.Runtime, layout Control
 		return nil, err
 	}
 
-	adminConf, err := generateKubeconfig(fmt.Sprintf("samaritano-%s", runtime.Name), ca.Cert, adminCert)
+	adminConf, err := generateKubeconfig(fmt.Sprintf("heir-%s", runtime.Name), ca.Cert, adminCert)
 	if err != nil {
 		return nil, err
 	}

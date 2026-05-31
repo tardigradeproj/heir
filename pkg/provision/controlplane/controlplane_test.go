@@ -11,8 +11,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/tardigrade-runtime/samaritano/api/v1alpha1"
-	samaritanoruntime "github.com/tardigrade-runtime/samaritano/pkg/runtime"
+	"github.com/tardigradeproj/heir/api/v1alpha1"
+	heirruntime "github.com/tardigradeproj/heir/pkg/runtime"
 	"gvisor.dev/gvisor/pkg/cleanup"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -108,7 +108,7 @@ func TestBuildClient(t *testing.T) {
 		{
 			name: "non-existent path returns error",
 			setup: func(t *testing.T) string {
-				return "/tmp/samaritano-test-no-such-kubeconfig.yaml"
+				return "/tmp/heir-test-no-such-kubeconfig.yaml"
 			},
 			wantErr: true,
 		},
@@ -145,7 +145,7 @@ func pkiAuthRuntime(name, namespace string) *v1alpha1.Runtime {
 }
 
 func TestSetupPKIAuth(t *testing.T) {
-	layout := samaritanoruntime.NewControlPlaneLayout()
+	layout := heirruntime.NewControlPlaneLayout()
 
 	var cleanupDeleteCalls atomic.Int32
 
@@ -163,7 +163,7 @@ func TestSetupPKIAuth(t *testing.T) {
 			handler: secretsHandler(http.StatusCreated, nil),
 			wantErr: false,
 			validate: func(t *testing.T, cfg *clientcmdapi.Config) {
-				assert.Equal(t, "samaritano-test-cluster@kubernetes", cfg.CurrentContext)
+				assert.Equal(t, "heir-test-cluster@kubernetes", cfg.CurrentContext)
 				_, hasContext := cfg.Contexts[cfg.CurrentContext]
 				assert.True(t, hasContext, "expected context %q to be present", cfg.CurrentContext)
 				_, hasCluster := cfg.Clusters["kubernetes"]
@@ -176,8 +176,8 @@ func TestSetupPKIAuth(t *testing.T) {
 			handler: secretsHandler(http.StatusCreated, nil),
 			wantErr: false,
 			validate: func(t *testing.T, cfg *clientcmdapi.Config) {
-				authInfo, ok := cfg.AuthInfos["samaritano-my-cluster"]
-				require.True(t, ok, "expected auth info for 'samaritano-my-cluster'")
+				authInfo, ok := cfg.AuthInfos["heir-my-cluster"]
+				require.True(t, ok, "expected auth info for 'heir-my-cluster'")
 				assert.NotEmpty(t, authInfo.ClientCertificateData)
 				assert.NotEmpty(t, authInfo.ClientKeyData)
 			},
@@ -229,7 +229,7 @@ func TestSetupPKIAuth(t *testing.T) {
 
 // Compile-time check: ensure the functions under test match the expected signatures.
 var _ func(string) (*kubernetes.Clientset, error) = buildClient
-var _ func(context.Context, *cleanup.Cleanup, kubernetes.Interface, *v1alpha1.Runtime, samaritanoruntime.ControlPlaneLayout) (*clientcmdapi.Config, error) = setupPKIAuth
+var _ func(context.Context, *cleanup.Cleanup, kubernetes.Interface, *v1alpha1.Runtime, heirruntime.ControlPlaneLayout) (*clientcmdapi.Config, error) = setupPKIAuth
 
 func TestParseConfig(t *testing.T) {
 	tests := []struct {
@@ -242,10 +242,10 @@ func TestParseConfig(t *testing.T) {
 		{
 			name: "non-existent file returns error",
 			makeConfig: func(_ *testing.T) string {
-				return "/tmp/samaritano-parseconfig-no-such-file.yaml"
+				return "/tmp/heir-parseconfig-no-such-file.yaml"
 			},
 			wantErr:     true,
-			errContains: "failed to read samaritano config file",
+			errContains: "failed to read heir config file",
 		},
 		{
 			name: "malformed YAML returns error",
@@ -311,8 +311,8 @@ metadata:
   namespace: default
 spec:
   controlPlane:
-    samaritano:
-      image: "samaritano:test"
+    heir:
+      image: "heir:test"
     deployment:
       serviceAccountName: default
     service:
@@ -337,8 +337,8 @@ metadata:
   namespace: default
 spec:
   controlPlane:
-    samaritano:
-      image: "samaritano:test"
+    heir:
+      image: "heir:test"
     deployment:
       replicas: 1
       serviceAccountName: default
@@ -365,8 +365,8 @@ metadata:
   namespace: default
 spec:
   controlPlane:
-    samaritano:
-      image: "samaritano:test"
+    heir:
+      image: "heir:test"
     deployment:
       replicas: 1
       serviceAccountName: default
@@ -405,8 +405,8 @@ metadata:
   namespace: default
 spec:
   controlPlane:
-    samaritano:
-      image: "samaritano:test"
+    heir:
+      image: "heir:test"
     deployment:
       replicas: 1
       serviceAccountName: default

@@ -36,11 +36,11 @@ cgroupDriver: systemd
 cgroupDriver: systemd
 `,
 			patch: `
-staticPodPath: /etc/samaritano/manifests
+staticPodPath: /etc/heir/manifests
 `,
 			validate: func(t *testing.T, result map[string]interface{}) {
 				assert.Equal(t, "systemd", result["cgroupDriver"])
-				assert.Equal(t, "/etc/samaritano/manifests", result["staticPodPath"])
+				assert.Equal(t, "/etc/heir/manifests", result["staticPodPath"])
 			},
 		},
 		{

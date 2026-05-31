@@ -129,7 +129,7 @@ func TestCreateBootstrapToken(t *testing.T) {
 			setup: func(t *testing.T) (string, string) {
 				srv := fakeAPIServer(t, http.StatusCreated, []string{"bootstrap-token-test"})
 				t.Cleanup(srv.Close)
-				return writeKubeconfig(t, srv.URL, "samaritano", caPEM), "samaritano"
+				return writeKubeconfig(t, srv.URL, "heir", caPEM), "heir"
 			},
 			expiry:  1 * time.Hour,
 			wantErr: false,
@@ -163,7 +163,7 @@ func TestCreateBootstrapToken(t *testing.T) {
 			setup: func(t *testing.T) (string, string) {
 				srv := fakeAPIServer(t, http.StatusCreated, []string{"127.0.0.1"})
 				t.Cleanup(srv.Close)
-				return writeKubeconfig(t, srv.URL, "samaritano", caPEM), "samaritano"
+				return writeKubeconfig(t, srv.URL, "heir", caPEM), "heir"
 			},
 			expiry:  30 * time.Minute,
 			wantErr: false,
@@ -200,7 +200,7 @@ func TestCreateBootstrapToken(t *testing.T) {
 			// file is caught there first.
 			name: "kubeconfig file does not exist",
 			setup: func(t *testing.T) (string, string) {
-				return "/nonexistent/kubeconfig.yaml", "samaritano"
+				return "/nonexistent/kubeconfig.yaml", "heir"
 			},
 			expiry:     1 * time.Hour,
 			wantErr:    true,
@@ -211,7 +211,7 @@ func TestCreateBootstrapToken(t *testing.T) {
 			setup: func(t *testing.T) (string, string) {
 				srv := fakeAPIServer(t, http.StatusCreated, nil)
 				t.Cleanup(srv.Close)
-				return writeKubeconfig(t, srv.URL, "samaritano", caPEM), "missing"
+				return writeKubeconfig(t, srv.URL, "heir", caPEM), "missing"
 			},
 			expiry:     1 * time.Hour,
 			wantErr:    true,
@@ -222,7 +222,7 @@ func TestCreateBootstrapToken(t *testing.T) {
 			setup: func(t *testing.T) (string, string) {
 				srv := fakeAPIServer(t, http.StatusCreated, nil)
 				t.Cleanup(srv.Close)
-				return writeKubeconfig(t, srv.URL, "samaritano", nil), "samaritano"
+				return writeKubeconfig(t, srv.URL, "heir", nil), "heir"
 			},
 			expiry:     1 * time.Hour,
 			wantErr:    true,
@@ -233,7 +233,7 @@ func TestCreateBootstrapToken(t *testing.T) {
 			setup: func(t *testing.T) (string, string) {
 				srv := fakeAPIServer(t, http.StatusInternalServerError, []string{"127.0.0.1"})
 				t.Cleanup(srv.Close)
-				return writeKubeconfig(t, srv.URL, "samaritano", caPEM), "samaritano"
+				return writeKubeconfig(t, srv.URL, "heir", caPEM), "heir"
 			},
 			expiry:     1 * time.Hour,
 			wantErr:    true,
@@ -246,7 +246,7 @@ func TestCreateBootstrapToken(t *testing.T) {
 			setup: func(t *testing.T) (string, string) {
 				srv := fakeAPIServer(t, http.StatusCreated, []string{"10.0.0.1", "10.0.0.2"})
 				t.Cleanup(srv.Close)
-				return writeKubeconfig(t, srv.URL, "samaritano", caPEM), "samaritano"
+				return writeKubeconfig(t, srv.URL, "heir", caPEM), "heir"
 			},
 			expiry:  1 * time.Hour,
 			wantErr: false,

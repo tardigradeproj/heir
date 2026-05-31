@@ -8,15 +8,15 @@ import (
 
 	retry "github.com/avast/retry-go"
 	log "github.com/sirupsen/logrus"
-	"github.com/tardigrade-runtime/samaritano/api/v1alpha1"
+	"github.com/tardigradeproj/heir/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 
-	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/typ"
+	"github.com/tardigradeproj/heir/pkg/provision/worker/typ"
 )
 
-// After TLS bootstrap, samaritano uses the freshly-written kubelet.conf to talk to the Kubernetes API and fetch the worker profile.
+// After TLS bootstrap, heir uses the freshly-written kubelet.conf to talk to the Kubernetes API and fetch the worker profile.
 // A ConfigMap in kube-system that contains the full configuration the worker node should use. The profile contains kubelet and containerd mirrors configuration.
 
 const (

@@ -2,7 +2,7 @@ package controlplaneimage
 
 import (
 	"github.com/spf13/cobra"
-	"github.com/tardigrade-runtime/samaritano/pkg/build/controlplaneimage"
+	"github.com/tardigradeproj/heir/pkg/build/controlplaneimage"
 	"sigs.k8s.io/kind/pkg/errors"
 )
 

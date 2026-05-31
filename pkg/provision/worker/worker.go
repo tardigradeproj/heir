@@ -14,11 +14,11 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
-	btsp "github.com/tardigrade-runtime/samaritano/pkg/provision/worker/bootstrap"
-	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/component"
-	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/proxy"
-	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/sys"
-	"github.com/tardigrade-runtime/samaritano/pkg/provision/worker/typ"
+	btsp "github.com/tardigradeproj/heir/pkg/provision/worker/bootstrap"
+	"github.com/tardigradeproj/heir/pkg/provision/worker/component"
+	"github.com/tardigradeproj/heir/pkg/provision/worker/proxy"
+	"github.com/tardigradeproj/heir/pkg/provision/worker/sys"
+	"github.com/tardigradeproj/heir/pkg/provision/worker/typ"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
