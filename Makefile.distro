@@ -17,19 +17,13 @@ WORKER_DIR         ?= $(ARTIFACTS_DIR)/worker/$(ARCH)
 CONTROLPLANE_DIR   ?= $(ARTIFACTS_DIR)/controlplane/$(ARCH)
 INTEGRATION_TEST_DIR ?= $(shell pwd)/integration-test
 
-$(WORKER_DIR)/kubelet:
-	@mkdir -p "$(WORKER_DIR)"
+KUBE_TARBALL := $(ARTIFACTS_DIR)/kubernetes-server-$(OS)-$(ARCH).tar.gz
+
+$(WORKER_DIR)/.done:
+	@mkdir -p "$(WORKER_DIR)/cni"
 	@echo "Downloading kubelet $(KUBE_VERSION) for linux/$(ARCH)..."
-	curl -fsSL "https://dl.k8s.io/$(KUBE_VERSION)/bin/linux/$(ARCH)/kubelet" \
-		-o "$@"
-	@chmod +x "$@"
-	@echo "kubelet ready: $@"
-
-.PHONY: download-kubelet
-download-kubelet: $(WORKER_DIR)/kubelet ## Download kubelet binary for ARCH
-
-$(WORKER_DIR)/containerd:
-	@mkdir -p "$(WORKER_DIR)"
+	curl -fsSL "https://dl.k8s.io/$(KUBE_VERSION)/bin/linux/$(ARCH)/kubelet" -o "$(WORKER_DIR)/kubelet"
+	@chmod +x "$(WORKER_DIR)/kubelet"
 	@echo "Downloading containerd $(CONTAINERD_VERSION) for linux/$(ARCH)..."
 	@tmpdir=$$(mktemp -d); \
 	curl -fsSL "https://github.com/containerd/containerd/releases/download/v$(CONTAINERD_VERSION)/containerd-$(CONTAINERD_VERSION)-linux-$(ARCH).tar.gz" \
@@ -40,26 +34,9 @@ $(WORKER_DIR)/containerd:
 	mv "$$tmpdir/bin/ctr" "$(WORKER_DIR)/ctr"; \
 	rm -rf "$$tmpdir"
 	@chmod +x "$(WORKER_DIR)/containerd" "$(WORKER_DIR)/containerd-shim-runc-v2" "$(WORKER_DIR)/ctr"
-	@echo "containerd ready: $(WORKER_DIR)/containerd"
-	@echo "containerd-shim-runc-v2 ready: $(WORKER_DIR)/containerd-shim-runc-v2"
-	@echo "ctr ready: $(WORKER_DIR)/ctr"
-
-.PHONY: download-containerd
-download-containerd: $(WORKER_DIR)/containerd ## Download containerd and containerd-shim-runc-v2 binaries for ARCH
-
-$(WORKER_DIR)/runc:
-	@mkdir -p "$(WORKER_DIR)"
 	@echo "Downloading runc $(RUNC_VERSION) for linux/$(ARCH)..."
-	curl -fsSL "https://github.com/opencontainers/runc/releases/download/$(RUNC_VERSION)/runc.$(ARCH)" \
-		-o "$@"
-	@chmod +x "$@"
-	@echo "runc ready: $@"
-
-.PHONY: download-runc
-download-runc: $(WORKER_DIR)/runc ## Download runc binary for ARCH
-
-$(WORKER_DIR)/crictl:
-	@mkdir -p "$(WORKER_DIR)"
+	curl -fsSL "https://github.com/opencontainers/runc/releases/download/$(RUNC_VERSION)/runc.$(ARCH)" -o "$(WORKER_DIR)/runc"
+	@chmod +x "$(WORKER_DIR)/runc"
 	@echo "Downloading crictl $(CRICTL_VERSION) for linux/$(ARCH)..."
 	@tmpdir=$$(mktemp -d); \
 	curl -fsSL "https://github.com/kubernetes-sigs/cri-tools/releases/download/$(CRICTL_VERSION)/crictl-$(CRICTL_VERSION)-linux-$(ARCH).tar.gz" \
@@ -67,11 +44,23 @@ $(WORKER_DIR)/crictl:
 	tar -xzf "$$tmpdir/crictl.tar.gz" -C "$$tmpdir" crictl; \
 	mv "$$tmpdir/crictl" "$(WORKER_DIR)/crictl"; \
 	rm -rf "$$tmpdir"
-	@chmod +x "$@"
-	@echo "crictl ready: $@"
+	@chmod +x "$(WORKER_DIR)/crictl"
+	@echo "Downloading CNI plugins $(CNI_VERSION) for linux/$(ARCH)..."
+	@tmpdir=$$(mktemp -d); \
+	curl -fsSL "https://github.com/containernetworking/plugins/releases/download/$(CNI_VERSION)/cni-plugins-linux-$(ARCH)-$(CNI_VERSION).tgz" \
+		-o "$$tmpdir/cni-plugins.tgz"; \
+	tar -xzf "$$tmpdir/cni-plugins.tgz" -C "$(WORKER_DIR)/cni"; \
+	rm -rf "$$tmpdir"
+	@chmod +x "$(WORKER_DIR)/cni/"*
+	@touch "$@"
+	@echo "Worker artifacts ready: $(WORKER_DIR)"
 
-.PHONY: download-crictl
-download-crictl: $(WORKER_DIR)/crictl ## Download crictl binary for ARCH
+.PHONY: download-worker-artifacts
+download-worker-artifacts: $(WORKER_DIR)/.done ## Download all worker node artifacts for ARCH
+
+.PHONY: clean-worker-artifacts
+clean-worker-artifacts: ## Remove all downloaded worker node artifacts
+	rm -rf "$(WORKER_DIR)"
 
 $(ARTIFACTS_DIR)/manifests/calico-operator-crds.yaml:
 	@mkdir -p "$(ARTIFACTS_DIR)/manifests"
@@ -85,23 +74,16 @@ $(ARTIFACTS_DIR)/manifests/calico-operator-crds.yaml:
 .PHONY: download-calico
 download-calico: $(ARTIFACTS_DIR)/manifests/calico-operator-crds.yaml ## Download Calico manifests (operator-crds and tigera-operator) for the given CALICO_VERSION (default: 3.31.4)
 
-KUBE_TARBALL := $(ARTIFACTS_DIR)/kubernetes-server-$(OS)-$(ARCH).tar.gz
-
 $(KUBE_TARBALL):
 	@mkdir -p "$(ARTIFACTS_DIR)"
 	@echo "Downloading Kubernetes $(KUBE_VERSION) for $(OS)/$(ARCH)..."
-	curl -fsSL "https://dl.k8s.io/$(KUBE_VERSION)/kubernetes-server-$(OS)-$(ARCH).tar.gz" \
-	   -o "$@"
+	curl -fsSL "https://dl.k8s.io/$(KUBE_VERSION)/kubernetes-server-$(OS)-$(ARCH).tar.gz" -o "$@"
 	@echo "Artifact ready: $@"
-
-.PHONY: download-kubernetes
-download-kubernetes: $(KUBE_TARBALL)
 
 $(CONTROLPLANE_DIR)/.done: $(KUBE_TARBALL)
 	@mkdir -p "$(CONTROLPLANE_DIR)"
 	@echo "Extracting Kubernetes $(KUBE_VERSION) server binaries for $(OS)/$(ARCH)..."
-	tar -xzf "$(KUBE_TARBALL)" -C "$(CONTROLPLANE_DIR)" --strip-components=3 kubernetes/server/bin || \
-	  test -f "$(CONTROLPLANE_DIR)/kube-apiserver"
+	tar -xzf "$(KUBE_TARBALL)" -C "$(CONTROLPLANE_DIR)" --strip-components=3 kubernetes/server/bin
 	@touch "$@"
 	@echo "Control plane artifacts ready: $(CONTROLPLANE_DIR)"
 
@@ -112,16 +94,8 @@ setup-controlplane-artifacts: $(CONTROLPLANE_DIR)/.done ## Extract Kubernetes se
 clean-controlplane-artifacts: ## Remove extracted control plane artifacts
 	rm -rf "$(CONTROLPLANE_DIR)"
 
-.PHONY: control-plane-artifact-setup
-control-plane-artifact-setup: download-kubernetes ## build-masteragent ## Download Kubernetes binaries, build masteragent, and bundle into control-plane-artifact-<os>-<arch>.tar.gz
-	@echo "Bundling masteragent into control-plane artifact..."
-	@tmpdir=$$(mktemp -d); \
-	tar -xzf "$(ARTIFACTS_DIR)/kubernetes-server-linux-$(ARCH).tar.gz" -C "$$tmpdir"; \
-	cp "$(ARTIFACTS_DIR)/masteragent" "$$tmpdir/kubernetes/server/bin/masteragent"; \
-	tar -czf "$(ARTIFACTS_DIR)/control-plane-artifact-$(OS)-$(ARCH).tar.gz" -C "$$tmpdir" kubernetes; \
-	rm -rf "$$tmpdir"
-	@echo "Artifact ready: $(ARTIFACTS_DIR)/control-plane-artifact-$(OS)-$(ARCH).tar.gz"
-
+.PHONY: download-all-artifacts
+download-all-artifacts: download-worker-artifacts setup-controlplane-artifacts ## Download all worker and control plane artifacts for ARCH
 
 .PHONY: build-base
 build-base: ## Build the base container image
@@ -129,8 +103,6 @@ build-base: ## Build the base container image
 		-f images/base/Dockerfile \
 		-t $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG) \
 		images/base
-
-
 
 .PHONY: build-controlplane-image
 build-controlplane-image:
@@ -141,10 +113,19 @@ build-masteragent: ## Build masteragent natively with CGO (run from vagrant); bi
 	@mkdir -p "$(ARTIFACTS_DIR)"
 	CGO_ENABLED=1 go build -o $(ARTIFACTS_DIR)/masteragent ./cmd/masteragent.go
 
+.PHONY: control-plane-artifact-setup
+control-plane-artifact-setup: $(KUBE_TARBALL) ## Download Kubernetes binaries, build masteragent, and bundle into control-plane-artifact-<os>-<arch>.tar.gz
+	@echo "Bundling masteragent into control-plane artifact..."
+	@tmpdir=$$(mktemp -d); \
+	tar -xzf "$(ARTIFACTS_DIR)/kubernetes-server-linux-$(ARCH).tar.gz" -C "$$tmpdir"; \
+	cp "$(ARTIFACTS_DIR)/masteragent" "$$tmpdir/kubernetes/server/bin/masteragent"; \
+	tar -czf "$(ARTIFACTS_DIR)/control-plane-artifact-$(OS)-$(ARCH).tar.gz" -C "$$tmpdir" kubernetes; \
+	rm -rf "$$tmpdir"
+	@echo "Artifact ready: $(ARTIFACTS_DIR)/control-plane-artifact-$(OS)-$(ARCH).tar.gz"
+
 .PHONY: build-distro
 build-distro: ## Build cmd/distro for linux/ARCH and place the binary in integration-test/
 	GOOS=linux GOARCH=$(ARCH) go build -o $(INTEGRATION_TEST_DIR)/tardigrade ./cmd/distro.go
-
 
 .PHONY: build-integration-test-image
 build-integration-test-image: ## Build the bootloose worker image with kubectl
@@ -158,28 +139,6 @@ build-integration-test-image: ## Build the bootloose worker image with kubectl
 integration-test: build-distro build-integration-test-image ## Build distro binary, set up kind cluster, run integration tests, tear down
 	.local/kind-with-registry.sh
 	go test -v -timeout 30m ./integration-test/...; rc=$$?; echo "abc"; exit $$rc
-
-$(WORKER_DIR)/cni/.done:
-	@mkdir -p "$(WORKER_DIR)/cni"
-	@echo "Downloading CNI plugins $(CNI_VERSION) for linux/$(ARCH)..."
-	@tmpdir=$$(mktemp -d); \
-	curl -fsSL "https://github.com/containernetworking/plugins/releases/download/$(CNI_VERSION)/cni-plugins-linux-$(ARCH)-$(CNI_VERSION).tgz" \
-		-o "$$tmpdir/cni-plugins.tgz"; \
-	tar -xzf "$$tmpdir/cni-plugins.tgz" -C "$(WORKER_DIR)/cni"; \
-	rm -rf "$$tmpdir"
-	@chmod +x "$(WORKER_DIR)/cni/"*
-	@touch "$@"
-	@echo "CNI plugins ready: $(WORKER_DIR)/cni/"
-
-.PHONY: download-cni-plugins
-download-cni-plugins: $(WORKER_DIR)/cni/.done ## Download CNI plugins for ARCH
-
-.PHONY: download-worker-artifacts
-download-worker-artifacts: download-kubelet download-containerd download-runc download-crictl download-cni-plugins ## Download all worker node artifacts
-
-.PHONY: clean-worker-artifacts
-clean-worker-artifacts: ## Remove all downloaded worker node artifacts
-	rm -rf "$(WORKER_DIR)"
 
 .PHONY: vagrant-up
 vagrant-up: ## Start and provision the Vagrant VM
@@ -197,7 +156,6 @@ vagrant-ssh: ## Open an SSH session into the Vagrant VM
 copy-masteragent: ## Build masteragent on vagrant and copy binary back to host
 	vagrant ssh -c "cd heir && make build-masteragent"
 	vagrant scp default:~/heir/artifacts/masteragent $(ARTIFACTS_DIR)/masteragent
-
 
 .PHONY: test-distro
 test-distro:

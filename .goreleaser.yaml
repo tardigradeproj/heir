@@ -12,6 +12,8 @@ version: 2
 before:
   hooks:
     - go mod tidy
+    - make download-all-artifacts ARCH=amd64
+    - make download-all-artifacts ARCH=arm64
 builds:
   - main: cmd/distro.go
     id: distro
@@ -20,13 +22,6 @@ builds:
       - -tags=embedartifacts
     env:
       - CGO_ENABLED=0
-    hooks:
-      pre:
-        - cmd: make download-worker-artifacts
-          env:
-            - OS={{ .Os }}
-            - ARCH={{ .Arch }}
-          output: true
     goos:
       - linux
     goarch:
@@ -88,12 +83,6 @@ dockers_v2:
       - linux/arm64
     build_args:
       BASE_IMAGE: "ghcr.io/tardigrade/heir-base:{{ .Tag }}"
-    hooks:
-      pre:
-        - cmd: make setup-controlplane-artifacts ARCH=amd64
-          output: true
-        - cmd: make setup-controlplane-artifacts ARCH=arm64
-          output: true
 changelog:
   sort: asc
   filters:
