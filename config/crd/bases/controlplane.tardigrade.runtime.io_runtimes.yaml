@@ -41,27 +41,33 @@ spec:
             properties:
               controlPlane:
                 default: {}
-                description: |-
-                  ControlPlaneSpec defines how control plane must be created in the Admin UpstreamCluster,
-                  such as the number of Pod replicas, the Service resource, or the Ingress.
+                description: controlPlane configures how the tenant control plane
+                  is deployed in the management cluster.
                 properties:
                   deployment:
-                    description: Defining the options for Deployment resource.
+                    description: deployment configures the Deployment resource created
+                      for the heir control plane pods.
                     properties:
                       additionalMetadata:
+                        description: additionalMetadata allows attaching extra labels
+                          and annotations to the generated Deployment.
                         properties:
                           annotations:
                             additionalProperties:
                               type: string
+                            description: annotations are added to the resource's metadata.annotations
+                              map.
                             type: object
                           labels:
                             additionalProperties:
                               type: string
+                            description: labels are added to the resource's metadata.labels
+                              map.
                             type: object
                         type: object
                       affinity:
                         description: |-
-                          If specified, the Tenant Control Plane pod's scheduling constraints.
+                          affinity defines scheduling constraints for the tenant control plane pods.
                           More info: https://kubernetes.io/docs/tasks/configure-pod-container/assign-pods-nodes-using-node-affinity/
                         properties:
                           nodeAffinity:
@@ -985,41 +991,26 @@ spec:
                                 x-kubernetes-list-type: atomic
                             type: object
                         type: object
-                      registrySettings:
-                        description: |-
-                          RegistrySettings allows to override the default images for the given Runtime instance.
-                          It could be used to point to a different container registry rather than the public one.
-                        properties:
-                          image:
-                            type: string
-                          pullPolicy:
-                            description: PullPolicy describes a policy for if/when
-                              to pull a container image
-                            type: string
-                          registry:
-                            default: registry.k8s.io
-                            type: string
-                        type: object
                       replicas:
                         default: 1
+                        description: replicas is the desired number of tenant control
+                          plane pod replicas.
                         format: int32
                         minimum: 1
                         type: integer
                       runtimeClassName:
                         description: |-
-                          RuntimeClassName refers to a RuntimeClass object in the node.k8s.io group, which should be used
-                          to run the Tenant Control Plane pod. If no RuntimeClass resource matches the named class, the pod will not be run.
-                          If unset or empty, the "legacy" RuntimeClass will be used, which is an implicit class with an
-                          empty definition that uses the default runtime handler.
+                          runtimeClassName references a RuntimeClass object that controls which container
+                          runtime is used for the tenant control plane pods. When empty, the cluster default is used.
                         type: string
                       serviceAccountName:
                         default: default
-                        description: ServiceAccountName allows to specify the service
-                          account to be mounted to the pods of the Control plane deployment
+                        description: serviceAccountName is the name of the ServiceAccount
+                          mounted into the tenant control plane pods.
                         type: string
                       tolerations:
                         description: |-
-                          If specified, the Tenant Control Plane pod's tolerations.
+                          tolerations applied to the tenant control plane pods.
                           More info: https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/
                         items:
                           description: |-
@@ -1061,78 +1052,68 @@ spec:
                         type: array
                     type: object
                   heir:
-                    description: Heir provides details about the distribution to install
+                    description: heir specifies the Heir distribution image to run
+                      as the heir control plane.
                     properties:
                       image:
-                        type: string
-                    type: object
-                  ingress:
-                    description: Defining the options for an Optional Ingress which
-                      will expose API Server of the Tenant Control Plane
-                    properties:
-                      additionalMetadata:
-                        properties:
-                          annotations:
-                            additionalProperties:
-                              type: string
-                            type: object
-                          labels:
-                            additionalProperties:
-                              type: string
-                            type: object
-                        type: object
-                      hostname:
-                        type: string
-                      ingressClassName:
+                        description: |-
+                          image is the fully qualified container image reference (including tag or digest)
+                          for the Heir control plane, e.g. ghcr.io/tardigradeproj/heir:v1.2.3.
                         type: string
                     type: object
                   service:
+                    description: service configures the Service resource that exposes
+                      the tenant control plane.
                     properties:
                       KonnectivityNodePort:
                         default: 30081
-                        description: Konnectivity NodePort, only use this option when
-                          serviceType is NodePort
+                        description: |-
+                          konnectivityNodePort is the NodePort assigned to the Konnectivity proxy port.
+                          Only used when serviceType is NodePort.
                         format: int32
                         type: integer
                       additionalMetadata:
+                        description: additionalMetadata allows attaching extra labels
+                          and annotations to the generated Service.
                         properties:
                           annotations:
                             additionalProperties:
                               type: string
+                            description: annotations are added to the resource's metadata.annotations
+                              map.
                             type: object
                           labels:
                             additionalProperties:
                               type: string
+                            description: labels are added to the resource's metadata.labels
+                              map.
                             type: object
                         type: object
                       additionalPorts:
                         description: |-
-                          AdditionalPorts allows adding additional ports to the Service generated
-                          which targets the Tenant Control Plane pods.
+                          additionalPorts adds extra ports to the Service, in addition to the default API server
+                          and Konnectivity ports.
                         items:
+                          description: AdditionalPort defines an extra port to add
+                            to a Service.
                           properties:
                             appProtocol:
                               description: |-
-                                The application protocol for this port.
-                                This is used as a hint for implementations to offer richer behavior for protocols that they understand.
-                                This field follows standard Kubernetes label syntax.
-                                Valid values are either:
-
-                                * Un-prefixed protocol names - reserved for IANA standard service names (as per
-                                RFC-6335 and https://www.iana.org/assignments/service-names).
+                                appProtocol is a hint to implementations about the application-layer protocol
+                                carried on this port (e.g. "http", "https"). Follows Kubernetes label syntax.
                               type: string
                             name:
-                              description: The name of this port within the Service
-                                created by tardigrade.
+                              description: name is the port name within the Service.
+                                Must be unique across all ports.
                               type: string
                             port:
-                              description: The port that will be exposed by this service.
+                              description: port is the port number exposed by the
+                                Service.
                               format: int32
                               type: integer
                             protocol:
                               default: TCP
-                              description: The IP protocol for this port. Supports
-                                "TCP", "UDP", and "SCTP".
+                              description: protocol is the IP protocol for this port.
                               enum:
                               - TCP
                               - UDP
@@ -1143,11 +1124,8 @@ spec:
                               - type: integer
                               - type: string
                               description: |-
-                                Number or name of the port to access on the pods of the Tenant Control Plane.
-                                Number must be in the range 1 to 65535. Name must be an IANA_SVC_NAME.
-                                If this is a string, it will be looked up as a named port in the
-                                target Pod's container ports. If this is not specified, the value
-                                of the 'port' field is used (an identity map).
+                                targetPort is the port number or named port on the tenant control plane pods
+                                that receives traffic for this Service port.
                               x-kubernetes-int-or-string: true
                           required:
                           - name
@@ -1156,14 +1134,14 @@ spec:
                         type: array
                       apiServerNodePort:
                         default: 30080
-                        description: ApiServer NodePort, only use this option when
-                          serviceType is NodePort
+                        description: |-
+                          apiServerNodePort is the NodePort assigned to the API server port.
+                          Only used when serviceType is NodePort.
                         format: int32
                         type: integer
                       serviceType:
                         default: NodePort
-                        description: ServiceType allows specifying how to expose the
-                          Control Plane.
+                        description: serviceType controls how the Service is exposed.
                         enum:
                         - NodePort
                         - ClusterIP
@@ -1180,43 +1158,53 @@ spec:
                 type: object
               upstreamCluster:
                 default: {}
-                description: UpstreamCluster defines how UpstreamCluster components
-                  are configured
+                description: upstreamCluster configures the tenant Kubernetes cluster
+                  running inside the control plane pod.
                 properties:
                   apiServer:
                     default: {}
-                    description: APIServerSpec defines api-server configurations
+                    description: APIServer holds flags and SANs passed to the tenant
+                      kube-apiserver.
                     properties:
                       extraArgs:
                         additionalProperties:
                           type: string
-                        description: extraArgs defines a Map of key-values (strings)
-                          for any extra arguments you wish to pass down to Kubernetes
-                          api-server process
+                        description: |-
+                          extraArgs is a map of additional flags passed directly to the kube-apiserver process.
+                          Keys are flag names (without the leading --) and values are their string representations.
                         type: object
                       sans:
-                        description: sans defines a List of additional addresses to
-                          push to API servers serving certificate
+                        description: |-
+                          sans is a list of additional Subject Alternative Names added to the API server's
+                          serving certificate. Use this to include load-balancer IPs, external hostnames,
+                          or any address through which clients will reach the API server.
                         items:
                           type: string
                         type: array
                     type: object
                   controlPlaneEndpoint:
                     default: {}
+                    description: |-
+                      ControlPlaneEndpoint describes the addresses and ports through which worker
+                      nodes reach the API server.
                     properties:
                       addresses:
-                        description: Addresses are the hosts (IP or hostname) to connect
-                          to.
+                        description: |-
+                          addresses is the list of IP addresses or hostnames of the hosts exposing
+                          the tenant control plane (e.g. the NodePort addresses of the Management cluster nodes).
+                          It cannot contain protocol nor port.
                         items:
                           type: string
                         type: array
                       apiServer:
                         default:
                           port: 30080
-                        description: APIServer defines how workers reach the API server.
+                        description: apiServer defines the port on the above addresses
+                          that exposes the Kubernetes API server.
                         properties:
                           port:
-                            description: Port on the remote endpoint.
+                            description: port is the TCP port number on the remote
+                              endpoint.
                             format: int32
                             type: integer
                         required:
@@ -1225,11 +1213,12 @@ spec:
                       konnectivity:
                         default:
                           port: 30081
-                        description: Konnectivity defines how workers reach the Konnectivity
-                          server.
+                        description: konnectivity defines the port on the above addresses
+                          that exposes the Konnectivity proxy server.
                         properties:
                           port:
-                            description: Port on the remote endpoint.
+                            description: port is the TCP port number on the remote
+                              endpoint.
                             format: int32
                             type: integer
                         required:
@@ -1241,25 +1230,27 @@ spec:
                     type: object
                   controllerManager:
                     default: {}
+                    description: ControllerManager holds extra flags passed to the
+                      tenant kube-controller-manager.
                     properties:
                       extraArgs:
                         additionalProperties:
                           type: string
-                        description: extraArgs defines a Map of key-values (strings)
-                          for any extra arguments you wish to pass down to Kubernetes
-                          controller manager process
+                        description: |-
+                          extraArgs is a map of additional flags passed directly to the kube-controller-manager process.
+                          Keys are flag names (without the leading --) and values are their string representations.
                         type: object
                     type: object
                   extraResources:
                     default: {}
                     description: |-
-                      ExtraResourcesSpec holds a list of arbitrary Kubernetes objects to be applied
-                      to the upstream cluster on startup.
+                      ExtraResources is a list of arbitrary Kubernetes objects applied to the
+                      tenant cluster once its API server becomes available.
                     properties:
                       objects:
                         description: |-
-                          Objects is a list of Kubernetes objects to apply on cluster startup.
-                          Any valid Kubernetes resource manifest is accepted.
+                          objects is a list of raw Kubernetes resource manifests applied to the tenant
+                          cluster on startup. Any valid Kubernetes object is accepted.
                         items:
                           type: object
                           x-kubernetes-preserve-unknown-fields: true
@@ -1267,28 +1258,38 @@ spec:
                     type: object
                   kubelet:
                     default: {}
+                    description: |-
+                      Kubelet holds extra flags and configuration patches applied to kubelet
+                      on worker nodes that join this tenant cluster.
                     properties:
                       configPatches:
                         description: |-
-                          configuration holds KubeletConfiguration. The configuration provided patches the default kubelet configuration
-                          the kubelet config file on worker nodes.
+                          ConfigPatches is a partial KubeletConfiguration document that is strategically
+                          merged on top of the default kubelet configuration written to worker nodes.
+                          Only the fields you specify are overridden; all others remain at their defaults.
                         type: string
                       extraArgs:
                         additionalProperties:
                           type: string
-                        description: extraArgs defines a Map of key-values (strings)
-                          for any extra arguments you wish to pass down to kubelet
+                        description: |-
+                          ExtraArgs is a map of additional flags passed directly to the kubelet process.
+                          Keys are flag names (without the leading --) and values are their string representations.
                         type: object
                     type: object
                   network:
                     default: {}
+                    description: |-
+                      Network configures pod CIDR, service CIDR, CNI plugin, kube-proxy, CoreDNS,
+                      and the Konnectivity proxy for the tenant cluster.
                     properties:
                       cni:
                         default: {}
-                        description: CNI configuration
+                        description: cni configures the Container Network Interface
+                          plugin installed in the tenant cluster.
                         properties:
                           supplier:
                             default: flannel
+                            description: supplier is the CNI plugin to install.
                             enum:
                             - flannel
                             - custom
@@ -1296,6 +1297,7 @@ spec:
                         type: object
                       coredns:
                         default: {}
+                        description: coredns configures CoreDNS in the tenant cluster.
                         properties:
                           clusterDNSIP:
                             default: 10.96.0.10
@@ -1304,16 +1306,22 @@ spec:
                             default:
                               image: coredns/coredns:v1.12.1
                               register: registry.k8s.io
-                            description: '#TODO: review'
+                            description: |-
+                              RegistrySettings configures a container image registry reference,
+                              including the registry host, image name, and pull policy.
                             properties:
                               image:
+                                description: image is the image name within the registry,
+                                  without the tag or digest.
                                 type: string
                               pullPolicy:
-                                description: PullPolicy describes a policy for if/when
-                                  to pull a container image
+                                description: pullPolicy controls when the kubelet
+                                  pulls the image.
                                 type: string
                               registry:
                                 default: registry.k8s.io
+                                description: registry is the container registry hostname,
+                                  e.g. registry.k8s.io.
                                 type: string
                             type: object
                           replicas:
@@ -1325,44 +1333,48 @@ spec:
                       konnectivity:
                         default:
                           enabled: true
-                        description: Enables the Konnectivity addon in the Tenant
-                          Cluster, required if the worker nodes are in a different
-                          network.
+                        description: |-
+                          konnectivity configures the Konnectivity proxy, required when worker nodes
+                          are in a network that cannot directly reach the control plane.
                         properties:
                           agent:
                             default:
                               image: registry.k8s.io/kas-network-proxy/proxy-agent:v0.0.37
                               mode: DaemonSet
+                            description: agent configures the Konnectivity agent deployed
+                              on worker nodes.
                             properties:
                               extraArgs:
                                 additionalProperties:
                                   type: string
+                                description: extraArgs is a map of additional flags
+                                  passed directly to the Konnectivity agent process.
                                 type: object
                               hostNetwork:
                                 default: true
                                 description: |-
-                                  HostNetwork enables the konnectivity agent to use the Host network namespace.
-                                  By enabling this mode, the Agent doesn't need to wait for the CNI initialisation,
-                                  enabling a sort of out-of-band access to nodes for troubleshooting scenarios,
-                                  or when the agent needs direct access to the host network.
+                                  hostNetwork causes agent pods to use the host network namespace instead of the pod network.
+                                  Enable this to allow the agent to reach the control plane before CNI is initialised,
+                                  or to give it direct access to the host network for troubleshooting.
                                 type: boolean
                               image:
                                 default: registry.k8s.io/kas-network-proxy/proxy-agent:v0.0.37
-                                description: AgentImage defines the container image
-                                  for Konnectivity's agent.
+                                description: image is the container image for the
+                                  Konnectivity agent.
                                 type: string
                               mode:
                                 default: DaemonSet
-                                description: 'Mode allows specifying the Agent deployment
-                                  mode: Deployment, or DaemonSet (default).'
+                                description: |-
+                                  mode controls whether the agent is deployed as a DaemonSet (one pod per node, default)
+                                  or as a Deployment (fixed replica count, set via replicas).
                                 enum:
                                 - DaemonSet
                                 - Deployment
                                 type: string
                               replicas:
-                                description: |-
-                                  Replicas defines the number of replicas when Mode is Deployment.
-                                  Must be 0 if Mode is DaemonSet.
+                                description: replicas is the number of agent pods
+                                  when mode is Deployment. Must be 0 when mode is
+                                  DaemonSet.
                                 format: int32
                                 type: integer
                               tolerations:
@@ -1370,8 +1382,8 @@ spec:
                                 - key: CriticalAddonsOnly
                                   operator: Exists
                                 description: |-
-                                  Tolerations for the deployed agent.
-                                  Can be customized to start the konnectivity-agent even if the nodes are not ready or tainted.
+                                  tolerations are applied to the agent pods to allow scheduling on tainted nodes,
+                                  such as nodes that are not yet ready or have custom taints.
                                 items:
                                   description: |-
                                     The pod this Toleration is attached to tolerates any taint that matches
@@ -1413,24 +1425,32 @@ spec:
                             type: object
                           enabled:
                             default: true
+                            description: |-
+                              enabled controls whether the Konnectivity proxy is deployed.
+                              Set to false only when worker nodes have direct network access to the control plane.
                             type: boolean
                           server:
                             default:
                               image: registry.k8s.io/kas-network-proxy/proxy-server:v0.0.37
                               port: 8132
+                            description: server configures the Konnectivity server
+                              that runs alongside the API server.
                             properties:
                               extraArgs:
                                 additionalProperties:
                                   type: string
+                                description: extraArgs is a map of additional flags
+                                  passed directly to the Konnectivity server process.
                                 type: object
                               image:
                                 default: registry.k8s.io/kas-network-proxy/proxy-server:v0.0.37
-                                description: Container image used by the Konnectivity
-                                  server.
+                                description: image is the container image for the
+                                  Konnectivity server.
                                 type: string
                               resources:
-                                description: Resources define the amount of CPU and
-                                  memory to allocate to the Konnectivity server.
+                                description: resources defines the CPU and memory
+                                  requests and limits for the Konnectivity server
+                                  container.
                                 properties:
                                   claims:
                                     description: |-
@@ -1495,6 +1515,8 @@ spec:
                         type: object
                       kubeProxy:
                         default: {}
+                        description: kubeProxy configures kube-proxy in the tenant
+                          cluster.
                         properties:
                           disabled:
                             type: boolean
@@ -1580,16 +1602,22 @@ spec:
                             default:
                               image: kube-proxy:v1.34.0
                               registry: registry.k8s.io
-                            description: '#TODO: review'
+                            description: |-
+                              RegistrySettings configures a container image registry reference,
+                              including the registry host, image name, and pull policy.
                             properties:
                               image:
+                                description: image is the image name within the registry,
+                                  without the tag or digest.
                                 type: string
                               pullPolicy:
-                                description: PullPolicy describes a policy for if/when
-                                  to pull a container image
+                                description: pullPolicy controls when the kubelet
+                                  pulls the image.
                                 type: string
                               registry:
                                 default: registry.k8s.io
+                                description: registry is the container registry hostname,
+                                  e.g. registry.k8s.io.
                                 type: string
                             type: object
                         required:
@@ -1597,13 +1625,13 @@ spec:
                         type: object
                       podCIDR:
                         default: 10.244.0.0/16
-                        description: 'CIDR for Kubernetes Pods: if empty, defaulted
-                          to 10.244.0.0/16.'
+                        description: podCIDR is the IP range from which pod IP addresses
+                          are allocated.
                         type: string
                       serviceCIDR:
                         default: 10.96.0.0/16
-                        description: 'CIDR for Kubernetes Services: if empty, defaulted
-                          to 10.96.0.0/16.'
+                        description: serviceCIDR is the IP range from which ClusterIP
+                          service addresses are allocated.
                         type: string
                     required:
                     - coredns
@@ -1612,28 +1640,33 @@ spec:
                     type: object
                   scheduler:
                     default: {}
+                    description: Scheduler holds extra flags passed to the tenant
+                      kube-scheduler.
                     properties:
                       extraArgs:
                         additionalProperties:
                           type: string
-                        description: extraArgs defines a Map of key-values (strings)
-                          for any extra arguments you wish to pass down to Kubernetes
-                          scheduler process
+                        description: |-
+                          extraArgs is a map of additional flags passed directly to the kube-scheduler process.
+                          Keys are flag names (without the leading --) and values are their string representations.
                         type: object
                     type: object
                   storage:
                     default:
                       type: kine
+                    description: Storage configures the backend used by the tenant
+                      API server in place of etcd.
                     properties:
                       kine:
-                        description: Kine holds kine configuration
+                        description: |-
+                          kine holds configuration for the kine storage adapter, which provides
+                          an etcd-compatible interface backed by a relational database.
                         properties:
                           dataSourceRef:
                             description: |-
-                              DataSourceRef points to a Secret containing the Kine data source URL.
-                              This prevents sensitive credentials from being exposed in plain text.
-                              If omitted, the system will default to the standard Kine storage mechanism.
-                              Refer to: https://github.com/rancher/kine/
+                              dataSourceRef references a Secret key whose value is the kine data source URL
+                              (e.g. a SQLite file path or a PostgreSQL connection string).
+                              When omitted, kine uses its default SQLite storage location.
                             properties:
                               key:
                                 description: The key of the secret to select from.  Must
@@ -1659,8 +1692,8 @@ spec:
                         type: object
                       type:
                         default: kine
-                        description: Type holds the type of storage to be used by
-                          APIServer
+                        description: type selects the storage backend. Currently only
+                          kine is supported.
                         enum:
                         - kine
                         type: string
@@ -1683,18 +1716,17 @@ spec:
             description: status defines the observed state of Runtime
             properties:
               certificatesExpireAt:
-                description: CertificatesExpireAt is the time when the PKI certificates
-                  stored in the -pki secret
+                description: certificatesExpireAt is the time at which the PKI certificates
+                  stored in the -pki Secret will expire.
                 format: date-time
                 type: string
               conditions:
                 description: |-
-                  Standard condition types include:
-                  - "Available": the resource is fully functional
-                  - "Progressing": the resource is being created or updated
-                  - "Degraded": the resource failed to reach or maintain its desired state
-
-                  The status of each condition is one of True, False, or Unknown.
+                  conditions reflect the current status of the Runtime.
+                  Standard types are:
+                    Available   — the control plane is fully operational.
+                    Progressing — the control plane is being created or updated.
+                    Degraded    — the control plane failed to reach or maintain its desired state.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
