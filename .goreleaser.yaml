@@ -17,7 +17,7 @@ before:
 builds:
   - main: cmd/distro.go
     id: distro
-    binary: distro
+    binary: heir
     flags:
       - -tags=embedartifacts
     env:
