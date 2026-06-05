@@ -86,7 +86,7 @@ main() {
   fi
 
   printf '\n[heir] heir %s installed to %s\n' "${HEIR_VERSION}" "${INSTALL_DIR}/${BINARY_NAME}"
-  printf '[heir] Run '\''heir version'\'' to verify the installation.\n'
+#  printf '[heir] Run '\''heir version'\'' to verify the installation.\n'
 }
 
 main
