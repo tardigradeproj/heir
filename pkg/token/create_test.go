@@ -87,10 +87,8 @@ func fakeAPIServer(t *testing.T, secretStatusCode int, externalAddresses []strin
 				addrs = []string{}
 			}
 			nodeProfile := map[string]interface{}{
-				"controlPlaneEndpoint": map[string]interface{}{
-					"addresses": addrs,
-					"apiServer": map[string]interface{}{"port": 6443},
-				},
+				"addresses": addrs,
+				"apiServer": map[string]interface{}{"port": 6443},
 			}
 			nodeProfileJSON, _ := json.Marshal(nodeProfile)
 			cm := &corev1.ConfigMap{
@@ -169,8 +167,14 @@ func TestCreateBootstrapToken(t *testing.T) {
 			validateB64: func(t *testing.T, b64 string) {
 				raw, _ := base64.StdEncoding.DecodeString(b64)
 				cfg, _ := clientcmd.Load(raw)
-				ctx := cfg.Contexts[cfg.CurrentContext]
-				cluster := cfg.Clusters[ctx.Cluster]
+				ctx, ok := cfg.Contexts[cfg.CurrentContext]
+				if !ok || ctx == nil {
+					t.Fatalf("current-context %q not found in bootstrap kubeconfig", cfg.CurrentContext)
+				}
+				cluster, ok := cfg.Clusters[ctx.Cluster]
+				if !ok || cluster == nil {
+					t.Fatalf("cluster %q not found in bootstrap kubeconfig", ctx.Cluster)
+				}
 				if cluster.Server != "https://127.0.0.1:6443" {
 					t.Errorf("bootstrap kubeconfig cluster server = %q, want https://127.0.0.1:6443", cluster.Server)
 				}
