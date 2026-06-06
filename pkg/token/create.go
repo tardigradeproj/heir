@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/tardigradeproj/heir/api/v1alpha1"
 	"github.com/tardigradeproj/heir/pkg/k8s"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -81,13 +82,13 @@ func readExternalAddressesFromNodeProfileConfigMap(ctx context.Context, client k
 	if !ok {
 		return nil, fmt.Errorf("node profile configmap does not contain api server external addresses")
 	}
-	var nodeProfile typ.NodeProfile
+	var nodeProfile v1alpha1.ControlPlaneEndpointSpec
 	if err := json.Unmarshal([]byte(raw), &nodeProfile); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal external addresses: %w", err)
 	}
-	addresses := make([]string, 0, len(nodeProfile.ControlPlaneEndpoint.Addresses))
-	for _, addr := range nodeProfile.ControlPlaneEndpoint.Addresses {
-		addresses = append(addresses, fmt.Sprintf("https://%s:%d", addr, nodeProfile.ControlPlaneEndpoint.APIServer.Port))
+	addresses := make([]string, 0, len(nodeProfile.Addresses))
+	for _, addr := range nodeProfile.Addresses {
+		addresses = append(addresses, fmt.Sprintf("https://%s:%d", addr, nodeProfile.APIServer.Port))
 	}
 	return addresses, nil
 }
@@ -126,11 +127,11 @@ func extractClusterInfo(clientConfig clientcmd.ClientConfig, contextName string)
 // (used for TLS bootstrap) plus one additional entry per external address so that
 // the worker's API server proxy is seeded with all known upstream hosts.
 func buildBootstrapKubeconfig(t Token, caData []byte, externalAddresses []string) ([]byte, error) {
+
 	const (
 		clusterName = "bootstrap"
 		userName    = "tls-bootstrap-token-user"
 	)
-
 	cfg := clientcmdapi.NewConfig()
 	// Add one cluster entry per external address. These are picked up by the worker's
 	// API server proxy to seed its upstream list before the node profile is available.
