@@ -50,6 +50,7 @@ type WorkerContext struct {
 	Token                      string
 	WorkerProfileConfigMapName string `default:"worker-profile"`
 	BinDir                     string `default:"/var/lib/heir/bin/"`
+	HeirRuntimeBin             string `default:"/var/lib/heir/bin/heir"`
 
 	KubeletStateDir                string `default:"/etc/heir/kubelet"`
 	KubeletBootstrapKubeconfigPath string `default:"/etc/heir/kubelet/bootstrap-kubeconfig.conf"`
