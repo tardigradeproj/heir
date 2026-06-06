@@ -101,7 +101,7 @@ func GeneratePKIAuthSecret(runtime *controlplanev1alpha1.Runtime, layout Control
 		return nil, err
 	}
 
-	adminConf, err := generateKubeconfig(fmt.Sprintf("heir-%s", runtime.Name), ca.Cert, adminCert)
+	adminConf, err := generateKubeconfig(runtime.Name, ca.Cert, adminCert)
 	if err != nil {
 		return nil, err
 	}
@@ -150,7 +150,7 @@ func GeneratePKIAuthSecret(runtime *controlplanev1alpha1.Runtime, layout Control
 
 func generateKubeconfig(username string, caCert []byte, cert *pki.Certificate) ([]byte, error) {
 	kubeconfig := clientcmdapi.NewConfig()
-	kubeconfig.Clusters["kubernetes"] = &clientcmdapi.Cluster{
+	kubeconfig.Clusters[username] = &clientcmdapi.Cluster{
 		Server:                   "https://127.0.0.1:6443",
 		CertificateAuthorityData: caCert,
 	}
@@ -158,9 +158,9 @@ func generateKubeconfig(username string, caCert []byte, cert *pki.Certificate) (
 		ClientCertificateData: cert.Cert,
 		ClientKeyData:         cert.Key,
 	}
-	contextName := fmt.Sprintf("%s@kubernetes", username)
+	contextName := fmt.Sprintf("%s@heir", username)
 	kubeconfig.Contexts[contextName] = &clientcmdapi.Context{
-		Cluster:  "kubernetes",
+		Cluster:  username,
 		AuthInfo: username,
 	}
 	kubeconfig.CurrentContext = contextName

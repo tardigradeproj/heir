@@ -20,6 +20,11 @@ builds:
     binary: heir
     flags:
       - -tags=embedartifacts
+    ldflags:
+      - -s -w
+      - -X github.com/tardigradeproj/heir/pkg/buildinfo.Version={{.Version}}
+      - -X github.com/tardigradeproj/heir/pkg/buildinfo.CommitID={{.Commit}}
+      - -X github.com/tardigradeproj/heir/pkg/buildinfo.BuildTime={{.Date}}
     env:
       - CGO_ENABLED=0
     goos:

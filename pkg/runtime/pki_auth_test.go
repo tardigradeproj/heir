@@ -252,7 +252,7 @@ func TestGeneratePKIAuthSecret(t *testing.T) {
 			validate: func(t *testing.T, data map[string][]byte) {
 				cfg, err := clientcmd.Load(data[layout.Auth.AdminConf.SecretKey])
 				require.NoError(t, err)
-				assert.Equal(t, "heir-prod-cluster@kubernetes", cfg.CurrentContext)
+				assert.Equal(t, "prod-cluster@heir", cfg.CurrentContext)
 			},
 		},
 	}
@@ -299,17 +299,17 @@ func TestGenerateKubeconfig(t *testing.T) {
 			cfg, err := clientcmd.Load(raw)
 			require.NoError(t, err)
 
-			expectedContext := fmt.Sprintf("%s@kubernetes", tt.username)
+			expectedContext := fmt.Sprintf("%s@heir", tt.username)
 
 			assert.Equal(t, expectedContext, cfg.CurrentContext)
 
 			ctx, ok := cfg.Contexts[expectedContext]
 			require.True(t, ok, "context %q not found", expectedContext)
-			assert.Equal(t, "kubernetes", ctx.Cluster)
+			assert.Equal(t, "kubernetes-admin", ctx.Cluster)
 			assert.Equal(t, tt.username, ctx.AuthInfo)
 
-			cluster, ok := cfg.Clusters["kubernetes"]
-			require.True(t, ok, "cluster 'kubernetes' not found")
+			cluster, ok := cfg.Clusters[tt.username]
+			require.True(t, ok, "cluster 'kubernetes-admin' not found")
 			assert.Equal(t, "https://127.0.0.1:6443", cluster.Server)
 			assert.Equal(t, ca.Cert, cluster.CertificateAuthorityData)
 

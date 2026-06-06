@@ -8,6 +8,7 @@ import (
 	"github.com/tardigradeproj/heir/pkg/cmd/build"
 	"github.com/tardigradeproj/heir/pkg/cmd/provision"
 	"github.com/tardigradeproj/heir/pkg/cmd/token"
+	cmdversion "github.com/tardigradeproj/heir/pkg/cmd/version"
 )
 
 func init() {
@@ -40,6 +41,7 @@ func main() {
 	root.AddCommand(token.NewCommand())
 	root.AddCommand(provision.NewCommand())
 	root.AddCommand(provision.WorkerRunCommand())
+	root.AddCommand(cmdversion.NewCommand())
 
 	if err := root.Execute(); err != nil {
 		os.Exit(1)

@@ -6,19 +6,20 @@ import (
 )
 
 type controlplaneFlagpole struct {
-	Name              string
-	Config            string
-	Kubeconfig        string
-	ClusterKubeconfig string
-	Namespace         string
+	Name                string
+	Config              string
+	Kubeconfig          string
+	ClusterKubeconfig   string
+	Namespace           string
+	UseLocalHostContext bool
 }
 
 func controlplaneProvisionCommand() *cobra.Command {
 	flags := &controlplaneFlagpole{}
 	cmd := &cobra.Command{
 		Use:   "controlplane",
-		Short: "Provision a control plane cluster on the host cluster",
-		Long:  "Provision a control plane cluster on the host cluster",
+		Short: "Provision a control plane cluster on the management cluster",
+		Long:  "Provision a control plane cluster on the management cluster",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := controlplane.Provision(cmd.Context(),
 				controlplane.WithConfig(flags.Config),
@@ -26,6 +27,7 @@ func controlplaneProvisionCommand() *cobra.Command {
 				controlplane.WithClusterKubeconfig(flags.ClusterKubeconfig),
 				controlplane.WithNamespace(flags.Namespace),
 				controlplane.WithName(flags.Name),
+				controlplane.WithUseLocalHostContext(flags.UseLocalHostContext),
 			); err != nil {
 				return err
 			}
@@ -52,7 +54,7 @@ func controlplaneProvisionCommand() *cobra.Command {
 	)
 	cmd.Flags().StringVar(
 		&flags.ClusterKubeconfig,
-		"cluster-kubeconfig",
+		"upstream-kubeconfig",
 		"",
 		"path to kubeconfig that will hold configuration of the newly created cluster, instead of $KUBECONFIG or $HOME/.kube/config",
 	)
@@ -61,6 +63,13 @@ func controlplaneProvisionCommand() *cobra.Command {
 		"namespace",
 		"",
 		"namespace where the cluster will be provisioned",
+	)
+	cmd.Flags().BoolVar(
+		&flags.UseLocalHostContext,
+		"use-localhost-context",
+		false,
+		"when set, the active context in the upstream kubeconfig will point to localhost (https://127.0.0.1:<spec.upstreamCluster.controlPlaneEndpoint.apiServer.port>) instead "+
+			"of the external address; use this when running kubectl directly on the cluster host",
 	)
 	return cmd
 }

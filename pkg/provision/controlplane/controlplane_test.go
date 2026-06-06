@@ -18,6 +18,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 )
 
@@ -163,11 +164,11 @@ func TestSetupPKIAuth(t *testing.T) {
 			handler: secretsHandler(http.StatusCreated, nil),
 			wantErr: false,
 			validate: func(t *testing.T, cfg *clientcmdapi.Config) {
-				assert.Equal(t, "heir-test-cluster@kubernetes", cfg.CurrentContext)
+				assert.Equal(t, "test-cluster@heir", cfg.CurrentContext)
 				_, hasContext := cfg.Contexts[cfg.CurrentContext]
 				assert.True(t, hasContext, "expected context %q to be present", cfg.CurrentContext)
-				_, hasCluster := cfg.Clusters["kubernetes"]
-				assert.True(t, hasCluster, "expected cluster 'kubernetes' to be present")
+				_, hasCluster := cfg.Clusters["test-cluster"]
+				assert.True(t, hasCluster, "expected cluster 'test-cluster' to be present")
 			},
 		},
 		{
@@ -176,8 +177,8 @@ func TestSetupPKIAuth(t *testing.T) {
 			handler: secretsHandler(http.StatusCreated, nil),
 			wantErr: false,
 			validate: func(t *testing.T, cfg *clientcmdapi.Config) {
-				authInfo, ok := cfg.AuthInfos["heir-my-cluster"]
-				require.True(t, ok, "expected auth info for 'heir-my-cluster'")
+				authInfo, ok := cfg.AuthInfos["my-cluster"]
+				require.True(t, ok, "expected auth info for 'my-cluster'")
 				assert.NotEmpty(t, authInfo.ClientCertificateData)
 				assert.NotEmpty(t, authInfo.ClientKeyData)
 			},
@@ -230,6 +231,210 @@ func TestSetupPKIAuth(t *testing.T) {
 // Compile-time check: ensure the functions under test match the expected signatures.
 var _ func(string) (*kubernetes.Clientset, error) = buildClient
 var _ func(context.Context, *cleanup.Cleanup, kubernetes.Interface, *v1alpha1.Runtime, heirruntime.ControlPlaneLayout) (*clientcmdapi.Config, error) = setupPKIAuth
+
+// ---- writeKubeconfig ----
+
+// makeTestKubeconfig builds a minimal clientcmdapi.Config that mirrors what
+// GeneratePKIAuthSecret produces: one cluster, one user, one context.
+func makeTestKubeconfig(clusterName, currentContext string) *clientcmdapi.Config {
+	cfg := clientcmdapi.NewConfig()
+	cfg.Clusters[clusterName] = &clientcmdapi.Cluster{
+		Server:                   "https://placeholder:6443",
+		CertificateAuthorityData: []byte("ca-cert-data"),
+	}
+	cfg.AuthInfos[clusterName] = &clientcmdapi.AuthInfo{
+		ClientCertificateData: []byte("client-cert"),
+		ClientKeyData:         []byte("client-key"),
+	}
+	cfg.Contexts[currentContext] = &clientcmdapi.Context{
+		Cluster:  clusterName,
+		AuthInfo: clusterName,
+	}
+	cfg.CurrentContext = currentContext
+	return cfg
+}
+
+// tempKubeconfigPath returns a path inside t.TempDir() that does not yet exist.
+func tempKubeconfigPath(t *testing.T) string {
+	t.Helper()
+	return t.TempDir() + "/kubeconfig.yaml"
+}
+
+type writeKubeconfigTest struct {
+	name               string
+	clusterName        string
+	currentContext     string
+	externalURLs       []string
+	apiServerPort      int32
+	localAccess        bool
+	existingKubeconfig string // non-empty → write this file before the call
+	wantErr            bool
+	assertion          func(t *testing.T, cfg *clientcmdapi.Config)
+}
+
+func TestWriteKubeconfig(t *testing.T) {
+	tests := []writeKubeconfigTest{
+		{
+			name:           "external URL is set on the remote cluster entry",
+			clusterName:    "my-cluster",
+			currentContext: "my-cluster@heir",
+			externalURLs:   []string{"https://192.168.1.10:6443"},
+			apiServerPort:  6443,
+			assertion: func(t *testing.T, cfg *clientcmdapi.Config) {
+				cluster, ok := cfg.Clusters["my-cluster"]
+				require.True(t, ok)
+				assert.Equal(t, "https://192.168.1.10:6443", cluster.Server)
+			},
+		},
+		{
+			name:           "localhost cluster entry is always added",
+			clusterName:    "my-cluster",
+			currentContext: "my-cluster@heir",
+			externalURLs:   []string{"https://192.168.1.10:6443"},
+			apiServerPort:  30080,
+			assertion: func(t *testing.T, cfg *clientcmdapi.Config) {
+				cluster, ok := cfg.Clusters["my-cluster@heir@localhost"]
+				require.True(t, ok, "expected cluster 'my-cluster@heir@localhost'")
+				assert.Equal(t, "https://127.0.0.1:30080", cluster.Server)
+			},
+		},
+		{
+			name:           "localhost cluster carries original CA cert",
+			clusterName:    "my-cluster",
+			currentContext: "my-cluster@heir",
+			externalURLs:   []string{"https://192.168.1.10:6443"},
+			apiServerPort:  30080,
+			assertion: func(t *testing.T, cfg *clientcmdapi.Config) {
+				cluster, ok := cfg.Clusters["my-cluster@heir@localhost"]
+				require.True(t, ok)
+				assert.Equal(t, []byte("ca-cert-data"), cluster.CertificateAuthorityData)
+			},
+		},
+		{
+			name:           "localhost context is always added",
+			clusterName:    "my-cluster",
+			currentContext: "my-cluster@heir",
+			externalURLs:   []string{"https://192.168.1.10:6443"},
+			apiServerPort:  6443,
+			assertion: func(t *testing.T, cfg *clientcmdapi.Config) {
+				ctx, ok := cfg.Contexts["my-cluster@heir@localhost"]
+				require.True(t, ok, "expected context 'my-cluster@heir@localhost'")
+				assert.Equal(t, "my-cluster@heir@localhost", ctx.Cluster)
+			},
+		},
+		{
+			name:           "localAccess=false keeps remote context as current",
+			clusterName:    "my-cluster",
+			currentContext: "my-cluster@heir",
+			externalURLs:   []string{"https://192.168.1.10:6443"},
+			apiServerPort:  6443,
+			localAccess:    false,
+			assertion: func(t *testing.T, cfg *clientcmdapi.Config) {
+				assert.Equal(t, "my-cluster@heir", cfg.CurrentContext)
+			},
+		},
+		{
+			name:           "localAccess=true sets localhost context as current",
+			clusterName:    "my-cluster",
+			currentContext: "my-cluster@heir",
+			externalURLs:   []string{"https://192.168.1.10:6443", "https://192.168.1.11:6443"},
+			apiServerPort:  6443,
+			localAccess:    true,
+			assertion: func(t *testing.T, cfg *clientcmdapi.Config) {
+				assert.Equal(t, "my-cluster@heir@localhost", cfg.CurrentContext)
+			},
+		},
+		{
+			name:           "no external URLs: localhost entries still added",
+			clusterName:    "my-cluster",
+			currentContext: "my-cluster@heir",
+			externalURLs:   nil,
+			apiServerPort:  30080,
+			assertion: func(t *testing.T, cfg *clientcmdapi.Config) {
+				cluster, ok := cfg.Clusters["my-cluster@heir@localhost"]
+				require.True(t, ok, "localhost cluster must be present even without external URLs")
+				assert.Equal(t, "https://127.0.0.1:30080", cluster.Server)
+				_, ok = cfg.Contexts["my-cluster@heir@localhost"]
+				assert.True(t, ok, "localhost context must be present even without external URLs")
+			},
+		},
+		{
+			name:           "multiple external URLs produce numbered cluster entries",
+			clusterName:    "my-cluster",
+			currentContext: "my-cluster@heir",
+			externalURLs:   []string{"https://10.0.0.1:6443", "https://10.0.0.2:6443"},
+			apiServerPort:  6443,
+			assertion: func(t *testing.T, cfg *clientcmdapi.Config) {
+				first, ok := cfg.Clusters["my-cluster"]
+				require.True(t, ok, "first URL must use original name")
+				assert.Equal(t, "https://10.0.0.1:6443", first.Server)
+				second, ok := cfg.Clusters["my-cluster-2"]
+				require.True(t, ok, "second URL must use name with -2 suffix")
+				assert.Equal(t, "https://10.0.0.2:6443", second.Server)
+			},
+		},
+		{
+			name:               "merges into existing kubeconfig preserving old entries",
+			clusterName:        "new-cluster",
+			currentContext:     "new-cluster@heir",
+			externalURLs:       []string{"https://10.0.0.1:6443"},
+			apiServerPort:      6443,
+			existingKubeconfig: minimalKubeconfig,
+			assertion: func(t *testing.T, cfg *clientcmdapi.Config) {
+				_, ok := cfg.Clusters["test"]
+				assert.True(t, ok, "original cluster 'test' should be preserved")
+				_, ok = cfg.Clusters["new-cluster"]
+				assert.True(t, ok, "new cluster 'new-cluster' should be added")
+			},
+		},
+		{
+			name:               "merge updates current context to new cluster",
+			clusterName:        "new-cluster",
+			currentContext:     "new-cluster@heir",
+			externalURLs:       []string{"https://10.0.0.1:6443"},
+			apiServerPort:      6443,
+			existingKubeconfig: minimalKubeconfig,
+			assertion: func(t *testing.T, cfg *clientcmdapi.Config) {
+				assert.Equal(t, "new-cluster@heir", cfg.CurrentContext)
+			},
+		},
+		{
+			name:               "corrupt existing kubeconfig returns error",
+			clusterName:        "my-cluster",
+			currentContext:     "my-cluster@heir",
+			externalURLs:       []string{"https://10.0.0.1:6443"},
+			apiServerPort:      6443,
+			existingKubeconfig: "not: valid: [yaml unclosed",
+			wantErr:            true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := tempKubeconfigPath(t)
+
+			if tt.existingKubeconfig != "" {
+				require.NoError(t, os.WriteFile(path, []byte(tt.existingKubeconfig), 0600))
+			}
+
+			cfg := makeTestKubeconfig(tt.clusterName, tt.currentContext)
+			err := writeKubeconfig(cfg, path, tt.externalURLs, tt.apiServerPort, tt.localAccess)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+
+			written, err := clientcmd.LoadFromFile(path)
+			require.NoError(t, err)
+
+			if tt.assertion != nil {
+				tt.assertion(t, written)
+			}
+		})
+	}
+}
 
 func TestParseConfig(t *testing.T) {
 	tests := []struct {
