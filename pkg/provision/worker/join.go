@@ -16,9 +16,8 @@ import (
 )
 
 const (
-	installPath = "/usr/local/bin/heir"
-	unitName    = "heir.service"
-	unitPath    = "/etc/systemd/system/heir.service"
+	unitName = "heir.service"
+	unitPath = "/etc/systemd/system/heir.service"
 )
 
 func Join(ctx context.Context, token string, opts ...typ.Option) error {
@@ -37,8 +36,8 @@ func Join(ctx context.Context, token string, opts ...typ.Option) error {
 		return fmt.Errorf("failed to save bootstrap kubeconfig: %w", err)
 	}
 
-	log.WithField("dst", installPath).Info("installing binary")
-	if err := installSelf(installPath); err != nil {
+	log.WithField("dst", workerCtx.HeirRuntimeBin).Info("installing binary")
+	if err := installSelf(workerCtx.HeirRuntimeBin); err != nil {
 		return fmt.Errorf("failed to install binary: %w", err)
 	}
 
@@ -82,7 +81,7 @@ func installSelf(dst string) error {
 }
 
 func installSystemdUnit(ctx context.Context, workerCtx *typ.WorkerContext) error {
-	execStart := installPath + " worker"
+	execStart := workerCtx.HeirRuntimeBin + " worker"
 	if extra := serializeExtraArgs(workerCtx.KubeletExtraArgs); extra != "" {
 		execStart += " --kubelet-extra-args=" + extra
 	}

@@ -186,7 +186,24 @@ func TestProvision(t *testing.T) {
 				require.NoError(t, err, "kubeconfig file should exist at %s", clusterKubeconfigPath)
 				cfg, err := clientcmd.LoadFromFile(clusterKubeconfigPath)
 				require.NoError(t, err)
-				assert.Equal(t, "heir-test-cluster@kubernetes", cfg.CurrentContext)
+				assert.Equal(t, "test-cluster@heir", cfg.CurrentContext)
+				_, ok := cfg.Clusters["test-cluster@heir@localhost"]
+				assert.True(t, ok, "localhost cluster entry must be present")
+				_, ok = cfg.Contexts["test-cluster@heir@localhost"]
+				assert.True(t, ok, "localhost context must be present")
+			},
+		},
+		{
+			name:                  "local-access sets localhost as current context",
+			withClusterKubeconfig: true,
+			extraOpts:             []Option{WithUseLocalHostContext(true)},
+			validate: func(t *testing.T, _ *fake.Clientset, clusterKubeconfigPath string) {
+				cfg, err := clientcmd.LoadFromFile(clusterKubeconfigPath)
+				require.NoError(t, err)
+				assert.Equal(t, "test-cluster@heir@localhost", cfg.CurrentContext)
+				localCluster, ok := cfg.Clusters["test-cluster@heir@localhost"]
+				require.True(t, ok)
+				assert.Equal(t, "https://127.0.0.1:30080", localCluster.Server)
 			},
 		},
 		{
@@ -198,9 +215,12 @@ func TestProvision(t *testing.T) {
 			validate: func(t *testing.T, _ *fake.Clientset, clusterKubeconfigPath string) {
 				cfg, err := clientcmd.LoadFromFile(clusterKubeconfigPath)
 				require.NoError(t, err)
-				cluster, ok := cfg.Clusters["kubernetes"]
-				require.True(t, ok, "expected cluster 'kubernetes' in written kubeconfig")
+				cluster, ok := cfg.Clusters["test-cluster"]
+				require.True(t, ok, "expected cluster 'test-cluster' in written kubeconfig")
 				assert.Equal(t, "https://my-cluster.example.com:6443", cluster.Server)
+				localCluster, ok := cfg.Clusters["test-cluster@heir@localhost"]
+				require.True(t, ok, "localhost cluster entry must be present")
+				assert.Equal(t, "https://127.0.0.1:6443", localCluster.Server)
 			},
 		},
 		{

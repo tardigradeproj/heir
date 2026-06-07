@@ -105,7 +105,7 @@ data:
 EOF
 
 # 7. Push postgres image to the local registry
-docker tag heir-base:v0.0.1 "localhost:${reg_port}/heir-base:v0.0.1"
+docker tag ghcr.io/tardigradeproj/heir:v1.35.5-heir0 "localhost:${reg_port}/heir-base:v0.0.1"
 docker push "localhost:${reg_port}/heir-base:v0.0.1"
 docker pull postgres:16
 docker tag postgres:16 "localhost:${reg_port}/postgres:16"

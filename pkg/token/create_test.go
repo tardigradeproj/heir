@@ -10,7 +10,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
-	"fmt"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -88,10 +87,8 @@ func fakeAPIServer(t *testing.T, secretStatusCode int, externalAddresses []strin
 				addrs = []string{}
 			}
 			nodeProfile := map[string]interface{}{
-				"controlPlaneEndpoint": map[string]interface{}{
-					"addresses": addrs,
-					"apiServer": map[string]interface{}{"port": 6443},
-				},
+				"addresses": addrs,
+				"apiServer": map[string]interface{}{"port": 6443},
 			}
 			nodeProfileJSON, _ := json.Marshal(nodeProfile)
 			cm := &corev1.ConfigMap{
@@ -159,7 +156,7 @@ func TestCreateBootstrapToken(t *testing.T) {
 			},
 		},
 		{
-			name: "bootstrap kubeconfig carries cluster server URL and CA data",
+			name: "bootstrap kubeconfig carries external address as server URL and CA data from kubeconfig",
 			setup: func(t *testing.T) (string, string) {
 				srv := fakeAPIServer(t, http.StatusCreated, []string{"127.0.0.1"})
 				t.Cleanup(srv.Close)
@@ -170,10 +167,16 @@ func TestCreateBootstrapToken(t *testing.T) {
 			validateB64: func(t *testing.T, b64 string) {
 				raw, _ := base64.StdEncoding.DecodeString(b64)
 				cfg, _ := clientcmd.Load(raw)
-				ctx := cfg.Contexts[cfg.CurrentContext]
-				cluster := cfg.Clusters[ctx.Cluster]
-				if cluster.Server == "" {
-					t.Error("bootstrap kubeconfig cluster has no server URL")
+				ctx, ok := cfg.Contexts[cfg.CurrentContext]
+				if !ok || ctx == nil {
+					t.Fatalf("current-context %q not found in bootstrap kubeconfig", cfg.CurrentContext)
+				}
+				cluster, ok := cfg.Clusters[ctx.Cluster]
+				if !ok || cluster == nil {
+					t.Fatalf("cluster %q not found in bootstrap kubeconfig", ctx.Cluster)
+				}
+				if cluster.Server != "https://127.0.0.1:6443" {
+					t.Errorf("bootstrap kubeconfig cluster server = %q, want https://127.0.0.1:6443", cluster.Server)
 				}
 				if len(cluster.CertificateAuthorityData) == 0 {
 					t.Error("bootstrap kubeconfig cluster has no CA data")
@@ -240,9 +243,9 @@ func TestCreateBootstrapToken(t *testing.T) {
 			wantErrMsg: "failed to create bootstrap token secret",
 		},
 		{
-			// external addresses are returned as https://<host>:<port> under bootstrap-1, bootstrap-2, …
-			// addresses that equal the primary server URL are deduplicated and skipped.
-			name: "external addresses from configmap appear as bootstrap-N cluster entries",
+			// External addresses map to: bootstrap (i=0), bootstrap-1 (i=1), bootstrap-2 (i=2), …
+			// The kubeconfig server URL is no longer included as a separate entry.
+			name: "external addresses from configmap are the only cluster entries",
 			setup: func(t *testing.T) (string, string) {
 				srv := fakeAPIServer(t, http.StatusCreated, []string{"10.0.0.1", "10.0.0.2"})
 				t.Cleanup(srv.Close)
@@ -253,22 +256,26 @@ func TestCreateBootstrapToken(t *testing.T) {
 			validateB64: func(t *testing.T, b64 string) {
 				raw, _ := base64.StdEncoding.DecodeString(b64)
 				cfg, _ := clientcmd.Load(raw)
-				// Expect primary "bootstrap" cluster + one entry per external address.
-				if got := len(cfg.Clusters); got != 3 {
-					t.Errorf("expected 3 cluster entries (1 primary + 2 external), got %d", got)
+				if got := len(cfg.Clusters); got != 2 {
+					t.Errorf("expected 2 cluster entries (one per external address), got %d", got)
 				}
-				for i, addr := range []string{"https://10.0.0.1:6443", "https://10.0.0.2:6443"} {
-					name := fmt.Sprintf("bootstrap-%d", i+1)
-					cluster, ok := cfg.Clusters[name]
+				for _, tc := range []struct {
+					name   string
+					server string
+				}{
+					{"bootstrap", "https://10.0.0.1:6443"},
+					{"bootstrap-1", "https://10.0.0.2:6443"},
+				} {
+					cluster, ok := cfg.Clusters[tc.name]
 					if !ok {
-						t.Errorf("expected cluster entry %q not found in bootstrap kubeconfig", name)
+						t.Errorf("expected cluster entry %q not found in bootstrap kubeconfig", tc.name)
 						continue
 					}
-					if cluster.Server != addr {
-						t.Errorf("cluster %q server = %q, want %q", name, cluster.Server, addr)
+					if cluster.Server != tc.server {
+						t.Errorf("cluster %q server = %q, want %q", tc.name, cluster.Server, tc.server)
 					}
 					if len(cluster.CertificateAuthorityData) == 0 {
-						t.Errorf("cluster %q has no CA data", name)
+						t.Errorf("cluster %q has no CA data", tc.name)
 					}
 				}
 			},

@@ -10,7 +10,7 @@ import (
 
 type flagpole struct {
 	Kubeconfig string
-	Name       string
+	Context    string
 	Expiry     time.Duration
 }
 
@@ -22,7 +22,7 @@ func NewCommand() *cobra.Command {
 		Short: "Generate a bootstrap token secret on the target cluster",
 		Long:  "Generate a bootstrap token secret on the target cluster",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			b64Kubeconfig, err := token.CreateBootstrapToken(cmd.Context(), flags.Kubeconfig, flags.Name, flags.Expiry)
+			b64Kubeconfig, err := token.CreateBootstrapToken(cmd.Context(), flags.Kubeconfig, flags.Context, flags.Expiry)
 			if err != nil {
 				return fmt.Errorf("unable to generate bootstrap token: %w", err)
 			}
@@ -37,10 +37,10 @@ func NewCommand() *cobra.Command {
 		"sets kubeconfig path instead of $KUBECONFIG or $HOME/.kube/config",
 	)
 	cmd.Flags().StringVar(
-		&flags.Name,
-		"name",
-		"heir",
-		"the context name",
+		&flags.Context,
+		"context",
+		"",
+		"kubeconfig context to use; defaults to the current context if unset",
 	)
 	cmd.Flags().DurationVar(
 		&flags.Expiry,

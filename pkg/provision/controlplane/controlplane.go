@@ -87,7 +87,7 @@ func Provision(ctx context.Context, opts ...Option) error {
 		for _, addr := range controlPlaneEndpoint.Addresses {
 			apiServerAddresses = append(apiServerAddresses, fmt.Sprintf("https://%s:%d", addr, controlPlaneEndpoint.APIServer.Port))
 		}
-		if err := writeKubeconfig(kubeconfig, pCtx.clusterKubeconfig, apiServerAddresses); err != nil {
+		if err := writeKubeconfig(kubeconfig, pCtx.clusterKubeconfig, apiServerAddresses, controlPlaneEndpoint.APIServer.Port, pCtx.useLocalHostContext); err != nil {
 			return fmt.Errorf("failed to write kubeconfig to %s: %w", pCtx.clusterKubeconfig, err)
 		}
 		log.WithField("path", pCtx.clusterKubeconfig).Info("kubeconfig written")
@@ -198,7 +198,19 @@ func setupDeployment(ctx context.Context, cleaner *cleanup.Cleanup, client kuber
 // writeKubeconfig writes the given kubeconfig to path. If a valid kubeconfig
 // already exists at that path, the new clusters, users, and contexts are merged
 // into it and the current context is updated to the new one.
-func writeKubeconfig(kubeconfig *clientcmdapi.Config, path string, clusterExternalUrls []string) error {
+//
+// Both a remote context (using clusterExternalUrls) and a localhost context
+// (https://127.0.0.1:<apiServerExternalPort>) are always written. localAccess
+// controls which one becomes the active current-context: true selects the
+// localhost context, false selects the remote context.
+func writeKubeconfig(kubeconfig *clientcmdapi.Config, path string, clusterExternalUrls []string, apiServerExternalPort int32, localAccess bool) error {
+	// Grab CA cert before URL expansion so the localhost entry carries the correct TLS data.
+	var caData []byte
+	for _, c := range kubeconfig.Clusters {
+		caData = c.CertificateAuthorityData
+		break
+	}
+
 	if len(clusterExternalUrls) == 0 {
 		log.Warn("the generated kubeconfig does not contain a server address and cannot be used to communicate with the Kubernetes API server; " +
 			"to resolve this, set spec.upstreamCluster.controlPlaneEndpoint.addresses and spec.upstreamCluster.controlPlaneEndpoint.apiServer.port " +
@@ -220,6 +232,26 @@ func writeKubeconfig(kubeconfig *clientcmdapi.Config, path string, clusterExtern
 		}
 		kubeconfig.Clusters = expanded
 	}
+
+	// This lets the user connect directly from the
+	// installation host without going through an external address.
+	remoteContext := kubeconfig.CurrentContext
+	localName := remoteContext + "@localhost"
+
+	kubeconfig.Clusters[localName] = &clientcmdapi.Cluster{
+		Server:                   fmt.Sprintf("https://127.0.0.1:%d", apiServerExternalPort),
+		CertificateAuthorityData: caData,
+	}
+	if ctx, ok := kubeconfig.Contexts[remoteContext]; ok {
+		localCtx := *ctx
+		localCtx.Cluster = localName
+		kubeconfig.Contexts[localName] = &localCtx
+	}
+
+	if localAccess {
+		kubeconfig.CurrentContext = localName
+	}
+
 	existing, err := clientcmd.LoadFromFile(path)
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to load existing kubeconfig: %w", err)

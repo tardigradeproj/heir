@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/tardigradeproj/heir/api/v1alpha1"
 	"github.com/tardigradeproj/heir/pkg/k8s"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -30,8 +31,7 @@ func (t Token) String() string {
 
 // CreateBootstrapToken generates a bootstrap token, persists it as a Secret in
 // kube-system, and returns a base64-encoded bootstrap kubeconfig.
-// The kubeconfig contains one cluster entry for the primary API server plus one
-// additional entry for each external address found in the node profile configmap,
+// The kubeconfig contains cluster  for each external address found in the node profile configmap,
 // so that the worker's API server proxy is seeded with all known upstream addresses.
 func CreateBootstrapToken(ctx context.Context, kubeconfig, contextName string, expiry time.Duration) (string, error) {
 	t, err := Generate()
@@ -39,7 +39,7 @@ func CreateBootstrapToken(ctx context.Context, kubeconfig, contextName string, e
 		return "", err
 	}
 	clientConfig := k8s.BuildClientConfig(kubeconfig, contextName)
-	server, caData, err := extractClusterInfo(clientConfig, contextName)
+	_, caData, err := extractClusterInfo(clientConfig, contextName)
 	if err != nil {
 		return "", err
 	}
@@ -62,7 +62,7 @@ func CreateBootstrapToken(ctx context.Context, kubeconfig, contextName string, e
 		return "", fmt.Errorf("failed to create bootstrap token secret: %w", err)
 	}
 
-	bootstrapKubeconfig, err := buildBootstrapKubeconfig(t, server, caData, externalAddresses)
+	bootstrapKubeconfig, err := buildBootstrapKubeconfig(t, caData, externalAddresses)
 	if err != nil {
 		return "", fmt.Errorf("failed to build bootstrap kubeconfig: %w", err)
 	}
@@ -82,13 +82,13 @@ func readExternalAddressesFromNodeProfileConfigMap(ctx context.Context, client k
 	if !ok {
 		return nil, fmt.Errorf("node profile configmap does not contain api server external addresses")
 	}
-	var nodeProfile typ.NodeProfile
+	var nodeProfile v1alpha1.ControlPlaneEndpointSpec
 	if err := json.Unmarshal([]byte(raw), &nodeProfile); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal external addresses: %w", err)
 	}
-	addresses := make([]string, 0, len(nodeProfile.ControlPlaneEndpoint.Addresses))
-	for _, addr := range nodeProfile.ControlPlaneEndpoint.Addresses {
-		addresses = append(addresses, fmt.Sprintf("https://%s:%d", addr, nodeProfile.ControlPlaneEndpoint.APIServer.Port))
+	addresses := make([]string, 0, len(nodeProfile.Addresses))
+	for _, addr := range nodeProfile.Addresses {
+		addresses = append(addresses, fmt.Sprintf("https://%s:%d", addr, nodeProfile.APIServer.Port))
 	}
 	return addresses, nil
 }
@@ -126,24 +126,21 @@ func extractClusterInfo(clientConfig clientcmd.ClientConfig, contextName string)
 // buildBootstrapKubeconfig builds a kubeconfig containing one primary cluster entry
 // (used for TLS bootstrap) plus one additional entry per external address so that
 // the worker's API server proxy is seeded with all known upstream hosts.
-func buildBootstrapKubeconfig(t Token, server string, caData []byte, externalAddresses []string) ([]byte, error) {
+func buildBootstrapKubeconfig(t Token, caData []byte, externalAddresses []string) ([]byte, error) {
+
 	const (
 		clusterName = "bootstrap"
 		userName    = "tls-bootstrap-token-user"
 	)
-
 	cfg := clientcmdapi.NewConfig()
-	cfg.Clusters[clusterName] = &clientcmdapi.Cluster{
-		Server:                   server,
-		CertificateAuthorityData: caData,
-	}
 	// Add one cluster entry per external address. These are picked up by the worker's
 	// API server proxy to seed its upstream list before the node profile is available.
 	for i, addr := range externalAddresses {
-		if addr == server {
-			continue
+		clusterIndName := fmt.Sprintf("%s-%d", clusterName, i)
+		if i == 0 {
+			clusterIndName = clusterName
 		}
-		cfg.Clusters[fmt.Sprintf("%s-%d", clusterName, i+1)] = &clientcmdapi.Cluster{
+		cfg.Clusters[clusterIndName] = &clientcmdapi.Cluster{
 			Server:                   addr,
 			CertificateAuthorityData: caData,
 		}
