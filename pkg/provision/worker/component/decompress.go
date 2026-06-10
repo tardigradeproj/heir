@@ -53,10 +53,6 @@ func copyToFile(r io.Reader, dst string) error {
 	return f.Close()
 }
 
-func extractTarZst(src string, dstDir string) error {
-	return extractTarZstFrom(artifact.FS, src, dstDir)
-}
-
 func extractTarZstFrom(fsys fs.FS, src string, dstDir string) error {
 	source, err := fsys.Open(embedPath(src))
 	if err != nil {
