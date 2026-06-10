@@ -3,45 +3,26 @@ package component
 import (
 	"context"
 	"fmt"
-	"path"
+	"io/fs"
 
 	log "github.com/sirupsen/logrus"
+	artifact "github.com/tardigradeproj/heir/artifacts"
 	"github.com/tardigradeproj/heir/pkg/provision/worker/typ"
 )
 
 type Cni struct {
 	wrkCtx *typ.WorkerContext
+	fsys   fs.FS
 }
 
 func NewCni(wrkCtx *typ.WorkerContext) *Cni {
-	return &Cni{wrkCtx: wrkCtx}
+	return &Cni{wrkCtx: wrkCtx, fsys: artifact.FS}
 }
 
 func (c *Cni) Setup() error {
-	binaries := []struct{ src, dst string }{
-		{"worker/cni/bridge", path.Join(c.wrkCtx.CNIBinFolderPath, "bridge")},
-		{"worker/cni/dhcp", path.Join(c.wrkCtx.CNIBinFolderPath, "dhcp")},
-		{"worker/cni/dummy", path.Join(c.wrkCtx.CNIBinFolderPath, "dummy")},
-		{"worker/cni/firewall", path.Join(c.wrkCtx.CNIBinFolderPath, "firewall")},
-		{"worker/cni/host-device", path.Join(c.wrkCtx.CNIBinFolderPath, "host-device")},
-		{"worker/cni/host-local", path.Join(c.wrkCtx.CNIBinFolderPath, "host-local")},
-		{"worker/cni/ipvlan", path.Join(c.wrkCtx.CNIBinFolderPath, "ipvlan")},
-		{"worker/cni/loopback", path.Join(c.wrkCtx.CNIBinFolderPath, "loopback")},
-		{"worker/cni/macvlan", path.Join(c.wrkCtx.CNIBinFolderPath, "macvlan")},
-		{"worker/cni/portmap", path.Join(c.wrkCtx.CNIBinFolderPath, "portmap")},
-		{"worker/cni/ptp", path.Join(c.wrkCtx.CNIBinFolderPath, "ptp")},
-		{"worker/cni/sbr", path.Join(c.wrkCtx.CNIBinFolderPath, "sbr")},
-		{"worker/cni/static", path.Join(c.wrkCtx.CNIBinFolderPath, "static")},
-		{"worker/cni/tap", path.Join(c.wrkCtx.CNIBinFolderPath, "tap")},
-		{"worker/cni/tuning", path.Join(c.wrkCtx.CNIBinFolderPath, "tuning")},
-		{"worker/cni/vlan", path.Join(c.wrkCtx.CNIBinFolderPath, "vlan")},
-		{"worker/cni/vrf", path.Join(c.wrkCtx.CNIBinFolderPath, "vrf")},
-	}
-	for _, b := range binaries {
-		log.WithField("dst", b.dst).Info("extracting binary")
-		if err := extractStreamed(b.src, b.dst); err != nil {
-			return fmt.Errorf("failed to extract %s: %w", b.src, err)
-		}
+	log.WithField("dst", c.wrkCtx.CNIBinFolderPath).Info("extracting CNI binaries")
+	if err := extractTarZstFrom(c.fsys, "worker/cni.tar.zst", c.wrkCtx.CNIBinFolderPath); err != nil {
+		return fmt.Errorf("failed to extract CNI binaries: %w", err)
 	}
 	return nil
 }

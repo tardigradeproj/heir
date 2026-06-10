@@ -13,6 +13,7 @@ require (
 	github.com/evanphx/json-patch/v5 v5.9.11
 	github.com/go-task/slim-sprig/v3 v3.0.0
 	github.com/k3s-io/kine v1.14.2
+	github.com/klauspost/compress v1.18.5
 	github.com/onsi/ginkgo/v2 v2.28.1
 	github.com/onsi/gomega v1.39.1
 	github.com/sirupsen/logrus v1.9.4
@@ -102,7 +103,6 @@ require (
 	github.com/jonboulle/clockwork v0.5.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
-	github.com/klauspost/compress v1.18.5 // indirect
 	github.com/mailru/easyjson v0.9.1 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-sqlite3 v1.14.32 // indirect

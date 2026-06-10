@@ -1,12 +1,16 @@
 package component
 
 import (
+	"archive/tar"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 
+	"github.com/klauspost/compress/zstd"
 	artifact "github.com/tardigradeproj/heir/artifacts"
 )
 
@@ -22,21 +26,66 @@ func extractStreamed(src string, dst string) error {
 		return nil
 	}
 
-	// Open the embedded file as a stream
-	source, err := artifact.FS.Open(embedPath(src))
+	source, err := artifact.FS.Open(embedPath(src) + ".zst")
 	if err != nil {
 		return err
 	}
 	defer source.Close()
 
-	// Create the destination file
-	dest, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY, 0755)
+	dec, err := zstd.NewReader(source)
 	if err != nil {
 		return err
 	}
-	if _, err := io.Copy(dest, source); err != nil {
-		dest.Close()
+	defer dec.Close()
+
+	return copyToFile(dec, dst)
+}
+
+func copyToFile(r io.Reader, dst string) error {
+	f, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY, 0755)
+	if err != nil {
 		return err
 	}
-	return dest.Close()
+	if _, err := io.Copy(f, r); err != nil {
+		f.Close()
+		return err
+	}
+	return f.Close()
+}
+
+func extractTarZstFrom(fsys fs.FS, src string, dstDir string) error {
+	source, err := fsys.Open(embedPath(src))
+	if err != nil {
+		return err
+	}
+	defer source.Close()
+
+	dec, err := zstd.NewReader(source)
+	if err != nil {
+		return err
+	}
+	defer dec.Close()
+
+	tr := tar.NewReader(dec)
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		if hdr.Typeflag != tar.TypeReg {
+			continue
+		}
+		name := filepath.Base(hdr.Name)
+		dst := filepath.Join(dstDir, name)
+		if _, err := os.Stat(dst); err == nil {
+			continue
+		}
+		if err := copyToFile(tr, dst); err != nil {
+			return fmt.Errorf("extracting %s: %w", name, err)
+		}
+	}
+	return nil
 }
