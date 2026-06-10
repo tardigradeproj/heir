@@ -14,6 +14,8 @@ before:
     - go mod tidy
     - make download-all-artifacts ARCH=amd64
     - make download-all-artifacts ARCH=arm64
+    - make compress-worker-artifacts ARCH=amd64
+    - make compress-worker-artifacts ARCH=arm64
 builds:
   - main: cmd/distro.go
     id: distro

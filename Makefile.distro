@@ -58,6 +58,17 @@ $(WORKER_DIR)/.done:
 .PHONY: download-worker-artifacts
 download-worker-artifacts: $(WORKER_DIR)/.done ## Download all worker node artifacts for ARCH
 
+.PHONY: compress-worker-artifacts
+compress-worker-artifacts: $(WORKER_DIR)/.done ## Compress each worker artifact individually with zstd; CNI plugins bundled into one archive
+	@echo "Compressing worker artifacts for $(ARCH)..."
+	@for bin in containerd containerd-shim-runc-v2 ctr crictl kubelet runc; do \
+		echo "  Compressing $$bin..."; \
+		zstd -f -T0 -3 "$(WORKER_DIR)/$$bin" -o "$(WORKER_DIR)/$$bin.zst"; \
+	done
+	@echo "  Compressing CNI plugins..."
+	tar --zstd -cf "$(WORKER_DIR)/cni.tar.zst" -C "$(WORKER_DIR)" cni
+	@echo "Worker artifacts compressed: $(WORKER_DIR)"
+
 .PHONY: clean-worker-artifacts
 clean-worker-artifacts: ## Remove all downloaded worker node artifacts
 	rm -rf "$(WORKER_DIR)"
