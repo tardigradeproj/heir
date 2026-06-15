@@ -139,10 +139,18 @@ func GeneratePKIAuthSecret(runtime *controlplanev1alpha1.Runtime, layout Control
 		}
 		data[layout.Auth.KonnectivityConf.SecretKey] = konnectivityConf
 	}
+	labels := map[string]string{
+		"app.kubernetes.io/name":       runtime.Name,
+		"app.kubernetes.io/managed-by": "heir",
+	}
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("%s-pki-auth", runtime.Name),
+			Name:      runtime.Name,
 			Namespace: runtime.Namespace,
+			Labels:    labels,
+			Annotations: map[string]string{
+				"controlplane.tardigrade.runtime.io/deletion-protection": "false",
+			},
 		},
 		Data: data,
 	}, nil

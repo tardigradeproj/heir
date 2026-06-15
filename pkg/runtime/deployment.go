@@ -40,7 +40,7 @@ func GenerateDeployment(runtime *controlplanev1alpha1.Runtime, layout ControlPla
 			Name: "pki-auth",
 			VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
-					SecretName: fmt.Sprintf("%s-pki-auth", runtime.Name),
+					SecretName: runtime.Name,
 				},
 			},
 		},
@@ -49,7 +49,7 @@ func GenerateDeployment(runtime *controlplanev1alpha1.Runtime, layout ControlPla
 			VolumeSource: corev1.VolumeSource{
 				ConfigMap: &corev1.ConfigMapVolumeSource{
 					LocalObjectReference: corev1.LocalObjectReference{
-						Name: fmt.Sprintf("%s-config", runtime.Name),
+						Name: runtime.Name,
 					},
 					DefaultMode: &scriptMode,
 				},
@@ -60,7 +60,7 @@ func GenerateDeployment(runtime *controlplanev1alpha1.Runtime, layout ControlPla
 			VolumeSource: corev1.VolumeSource{
 				ConfigMap: &corev1.ConfigMapVolumeSource{
 					LocalObjectReference: corev1.LocalObjectReference{
-						Name: fmt.Sprintf("%s-config", runtime.Name),
+						Name: runtime.Name,
 					},
 					DefaultMode: &scriptMode,
 				},
@@ -140,6 +140,10 @@ func GenerateDeployment(runtime *controlplanev1alpha1.Runtime, layout ControlPla
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      runtime.Name,
 			Namespace: runtime.Namespace,
+			Labels:    labels,
+			Annotations: map[string]string{
+				"controlplane.tardigrade.runtime.io/deletion-protection": "false",
+			},
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: deploySpec.Replicas,
