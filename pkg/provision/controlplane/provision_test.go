@@ -272,7 +272,7 @@ func TestProvision(t *testing.T) {
 			name: "created secret contains PKI data for the runtime",
 			validate: func(t *testing.T, fc *fake.Clientset, _ string) {
 				secret, err := fc.CoreV1().Secrets("default").Get(
-					context.Background(), "test-cluster-pki-auth", metav1.GetOptions{})
+					context.Background(), "test-cluster", metav1.GetOptions{})
 				require.NoError(t, err)
 				assert.NotEmpty(t, secret.Data["ca.crt"], "CA cert should be present")
 				assert.NotEmpty(t, secret.Data["ca.key"], "CA key should be present")

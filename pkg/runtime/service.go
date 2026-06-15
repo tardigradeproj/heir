@@ -45,10 +45,13 @@ func GenerateService(runtime *controlplanev1alpha1.Runtime, wrkCtx *typ.WorkerCo
 
 	return &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        runtime.Name,
-			Namespace:   runtime.Namespace,
-			Labels:      MergeArgs(selectorLabels, svcSpec.AdditionalMetadata.Labels),
-			Annotations: svcSpec.AdditionalMetadata.Annotations,
+			Name:      runtime.Name,
+			Namespace: runtime.Namespace,
+			Labels:    MergeArgs(selectorLabels, svcSpec.AdditionalMetadata.Labels),
+			Annotations: MergeArgs(
+				map[string]string{"controlplane.tardigrade.runtime.io/deletion-protection": "false"},
+				svcSpec.AdditionalMetadata.Annotations,
+			),
 		},
 		Spec: corev1.ServiceSpec{
 			Type:     svcSpec.ServiceType,

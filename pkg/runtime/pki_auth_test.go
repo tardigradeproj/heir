@@ -262,7 +262,7 @@ func TestGeneratePKIAuthSecret(t *testing.T) {
 			secret, err := GeneratePKIAuthSecret(tt.runtime, layout)
 			require.NoError(t, err)
 			require.NotNil(t, secret)
-			assert.Equal(t, fmt.Sprintf("%s-pki-auth", tt.runtime.Name), secret.Name)
+			assert.Equal(t, tt.runtime.Name, secret.Name)
 			assert.Equal(t, tt.runtime.Namespace, secret.Namespace)
 			tt.validate(t, secret.Data)
 		})

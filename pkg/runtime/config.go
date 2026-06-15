@@ -124,10 +124,18 @@ func GenerateControlPlaneConfig(runtime *controlplanev1alpha1.Runtime, layout Co
 		return nil, "", err
 	}
 
+	labels := map[string]string{
+		"app.kubernetes.io/name":       runtime.Name,
+		"app.kubernetes.io/managed-by": "heir",
+	}
 	cm := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("%s-config", runtime.Name),
+			Name:      runtime.Name,
 			Namespace: runtime.Namespace,
+			Labels:    labels,
+			Annotations: map[string]string{
+				"controlplane.tardigrade.runtime.io/deletion-protection": "false",
+			},
 		},
 		Data: data,
 	}
