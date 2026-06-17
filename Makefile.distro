@@ -168,6 +168,11 @@ copy-masteragent: ## Build masteragent on vagrant and copy binary back to host
 	vagrant ssh -c "cd heir && make build-masteragent"
 	vagrant scp default:~/heir/artifacts/masteragent $(ARTIFACTS_DIR)/masteragent
 
+.PHONY: snapshot
+snapshot:
+	goreleaser --snapshot --clean
+
+
 .PHONY: test-distro
 test-distro:
 	go test $$(go list ./... | grep -v -e 'internal/controller' -e 'cmd')
