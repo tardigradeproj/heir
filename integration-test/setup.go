@@ -66,7 +66,7 @@ func (s *HeirTestSuite) SetupSuite() {
 
 	log.Info("starting management cluster")
 	clusterIP, err := startManagementCluster(s.suiteConfig.managementClusterName, s.suiteConfig.managementClusterKubeconfig,
-		[]uint32{s.suiteConfig.postgresNodePort, 30080, 30081, 30082, 30083})
+		[]uint32{s.suiteConfig.postgresNodePort, 30080, 30081, 30082, 30083, 30084, 30085, 30086, 30087})
 	s.Require().NoError(err, "failed to start management cluster")
 	s.managementClusterIP = clusterIP
 	log.WithField("ip", s.managementClusterIP).Info("management cluster node IP assigned")

@@ -3,6 +3,7 @@ package integration
 import (
 	"context"
 	"fmt"
+	"io"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -69,4 +70,22 @@ func (k *KubeClient) CreateDeployment(ctx context.Context, namespace string, dep
 func (k *KubeClient) CreateService(ctx context.Context, namespace string, svc *corev1.Service) error {
 	_, err := k.clientset.CoreV1().Services(namespace).Create(ctx, svc, metav1.CreateOptions{})
 	return err
+}
+
+func (k *KubeClient) DeleteDeployment(ctx context.Context, namespace, name string) error {
+	return k.clientset.AppsV1().Deployments(namespace).Delete(ctx, name, metav1.DeleteOptions{})
+}
+
+func (k *KubeClient) GetPodLogs(ctx context.Context, namespace, podName string) (string, error) {
+	req := k.clientset.CoreV1().Pods(namespace).GetLogs(podName, &corev1.PodLogOptions{})
+	stream, err := req.Stream(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to open log stream for pod %q: %w", podName, err)
+	}
+	defer stream.Close()
+	buf, err := io.ReadAll(stream)
+	if err != nil {
+		return "", fmt.Errorf("failed to read logs for pod %q: %w", podName, err)
+	}
+	return string(buf), nil
 }

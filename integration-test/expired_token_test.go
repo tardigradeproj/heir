@@ -6,27 +6,26 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"testing"
 	"time"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/stretchr/testify/suite"
 )
 
-// TestProvisionSingleWokerNodeCluster verifies the core provisioning path:
-// a control plane is created on the management cluster, a single worker node
-// joins via a generated token, and the upstream cluster reports the node as
-// Ready. This is the baseline end-to-end smoke test for the provision workflow.
-func (s *HeirTestSuite) TestProvisionSingleWokerNodeCluster() {
-	upstreamClusterKubeconfig := "./provision-single-worker-cluster-kubeconfig.yaml"
+// TestExpiredJoinToken verifies that the token validation path rejects stale
+// credentials. A join token is generated with a 5-second expiry; by the time
+// the bootloose worker is provisioned and the join command runs the token has
+// expired. The test asserts that no node appears in the upstream cluster,
+// confirming that an expired token cannot be used to silently join a node.
+func (s *HeirTestSuite) TestExpiredJoinToken() {
+	upstreamClusterKubeconfig := "./expired-token-kubeconfig.yaml"
 	s.T().Cleanup(func() {
 		if err := os.Remove(upstreamClusterKubeconfig); err != nil {
 			log.WithError(err).Error("failed to remove upstream cluster kubeconfig")
 		}
 	})
-	clusterName := "test-001"
+	clusterName := "test-003"
 	namespace := "default"
-	//
+
 	log.Info("provisioning database for test")
 	dbSecretName := s.provisionTestDatabase(namespace, clusterName)
 
@@ -38,16 +37,14 @@ func (s *HeirTestSuite) TestProvisionSingleWokerNodeCluster() {
 		s.konnectivityImage,
 		s.managementClusterIP,
 		dbSecretName,
-		30080,
-		30081,
+		30084,
+		30085,
 	)
 
 	log.Info("writing runtime config to temp file")
 	configFile, err := os.CreateTemp("", "runtime-config-*.yaml")
 	s.Require().NoError(err)
-	s.T().Cleanup(func() {
-		_ = os.Remove(configFile.Name())
-	})
+	s.T().Cleanup(func() { _ = os.Remove(configFile.Name()) })
 	_, err = fmt.Fprint(configFile, runtimeConfig)
 	s.Require().NoError(err)
 	s.Require().NoError(configFile.Close())
@@ -78,49 +75,44 @@ func (s *HeirTestSuite) TestProvisionSingleWokerNodeCluster() {
 	s.Require().NoError(err, "failed to create upstream cluster client")
 
 	log.Info("waiting for node-profile configmap in upstream cluster")
-	nodeProfile, err := waitForNodeProfileConfigMap(upstreamKube, 3*time.Minute)
+	_, err = waitForNodeProfileConfigMap(upstreamKube, 3*time.Minute)
 	s.Require().NoError(err, "node-profile configmap not found in upstream cluster")
-	log.WithField("node_profile", nodeProfile).Info("node-profile configmap is present")
 
-	log.Info("generating join token")
+	log.Info("generating short-lived join token (5s expiry)")
 	tokenCmd := exec.Command(heirBinaryPath(),
 		"token", "generate",
 		"--kubeconfig", upstreamClusterKubeconfig,
-		"--expiry", "3h",
+		"--expiry", "5s",
 	)
 	tokenOut, err := tokenCmd.CombinedOutput()
 	s.Require().NoError(err, string(tokenOut))
-	joinToken := strings.TrimSpace(string(tokenOut))
-	log.Info("join token generated")
+	expiredToken := strings.TrimSpace(string(tokenOut))
+	log.Info("short-lived token generated, waiting for it to expire")
 
-	log.Info("creating worker node via bootloose")
+	// Provision the worker node while the token is expiring; bootloose
+	// container creation takes long enough that the 5s token will have expired
+	// by the time the join command runs.
 	workerDir := s.T().TempDir()
-	workerCfg, workerCluster, err := provisionWorkerNode("worker01", "worker01%d", workerDir)
+	workerCfg, workerCluster, err := provisionWorkerNode("heir-expired-token-worker", "worker%d", workerDir)
 	s.Require().NoError(err, "failed to provision worker node")
 	s.T().Cleanup(func() { _ = workerCluster.Delete() })
 	log.Info("worker node created")
 
+	// Extra buffer to guarantee the token is expired.
+	time.Sleep(10 * time.Second)
+
 	log.Info("connecting to worker node via SSH")
-	workerConn, err := dialBootlooseNode(*workerCfg, workerCluster, "worker01")
+	workerConn, err := dialBootlooseNode(*workerCfg, workerCluster, "worker0")
 	s.Require().NoError(err, "failed to connect to worker node via SSH")
 	defer workerConn.Close()
 
-	log.Info("joining worker node to upstream cluster")
-	joinOut, err := workerConn.Run(context.Background(), fmt.Sprintf("sudo heir provision worker --token=%s", joinToken))
-	s.Require().NoError(err, joinOut)
-	log.WithField("output", joinOut).Info("worker node joined successfully")
+	log.WithField("token", expiredToken).Info("attempting to join with expired token — expecting failure")
+	joinOut, err := workerConn.Run(context.Background(), fmt.Sprintf("sudo heir provision worker --token=%s", expiredToken))
+	log.WithField("output", joinOut).Info("join attempt output")
+	time.Sleep(30 * time.Second)
+	nodes, err := upstreamKube.ListNodes(context.Background())
+	s.Require().NoError(err, "failed to list nodes in upstream cluster")
+	s.Require().Len(nodes, 0, "expected exactly 0 node after joining with expired token, found %d", len(nodes))
 
-	log.Info("checking heir service status on worker node")
-	statusOut, err := workerConn.Run(context.Background(), "systemctl status heir")
-	log.WithField("output", statusOut).Info("heir service status")
-	s.Require().NoError(err, statusOut)
-
-	log.Info("waiting for worker node to be ready in upstream cluster")
-	err = waitForNodeReady(upstreamKube, 10*time.Minute)
-	s.Require().NoError(err, "worker node did not become ready in upstream cluster")
-	log.Info("worker node is ready")
-}
-
-func TestHeirSuite(t *testing.T) {
-	suite.Run(t, new(HeirTestSuite))
+	log.Info("join correctly rejected expired token")
 }

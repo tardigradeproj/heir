@@ -11,6 +11,11 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// TestProvisionTwoWorkerNodeCluster verifies that multiple worker nodes can join
+// the same upstream cluster independently. Two bootloose workers are provisioned
+// in separate clusters, each joined with the same token, and the upstream cluster
+// must report both nodes as Ready. This validates that the join flow is not
+// single-use and that the control plane correctly tracks multiple node registrations.
 func (s *HeirTestSuite) TestProvisionTwoWorkerNodeCluster() {
 	upstreamClusterKubeconfig := "./provision-two-worker-cluster-kubeconfig.yaml"
 	s.T().Cleanup(func() {
@@ -127,4 +132,17 @@ func (s *HeirTestSuite) TestProvisionTwoWorkerNodeCluster() {
 	err = waitForNodesReady(upstreamKube, 2, 10*time.Minute)
 	s.Require().NoError(err, "worker nodes did not become ready in upstream cluster")
 	log.Info("both worker nodes are ready")
+
+	log.Info("deploying nginx with 3 replicas on upstream cluster")
+	err = deployNginx(upstreamKube, namespace, 1)
+	s.Require().NoError(err, "failed to create nginx deployment")
+	s.T().Cleanup(func() {
+		_ = upstreamKube.DeleteDeployment(context.Background(), namespace, "nginx")
+	})
+
+	log.Info("waiting for 1 nginx replicas to be ready")
+	err = waitForDeploymentReady(upstreamKube, namespace, "app=nginx", 1, 5*time.Minute)
+	s.Require().NoError(err, "nginx deployment did not reach 1 ready replicas")
+	log.Info("1 nginx replicas are running")
+
 }

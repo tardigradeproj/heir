@@ -292,6 +292,74 @@ func applyRegistryConfigMap(kube *KubeClient, registryPort uint32) error {
 	return nil
 }
 
+func deployNginx(kube *KubeClient, namespace string, replicas int32) error {
+	labels := map[string]string{"app": "nginx"}
+	dep := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "nginx", Namespace: namespace},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: &replicas,
+			Selector: &metav1.LabelSelector{MatchLabels: labels},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{Labels: labels},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{Name: "nginx", Image: "nginx"},
+					},
+				},
+			},
+		},
+	}
+	return kube.CreateDeployment(context.Background(), namespace, dep)
+}
+
+func logPodsOutput(kube *KubeClient, namespace, labelSelector string) {
+	ctx := context.Background()
+	pods, err := kube.ListPods(ctx, namespace, labelSelector)
+	if err != nil {
+		log.WithError(err).Warn("failed to list pods for log collection")
+		return
+	}
+	for _, pod := range pods {
+		logs, err := kube.GetPodLogs(ctx, namespace, pod.Name)
+		if err != nil {
+			log.WithFields(log.Fields{"pod": pod.Name}).WithError(err).Warn("failed to get pod logs")
+			continue
+		}
+		log.WithFields(log.Fields{"pod": pod.Name}).Infof("pod logs:\n%s", logs)
+	}
+}
+
+func waitForDeploymentReady(kube *KubeClient, namespace, labelSelector string, expectedCount int, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	for {
+		pods, err := kube.ListPods(ctx, namespace, labelSelector)
+		if err == nil {
+			ready := 0
+			for _, pod := range pods {
+				for _, cond := range pod.Status.Conditions {
+					if cond.Type == corev1.PodReady && cond.Status == corev1.ConditionTrue {
+						ready++
+					}
+				}
+			}
+			log.WithFields(log.Fields{"ready": ready, "expected": expectedCount}).Info("waiting for deployment pods to be ready")
+			if ready >= expectedCount {
+				return nil
+			}
+		} else {
+			log.WithError(err).Debug("failed to list pods, retrying")
+		}
+
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("%d pod(s) did not become ready after %s", expectedCount, timeout)
+		case <-time.After(5 * time.Second):
+		}
+	}
+}
+
 func buildRuntimeConfig(name, namespace, heirImage, konnectivityImage, address, dataSourceRefName string, apiServerPort, konnectivityPort uint32) string {
 	return fmt.Sprintf(`apiVersion: controlplane.tardigrade.runtime.io/v1alpha1
 kind: Runtime
@@ -436,6 +504,35 @@ func waitForNodesReady(kube *KubeClient, count int, timeout time.Duration) error
 		select {
 		case <-ctx.Done():
 			return fmt.Errorf("%d node(s) did not become ready in upstream cluster after %s", count, timeout)
+		case <-time.After(5 * time.Second):
+		}
+	}
+}
+
+func waitForNodeNotReady(kube *KubeClient, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	for {
+		nodes, err := kube.ListNodes(ctx)
+		if err == nil && len(nodes) > 0 {
+			allNotReady := true
+			for _, node := range nodes {
+				for _, cond := range node.Status.Conditions {
+					if cond.Type == corev1.NodeReady && cond.Status == corev1.ConditionTrue {
+						allNotReady = false
+					}
+				}
+			}
+			if allNotReady {
+				return nil
+			}
+		}
+		log.Debug("node still reporting ready in upstream cluster, waiting")
+
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("node did not become not-ready in upstream cluster after %s", timeout)
 		case <-time.After(5 * time.Second):
 		}
 	}
