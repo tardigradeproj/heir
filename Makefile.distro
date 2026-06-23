@@ -138,19 +138,6 @@ control-plane-artifact-setup: $(KUBE_TARBALL) ## Download Kubernetes binaries, b
 build-distro: ## Build cmd/distro for linux/ARCH and place the binary in integration-test/
 	GOOS=linux GOARCH=$(ARCH) go build -o $(INTEGRATION_TEST_DIR)/tardigrade ./cmd/distro.go
 
-.PHONY: build-integration-test-image
-build-integration-test-image: ## Build the bootloose worker image with kubectl
-	docker build \
-		--build-arg KUBE_VERSION=$(KUBE_VERSION) \
-		--build-arg TARGETARCH=$(ARCH) \
-		-t heir-integration-test:v1 \
-		integration-test
-
-.PHONY: integration-test
-integration-test: build-distro build-integration-test-image ## Build distro binary, set up kind cluster, run integration tests, tear down
-	.local/kind-with-registry.sh
-	go test -v -timeout 30m ./integration-test/...; rc=$$?; echo "abc"; exit $$rc
-
 .PHONY: vagrant-up
 vagrant-up: ## Start and provision the Vagrant VM
 	vagrant up --provision
@@ -168,8 +155,8 @@ copy-masteragent: ## Build masteragent on vagrant and copy binary back to host
 	vagrant ssh -c "cd heir && make build-masteragent"
 	vagrant scp default:~/heir/artifacts/masteragent $(ARTIFACTS_DIR)/masteragent
 
-.PHONY: snapshot
-snapshot:
+.PHONY: build-snapshot
+build-snapshot: ## Build a local snapshot release for all platforms using goreleaser (output lands in dist/)
 	goreleaser --snapshot --clean
 
 

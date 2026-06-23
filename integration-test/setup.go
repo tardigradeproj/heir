@@ -93,7 +93,7 @@ func (s *HeirTestSuite) SetupSuite() {
 	s.Require().NoError(applyRegistryConfigMap(s.managementKube, s.suiteConfig.kindRegistryPort), "failed setup registry configMap")
 
 	log.Info("pushing postgres images to registry")
-	postgresImage, err := pushImageToRegistry("postgres:16", "postgres:16", s.suiteConfig.kindRegistryPort, withSkipPull())
+	postgresImage, err := pushImageToRegistry("postgres:16", "postgres:16", s.suiteConfig.kindRegistryPort)
 	s.Require().NoError(err, "failed to push postgres image to registry")
 
 	log.Info("provisioning postgres")
@@ -106,10 +106,10 @@ func (s *HeirTestSuite) SetupSuite() {
 	s.Require().NoError(waitForPostgresReady(s.externalPostgresDSN, 2*time.Minute), "postgres did not become ready")
 
 	log.Info("pushing images to registry")
-	s.heirImage, err = pushImageToRegistry(s.suiteConfig.heirSourceImage, s.suiteConfig.heirTargetRef, s.suiteConfig.kindRegistryPort, withSkipPull())
+	s.heirImage, err = pushImageToRegistry(s.suiteConfig.heirSourceImage, s.suiteConfig.heirTargetRef, s.suiteConfig.kindRegistryPort)
 	s.Require().NoError(err, "failed to push heir image to registry")
 	// #TODO: pull first
-	s.konnectivityImage, err = pushImageToRegistry(s.suiteConfig.konnectivitySourceImage, s.suiteConfig.konnectivityTargetRef, s.suiteConfig.kindRegistryPort, withSkipPull())
+	s.konnectivityImage, err = pushImageToRegistry(s.suiteConfig.konnectivitySourceImage, s.suiteConfig.konnectivityTargetRef, s.suiteConfig.kindRegistryPort)
 	s.Require().NoError(err, "failed to push konnectivity image to registry")
 
 	log.Info("setup complete")

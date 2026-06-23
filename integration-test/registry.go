@@ -156,12 +156,17 @@ func pushImageToRegistry(sourceImage, targetRef string, registryPort uint32, opt
 	defer cli.Close()
 
 	if !o.skipPull {
-		reader, err := cli.ImagePull(ctx, sourceImage, image.PullOptions{})
-		if err != nil {
-			return "", fmt.Errorf("failed to pull %s: %w", sourceImage, err)
+		if _, err := cli.ImageInspect(ctx, sourceImage); err != nil {
+			if !cerrdefs.IsNotFound(err) {
+				return "", fmt.Errorf("failed to inspect image %s: %w", sourceImage, err)
+			}
+			reader, err := cli.ImagePull(ctx, sourceImage, image.PullOptions{})
+			if err != nil {
+				return "", fmt.Errorf("failed to pull %s: %w", sourceImage, err)
+			}
+			io.Copy(io.Discard, reader)
+			reader.Close()
 		}
-		io.Copy(io.Discard, reader)
-		reader.Close()
 	}
 
 	if err := cli.ImageTag(ctx, sourceImage, localTag); err != nil {
