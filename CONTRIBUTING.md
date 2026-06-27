@@ -46,6 +46,40 @@ If your PR includes changes to generated code (e.g. `zz_generated.deepcopy.go` f
 easier.
 
 
+## Running integration tests
+
+Integration tests provision real Kubernetes clusters and worker nodes using kind and bootloose.
+They take around 30 minutes to complete and require a machine with enough resources to run several
+Docker containers simultaneously (8 GB RAM minimum; 16 GB recommended).
+
+### Prerequisites
+
+| Tool | Purpose | Install |
+|------|---------|---------|
+| Go 1.26+ | Build and run tests | https://go.dev/dl |
+| Docker | kind clusters and bootloose worker containers | https://docs.docker.com/get-docker |
+| kind | Management cluster | `go install sigs.k8s.io/kind@latest` |
+| goreleaser | Build the `heir` binary snapshot that tests consume | https://goreleaser.com/install |
+
+### Running the tests
+
+```bash
+# 1. Build a local snapshot release — places the heir binary in dist/
+make build-snapshot
+# 2. Run the tests from the integration-test directory
+cd integration-test && go test -v -timeout 30m .
+```
+
+### What the tests do
+
+Each test function provisions its own upstream Kubernetes cluster (running as pods inside the
+management kind cluster) and its own bootloose worker nodes. Tests are isolated by cluster name
+and NodePort assignments so they can run sequentially within the same suite without conflicting.
+The suite is powered by [testify/suite](https://pkg.go.dev/github.com/stretchr/testify/suite);
+setup and teardown of shared infrastructure (the management cluster, the local registry, and the
+shared postgres server) happen in `SetupSuite`/`TearDownSuite`.
+
+
 ## Reviewing, addressing feedback, and merging
 
 Pull requests generally require two approvals from maintainers to be merged. Minor dependency updates or straightforward fixes may require only one.
