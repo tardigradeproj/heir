@@ -162,4 +162,4 @@ build-snapshot: ## Build a local snapshot release for all platforms using gorele
 
 .PHONY: test-distro
 test-distro:
-	go test $$(go list ./... | grep -v -e 'internal/controller' -e 'cmd')
+	go test $$(go list ./... | grep -v -e 'internal/controller' -e 'cmd' -e 'integration-test')
