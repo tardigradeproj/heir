@@ -1,6 +1,6 @@
 module github.com/tardigradeproj/heir
 
-go 1.26.0
+go 1.26.2
 
 require (
 	al.essio.dev/pkg/shellescape v1.6.0
@@ -19,17 +19,18 @@ require (
 	github.com/sirupsen/logrus v1.9.4
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.11.1
-	golang.org/x/crypto v0.49.0
+	golang.org/x/crypto v0.51.0
 	gvisor.dev/gvisor v0.0.0-20260420225414-25ee8c385cdf
 	inet.af/tcpproxy v0.0.0-20231102063150-2862066fc2a9
-	k8s.io/api v0.36.0
-	k8s.io/apiextensions-apiserver v0.35.0
-	k8s.io/apimachinery v0.36.0
-	k8s.io/client-go v0.36.0
-	k8s.io/component-helpers v0.36.0
+	k8s.io/api v0.36.1
+	k8s.io/apiextensions-apiserver v0.36.0
+	k8s.io/apimachinery v0.36.1
+	k8s.io/client-go v0.36.1
+	k8s.io/component-helpers v0.36.1
 	k8s.io/klog/v2 v2.140.0
-	k8s.io/utils v0.0.0-20260319190234-28399d86e0b5
-	sigs.k8s.io/controller-runtime v0.23.1
+	k8s.io/utils v0.0.0-20260507154919-ff6756f316d2
+	sigs.k8s.io/apiserver-network-proxy v0.36.0
+	sigs.k8s.io/controller-runtime v0.24.1
 	sigs.k8s.io/kind v0.31.0
 	sigs.k8s.io/yaml v1.6.0
 )
@@ -78,7 +79,7 @@ require (
 	github.com/go-sql-driver/mysql v1.9.3 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
-	github.com/golang-jwt/jwt/v5 v5.3.0 // indirect
+	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/btree v1.1.3 // indirect
@@ -132,12 +133,13 @@ require (
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/client_golang v1.23.2 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
-	github.com/prometheus/common v0.67.5 // indirect
+	github.com/prometheus/common v0.68.0 // indirect
 	github.com/prometheus/procfs v0.19.2 // indirect
 	github.com/shengdoushi/base58 v1.0.0 // indirect
 	github.com/soheilhy/cmux v0.1.5 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/stoewer/go-strcase v1.3.0 // indirect
+	github.com/tardigradeproj/outbound v0.1.1 // indirect
 	github.com/tidwall/btree v1.8.1 // indirect
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20220101234140-673ab2c3ae75 // indirect
 	github.com/weppos/publicsuffix-go v0.30.0 // indirect
@@ -165,33 +167,33 @@ require (
 	go.opentelemetry.io/proto/otlp v1.10.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.1 // indirect
-	go.yaml.in/yaml/v2 v2.4.3 // indirect
+	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/exp v0.0.0-20251219203646-944ab1f22d93 // indirect
 	golang.org/x/mod v0.35.0 // indirect
-	golang.org/x/net v0.52.0 // indirect
-	golang.org/x/oauth2 v0.35.0 // indirect
+	golang.org/x/net v0.55.0 // indirect
+	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
-	golang.org/x/sys v0.43.0 // indirect
-	golang.org/x/term v0.41.0 // indirect
-	golang.org/x/text v0.35.0 // indirect
+	golang.org/x/sys v0.45.0 // indirect
+	golang.org/x/term v0.43.0 // indirect
+	golang.org/x/text v0.37.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
-	golang.org/x/tools v0.43.0 // indirect
+	golang.org/x/tools v0.44.0 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.4.0 // indirect
 	google.golang.org/genproto v0.0.0-20240227224415-6ceb2ff114de // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260401024825-9d38bb4040a9 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260406210006-6f92a3bedf2d // indirect
-	google.golang.org/grpc v1.80.0 // indirect
+	google.golang.org/grpc v1.81.1 // indirect
 	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	k8s.io/apiserver v0.35.0 // indirect
-	k8s.io/component-base v0.36.0 // indirect
+	k8s.io/apiserver v0.36.0 // indirect
+	k8s.io/component-base v0.36.1 // indirect
 	k8s.io/cri-api v0.36.0 // indirect
 	k8s.io/kube-openapi v0.0.0-20260319004828-5883c5ee87b9 // indirect
-	k8s.io/streaming v0.36.0 // indirect
+	k8s.io/streaming v0.36.1 // indirect
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.34.0 // indirect
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
