@@ -29,7 +29,6 @@ The other challenges are described below:
 - `--server-count` must be kept in sync with the actual replica count, making autoscaling
   the server deployment complex.
 
-
 This RFC proposes a solution to that challenge.
 
 ---
@@ -49,59 +48,196 @@ connection. The agent's identity is read from the certificate's Common Name fiel
 `CN=system:node:worker2`, so the server knows exactly which node owns the tunnel without any out-of-band
 signalling.
 
-The proposal also removes the N×M connection cost. Using Kubernetes Leases, each server instance watches
-lease objects via an informer and builds a local routing index from them. When a request from the API server
-arrives at a server instance that does not hold the target worker's tunnel, the instance looks up the lease
-for that worker, finds the Pod IP of the peer that owns the connection, and forwards the request there.
+### Request Routing
 
-When an agent connects, the server it lands on writes a Lease advertising ownership of that node:
+Each server instance only holds the tunnels for the agents that happened to connect to it. When the API
+server sends a request targeting a specific node, for example, to stream logs from a pod, it connects
+to the worker node's real IP address. The routing problem is: that IP is not directly reachable from the
+Management Cluster, and the tunnel for that node may be held by any of the plane tunnel replicas.
 
-```yaml
-apiVersion: coordination.k8s.io/v1
-kind: Lease
-metadata:
-  name: worker2                      # Matches the node name from CN=system:node:worker2
-  namespace: abc
-spec:
-  holderIdentity: "10.4.2.15"       # Pod IP of the server instance holding this agent's tunnel
-  leaseDurationSeconds: 15          # Expires if the server stops renewing (agent disconnected or server crashed)
-  renewTime: "2026-06-28T14:52:20Z" # Heartbeated by the server for as long as the agent tunnel is live
+The solution operates entirely at the network layer, keeping the API server itself completely unaware of
+the tunnel infrastructure.
+
+All plane tunnel instances are exposed behind a **headless Service**. A headless Service has no ClusterIP;
+DNS resolves it directly to the Pod IPs of all ready instances.
+
+**Master agent** runs as a sidecar container in the API server pod. Because all containers in a pod share
+the same network namespace, rules programmed by master agent affect the API server's traffic transparently.
+
+The full request flow is:
+
+```
+API server → (OUTPUT DNAT) → plane tunnel pod:dynamic-port → (PREROUTING REDIRECT) → plane tunnel listener:10250 → agent tunnel → kubelet on node X
 ```
 
-All server instances watch the same namespace with a shared informer and maintain an in-memory routing index:
+**Step 1 — Plane tunnel assigns a dynamic port per agent.**
+When an agent connects and its identity is verified via mTLS, the plane tunnel assigns it a unique port
+number from the range 30000–30500. No socket is ever bound to this port — it is a pure logical label, a
+number that exists only in a lookup table mapping port → agent tunnel. Each plane tunnel replica manages
+its own port pool independently; because master agent targets replica Pod IPs directly, the same port
+number can appear on different replicas without conflict.
+
+**Step 2 — Master agent builds the routing table.**
+Master agent periodically resolves the headless Service DNS to discover all plane tunnel Pod IPs. It then
+polls each instance's `/v1/report` endpoint to learn which worker nodes are connected to it and which
+dynamic port each node was assigned. From these responses it builds a routing table:
+worker node IP → (plane tunnel Pod IP, dynamic port).
+
+**Step 3 — Master agent programs DNAT rules.**
+For each entry in the routing table, master agent installs an iptables rule in the OUTPUT chain of the
+nat table inside the API server pod's network namespace. The dynamic port in the rule is the port in the
+30000–30500 range that the plane tunnel assigned to that node's agent:
+
+```
+iptables -t nat -A OUTPUT -d <node-IP> -j DNAT --to-destination <plane-tunnel-pod-IP>:<dynamic-port (30000–30500)>
+```
+
+When the API server opens a connection to a worker node's real IP, the kernel rewrites the destination
+to the specific plane tunnel Pod IP and dynamic port before the packet leaves the pod. From the API
+server's perspective nothing has changed — it still addressed the worker node directly.
+
+**Step 4 — Plane tunnel redirects all incoming traffic to a single listener.**
+At startup, each plane tunnel instance installs a single iptables rule in the PREROUTING chain of its
+own pod network namespace:
+
+```
+iptables -t nat -A PREROUTING -p tcp --dport 30000:30500 -j REDIRECT --to-ports 10250
+```
+
+This rule intercepts every TCP connection arriving at the pod on any port in the 30000–30500 range and
+redirects it to port 10250 before any socket lookup occurs. The plane tunnel maintains exactly one
+listener on port 10250.
+
+**Step 5 — Plane tunnel identifies the target node and proxies the request.**
+The PREROUTING REDIRECT rule creates a conntrack entry in the plane tunnel pod's own network namespace.
+When the listener on port 10250 accepts a connection, it calls `SO_ORIGINAL_DST` on the accepted socket.
+Because the NAT entry being queried was created by a rule in the same network namespace as the socket,
+the kernel returns the correct pre-redirect destination: the plane tunnel Pod IP and the dynamic port the
+packet was addressed to when it arrived. The plane tunnel looks up which agent tunnel owns that dynamic
+port and proxies the request through it. The response streams back the same way.
+
+**Rule lifecycle.** Master agent reconciles rules on every poll cycle: it adds rules for newly connected
+nodes, removes rules for nodes that have disconnected, and updates rules for nodes that have reconnected
+to a different plane tunnel replica. On restart, master agent flushes any rules it owns before rebuilding
+from scratch.
+
+### Report Endpoint
+
+Each plane tunnel instance exposes an HTTP endpoint that master agent polls to discover which worker
+nodes are currently connected to it and the dynamic port assigned to each:
+
+```
+GET /v1/report
+```
+
+Response body:
 
 ```go
-type AgentLeaseIndex struct {
-    mu    sync.RWMutex
-    index map[string]string // nodeName → server Pod IP that owns the agent tunnel
+type ReportResponse struct {
+    Nodes []ConnectedNode `json:"nodes"`
 }
 
-// Lookup returns the Pod IP of the peer server holding the tunnel for nodeName.
-// Returns ErrNotFound if no live lease exists for that node.
-func (idx *AgentLeaseIndex) Lookup(nodeName string) (string, error)
+type ConnectedNode struct {
+    Name string `json:"name"` // node name, e.g. "worker2"
+    IP   string `json:"ip"`   // worker node IP, e.g. "192.168.1.10"
+    Port int    `json:"port"` // dynamic port assigned to this node's tunnel, e.g. 30000
+}
 ```
 
-Informer event handlers call `index.Add`, `index.Update`, and `index.Delete` as leases are created,
-renewed, or expire. The index is lightweight: a lease is roughly 500 bytes, so 5,000 nodes consume
-≈ 2.5 MB — well within a normal pod's memory budget.
+Example:
 
-### Inter-Server Forwarding
-
-When a request from the API server arrives at a server instance that does not hold the target worker's
-tunnel, the instance looks up the node name in its routing index to find the peer Pod IP, then forwards
-the raw request to that peer over an HTTP channel. The receiving peer already has a local
-`outbound` address representing the agent's tunnel, so it proxies the request through as if the
-connection had arrived locally. From the API server's perspective, the request is fulfilled transparently
-regardless of which server replica it hits.
-
-### RBAC
-
-The server's `ServiceAccount` on the Management Cluster needs permission to manage leases in the
-tracking namespace:
-
-```yaml
-rules:
-- apiGroups: ["coordination.k8s.io"]
-  resources: ["leases"]
-  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+```json
+{
+  "nodes": [
+    { "name": "worker2", "ip": "192.168.1.10", "port": 30000 },
+    { "name": "worker5", "ip": "192.168.1.13", "port": 30001 }
+  ]
+}
 ```
+
+An empty `nodes` array means the instance currently holds no agent tunnels. Master agent must remove any
+DNAT rules that point to an instance for nodes no longer present in its report.
+
+---
+
+## Properties
+
+Conntrack tables are per-namespace, a NAT
+entry created in namespace A is invisible to a socket in namespace B. In this design, the REDIRECT rule
+lives in the plane tunnel pod's own network namespace, and the socket that calls `SO_ORIGINAL_DST` is
+in that same namespace. The kernel finds the conntrack entry locally and returns the correct
+pre-redirect port. The DNAT installed by master agent in the API server pod's namespace plays no role
+in the `SO_ORIGINAL_DST` lookup, it is already resolved and gone by the time the packet arrives at
+the plane tunnel.
+
+```go
+func getOriginalDst(conn net.Conn) (*net.TCPAddr, error) {
+	tcpConn, ok := conn.(*net.TCPConn)
+	if !ok {
+		return nil, errors.New("connection is not a TCP connection")
+	}
+
+	// Obtain the raw control interface of the connection
+	rawConn, err := tcpConn.SyscallConn()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get raw connection: %w", err)
+	}
+
+	var addr unix.RawSockaddrInet4
+	var sysErr error
+
+	// Execute getsockopt safely via Control context
+	err = rawConn.Control(func(fd uintptr) {
+		var len uint32 = uint32(unix.SizeofRawSockaddrInet4)
+		
+		// Invoke the syscall: SOL_IP = 0, SO_ORIGINAL_DST = 80
+		sysErr = unix.Getsockopt(int(fd), unix.SOL_IP, SO_ORIGINAL_DST, &addr, &len)
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("raw connection control error: %w", err)
+	}
+	if sysErr != nil {
+		return nil, fmt.Errorf("getsockopt SO_ORIGINAL_DST failed: %w", sysErr)
+	}
+
+	// Parse the network byte order (Big Endian) results
+	ip := net.IP(addr.Addr[:])
+	
+	// Port mapping logic from big endian byte array
+	port := int(addr.Port[0])<<8 + int(addr.Port[1])
+
+	return &net.TCPAddr{IP: ip, Port: port}, nil
+}
+```
+
+**No dynamic port binding.**
+The dynamic port assigned to each agent is never bound to a socket. It is a number that exists in two
+places: the plane tunnel's in-memory lookup table and the DNAT rule installed by master agent. The plane
+tunnel never calls `listen()` on it. All connections, regardless of which dynamic port they were
+addressed to, arrive at the same listener on port 10250. This eliminates the risk of port exhaustion on
+the plane tunnel side and keeps the implementation simple: one listener, one accept loop.
+
+**No port coordination across replicas.**
+Because master agent resolves the headless Service and targets each replica by its Pod IP directly, two
+replicas can assign the same dynamic port number to different agents without any conflict. The DNAT rule
+encodes both the Pod IP and the port, so packets always reach the correct replica. Replicas are fully
+independent and require no shared state for port allocation.
+
+**One DNAT rule per worker node.**
+Master agent installs exactly one rule per connected worker node, regardless of how many services or
+ports the API server may use to communicate with that node. The rule matches on the destination IP only
+and rewrites it to the appropriate plane tunnel Pod IP and dynamic port. Rule count scales linearly with
+the number of worker nodes and does not grow with the number of services or ports in use.
+
+**No infrastructure changes required.**
+The design requires no changes to the cluster CNI, no dedicated IP CIDRs, no secondary pod IPs, no
+BGP route advertisement, and no host-level routing configuration. It works on any standard Kubernetes
+cluster using only iptables rules installed within existing pod network namespaces, which are already
+available without elevated host privileges.
+
+**Full API server transparency.**
+The API server connects to worker node IPs directly, as it would in a traditional deployment. The entire
+tunnel mechanism, DNAT, REDIRECT, SO_ORIGINAL_DST, agent tunnel multiplexing operates below the
+application layer and is invisible to the API server. No changes to API server configuration or behavior
+are required.
