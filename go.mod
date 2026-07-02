@@ -9,6 +9,7 @@ require (
 	github.com/avast/retry-go v3.0.0+incompatible
 	github.com/cloudflare/cfssl v1.6.5
 	github.com/containerd/containerd v1.7.31
+	github.com/coreos/go-iptables v0.8.0
 	github.com/coreos/go-systemd/v22 v22.7.0
 	github.com/evanphx/json-patch/v5 v5.9.11
 	github.com/go-task/slim-sprig/v3 v3.0.0
@@ -139,7 +140,6 @@ require (
 	github.com/soheilhy/cmux v0.1.5 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/stoewer/go-strcase v1.3.0 // indirect
-	github.com/tardigradeproj/outbound v0.1.1 // indirect
 	github.com/tidwall/btree v1.8.1 // indirect
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20220101234140-673ab2c3ae75 // indirect
 	github.com/weppos/publicsuffix-go v0.30.0 // indirect
