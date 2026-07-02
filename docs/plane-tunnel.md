@@ -37,7 +37,7 @@ This RFC proposes a solution to that challenge.
 
 Because worker nodes sit behind NAT, connections must be initiated outbound from the worker side. The proposal
 uses TCP multiplexing over a single persistent connection per worker: the agent dials the server, and that
-channel is then used bidirectionally — worker-to-control-plane requests and control-plane-to-worker requests
+channel is then used bidirectionally, worker-to-control-plane requests and control-plane-to-worker requests
 alike flow over the same tunnel. This is implemented with
 [outbound](https://github.com/tardigradeproj/outbound), which creates local addresses for remote systems.
 
@@ -66,7 +66,7 @@ flag. It must be set to:
 
 This ensures the API server connects to worker nodes using their registered hostname. The hostname is used
 as the TLS ServerName (SNI), which the kubelet's serving certificate always carries as a hostname SAN.
-Using `InternalIP` instead would require the kubelet cert to carry an IP SAN — which may be absent and
+Using `InternalIP` instead would require the kubelet cert to carry an IP SAN, which may be absent and
 becomes stale when the node IP changes.
 
 **Step 1 — Master agent builds the routing table.**
@@ -89,7 +89,7 @@ For each entry in the routing table, master agent writes a line into `/etc/hosts
 ```
 
 When the API server connects to `worker2:10250`, the hostname resolves via `/etc/hosts` to the Pod IP of
-the replica that holds worker2's tunnel. TLS is unaffected — the API server used the hostname to initiate
+the replica that holds worker2's tunnel. TLS is unaffected, the API server used the hostname to initiate
 the connection, so the TLS ServerName remains `worker2`.
 
 **Step 3 — Plane tunnel reads SNI and proxies the request.**
@@ -151,7 +151,7 @@ target worker within that replica.
 Because the API server connects to workers by hostname and Go's TLS stack sets the SNI to the dialled
 hostname regardless of the resolved IP, the plane tunnel receives `SNI=worker2` even though the TCP
 connection was established to a pod IP. The plane tunnel peeks at the ClientHello without consuming it,
-reads the SNI field, then forwards the full stream — including the peeked bytes — through the agent tunnel.
+reads the SNI field, then forwards the full stream, including the peeked bytes, through the agent tunnel.
 
 **Multiple workers share a Pod IP in `/etc/hosts`.**
 Unlike the previous design, no virtual IP allocation is required. Two workers connected to the same
@@ -177,13 +177,13 @@ this window fail and must be retried by the caller. The lag is bounded by the re
 
 **TLS verification works without IP SANs.**
 Because the API server connects to worker nodes by hostname and the TLS ServerName is set to that
-hostname, the kubelet's serving certificate only needs a hostname SAN — which is always present and
+hostname, the kubelet's serving certificate only needs a hostname SAN, which is always present and
 stable. No IP SAN is required. TLS verification is unaffected by node IP changes, certificate rotation
 windows, or any mismatch between `node.Status.Addresses` and the certificate.
 
 **API server address type must be configured.**
 The only API server change required is setting `--kubelet-preferred-address-types=Hostname`. Beyond
-that single flag, the API server is fully unaware of the tunnel infrastructure — it addresses worker
+that single flag, the API server is fully unaware of the tunnel infrastructure, it addresses worker
 nodes by hostname as it would in a traditional deployment, and the entire mechanism of `/etc/hosts`
 resolution, SNI-based routing, and agent tunnel multiplexing operates transparently below the
 application layer.
