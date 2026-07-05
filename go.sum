@@ -347,6 +347,12 @@ github.com/stretchr/testify v1.8.0/go.mod h1:yNjHg4UonilssWZ8iaSj1OCr/vHnekPRkoO
 github.com/stretchr/testify v1.8.1/go.mod h1:w2LPCIKwWwSfY2zedu0+kehJoqGctiVI29o6fzry7u4=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
+github.com/tardigradeproj/outbound v0.1.1 h1:9ECP3Hy5B7yPMPtx+dFO3jk9MV4INXma5zrl61NK+hA=
+github.com/tardigradeproj/outbound v0.1.1/go.mod h1:9U3XrMg6pFaBIi4JWln8fxwSektlgD8b+KlaDiAAfMo=
+github.com/tardigradeproj/outbound v0.1.2 h1:j9eCS1gmF4tRJk1cUPSwgrYlVplNn6r0GSRj1FpIpzM=
+github.com/tardigradeproj/outbound v0.1.2/go.mod h1:9U3XrMg6pFaBIi4JWln8fxwSektlgD8b+KlaDiAAfMo=
+github.com/tardigradeproj/outbound v0.1.3 h1:1+Lfn1Pq0XBHQp89YQ1O2n2gYa5H5ZmIyYIXJuwrMBI=
+github.com/tardigradeproj/outbound v0.1.3/go.mod h1:9U3XrMg6pFaBIi4JWln8fxwSektlgD8b+KlaDiAAfMo=
 github.com/tidwall/btree v1.8.1 h1:27ehoXvm5AG/g+1VxLS1SD3vRhp/H7LuEfwNvddEdmA=
 github.com/tidwall/btree v1.8.1/go.mod h1:jBbTdUWhSZClZWoDg54VnvV7/54modSOzDN7VXftj1A=
 github.com/tidwall/gjson v1.18.0 h1:FIDeeyB800efLX89e5a8Y0BNH+LOngJyGrIWxG2FKQY=
