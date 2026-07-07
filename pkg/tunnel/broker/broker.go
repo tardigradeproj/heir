@@ -124,6 +124,15 @@ func (b *Broker) Unregister(nodeName string, id string) {
 	}
 }
 
+// Dial opens a stream to upstreamID through the best available tunnel for nodeName.
+func (b *Broker) Dial(ctx context.Context, nodeName string, upstreamID uint8) (net.Conn, error) {
+	t := b.Pick(nodeName)
+	if t == nil {
+		return nil, fmt.Errorf("no tunnel registered for node %q", nodeName)
+	}
+	return t.tunnel.Dial(ctx, upstreamID)
+}
+
 func (b *Broker) Pick(nodeName string) *Tunnel {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
