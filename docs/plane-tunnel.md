@@ -36,7 +36,7 @@ This RFC proposes a solution to that challenge.
 ## Proposal
 
 Because worker nodes sit behind NAT, connections must be initiated outbound from the worker side. The proposal
-uses TCP multiplexing over a single persistent connection per worker: the agent dials the server, and that
+uses TCP multiplexing over a single persistent connection per worker per replica: the agent dials the server, and that
 channel is then used bidirectionally, worker-to-control-plane requests and control-plane-to-worker requests
 alike flow over the same tunnel. This is implemented with
 [outbound](https://github.com/tardigradeproj/outbound), which creates local addresses for remote systems.
@@ -48,12 +48,33 @@ connection. The agent's identity is read from the certificate's Common Name fiel
 `CN=system:node:worker2`, so the server knows exactly which node owns the tunnel without any out-of-band
 signalling.
 
+### Agent Connections
+
+Each worker node agent maintains one tunnel to **every** plane tunnel replica. The agent discovers
+all replica pod IPs by resolving the plane tunnel headless Service DNS name and periodically re-resolving
+it to detect new or removed replicas. For each discovered pod IP the agent dials an mTLS connection,
+presenting its node client certificate. The plane tunnel verifies the certificate against the cluster CA
+and registers the tunnel.
+
+Because every replica holds a tunnel for every worker, any replica can serve any kubelet request. No
+per-request routing table is required and there is no wrong-replica scenario: a Service VIP in front of
+the plane tunnel deployment is sufficient, and the load balancer may direct traffic to any pod.
+
+This design retains an N×M connection count (100 workers × 3 replicas = 300 multiplexed TCP connections),
+the same as konnectivity. The key differences are:
+
+- Connections are multiplexed over a single TCP socket per worker-replica pair, so per-request overhead
+  is minimal.
+- Adding a replica does **not** force existing tunnels to drop. Agents discover the new pod IP on their
+  next DNS poll and open one additional connection. All existing traffic continues uninterrupted.
+- No `--server-count` equivalent is required; replica count is discovered dynamically.
+
 ### Request Routing
 
 The full request flow is:
 
 ```
-API server → worker2:10250 → (/etc/hosts) → plane tunnel pod IP:10250 → (SNI peek: worker2) → agent tunnel → kubelet
+API server → (HTTP CONNECT worker2:10250, mTLS) → plane tunnel Service → (agent tunnel) → kubelet
 ```
 
 **Prerequisite — API server address type.**
@@ -64,49 +85,65 @@ flag. It must be set to:
 --kubelet-preferred-address-types=Hostname
 ```
 
-This ensures the API server connects to worker nodes using their registered hostname. The hostname is used
-as the TLS ServerName (SNI), which the kubelet's serving certificate always carries as a hostname SAN.
-Using `InternalIP` instead would require the kubelet cert to carry an IP SAN, which may be absent and
-becomes stale when the node IP changes.
+This ensures the API server connects to worker nodes using their registered hostname. The hostname becomes
+the target in the HTTP CONNECT request, which the plane tunnel uses to look up the correct agent tunnel.
+Using `InternalIP` instead would send an IP address as the CONNECT target, making tunnel lookup impossible.
 
-**Step 1 — Master agent builds the routing table.**
-Master agent runs as a sidecar container in the API server pod. It periodically resolves the plane tunnel
-headless Service DNS to discover all replica Pod IPs, then polls each instance's `/v1/report` endpoint to
-learn which worker nodes are connected to it.
+**Prerequisite — egress selector.**
+The API server must be configured with `--egress-selector-config-file` pointing to an
+`EgressSelectorConfiguration` manifest that routes `cluster` egress (kubelet traffic) through the plane
+tunnel Service using the `HTTPConnect` proxy protocol with mTLS:
 
-From these responses, master agent builds a routing table: worker hostname → plane tunnel Pod IP.
+```yaml
+apiVersion: apiserver.k8s.io/v1beta1
+kind: EgressSelectorConfiguration
+egressSelections:
+- name: cluster
+  connection:
+    proxyProtocol: HTTPConnect
+    transport:
+      tcp:
+        url: https://plane-tunnel.<namespace>.svc:10250
+        tlsConfig:
+          caBundle: /path/to/cluster-ca.crt
+          clientKey: /path/to/apiserver-kubelet-client.key
+          clientCert: /path/to/apiserver-kubelet-client.crt
+```
 
-Multiple workers connected to the same replica map to the same Pod IP — this is intentional and valid,
-since the plane tunnel uses SNI (not the destination IP) to identify the target worker.
-
-**Step 2 — Master agent writes `/etc/hosts`.**
-For each entry in the routing table, master agent writes a line into `/etc/hosts` inside the API server pod:
+**Step 1 — API server issues HTTP CONNECT.**
+When the API server needs to reach `worker2:10250`, the egress selector intercepts the connection and
+sends an HTTP CONNECT request over the mTLS channel to the plane tunnel Service:
 
 ```
-10.0.0.1  worker2
-10.0.0.1  worker5
-10.0.0.2  worker3
+CONNECT worker2:10250 HTTP/1.1
+Host: worker2:10250
 ```
 
-When the API server connects to `worker2:10250`, the hostname resolves via `/etc/hosts` to the Pod IP of
-the replica that holds worker2's tunnel. TLS is unaffected, the API server used the hostname to initiate
-the connection, so the TLS ServerName remains `worker2`.
+The load balancer routes this to any available plane tunnel replica.
 
-**Step 3 — Plane tunnel reads SNI and proxies the request.**
-The plane tunnel maintains a single listener on port 10250. When a connection arrives, it peeks at the TLS
-ClientHello to read the SNI field before any bytes are forwarded. The SNI contains the worker hostname the
-API server is targeting. The plane tunnel looks up which agent tunnel belongs to that worker and proxies the
-connection through it. The response streams back the same way.
+**Step 2 — Plane tunnel authenticates and routes.**
+The plane tunnel terminates the outer mTLS connection, verifying that the client certificate is signed by
+the cluster CA. It then reads the CONNECT target hostname (`worker2`), looks up the agent tunnel
+registered under that name, and dials the kubelet upstream through it.
 
-**Rule lifecycle.** Master agent reconciles `/etc/hosts` on every poll cycle: it adds entries for newly
-connected nodes, removes entries for nodes that have disconnected, and updates entries for nodes that have
-reconnected to a different plane tunnel replica. On restart, master agent clears all managed entries before
-rebuilding from scratch.
+Once the tunnel is established, the plane tunnel responds:
 
-### Report Endpoint
+```
+HTTP/1.1 200 Connection Established
+```
 
-Each plane tunnel instance exposes an HTTP endpoint that master agent polls to discover which worker
-nodes are currently connected to it:
+**Step 3 — End-to-end TLS between API server and kubelet.**
+After the `200` response, the API server performs its real TLS handshake directly with the kubelet
+through the established tunnel. The plane tunnel does not terminate this inner TLS session: it splices
+bytes between the mTLS channel and the agent tunnel. The API server verifies the kubelet's serving
+certificate, and the kubelet verifies the API server's client certificate, exactly as in a direct
+connection.
+
+---
+
+## Report Endpoint
+
+Each plane tunnel instance exposes an HTTP endpoint for observability:
 
 ```
 GET /v1/report
@@ -135,28 +172,44 @@ Example:
 }
 ```
 
-An empty `node` array means the instance currently holds no agent tunnels. Master agent must remove any
-`/etc/hosts` entries that point to an instance for nodes no longer present in its report.
+With the full-mesh design this endpoint is not required for routing. It is retained for operational
+visibility: operators can query any replica to confirm which nodes are currently connected.
 
 ---
 
 ## Properties
 
+**Authentication on every leg.**
+The agent→plane-tunnel leg is authenticated via mTLS using the node's `system:node:<name>` client
+certificate. The API server→plane-tunnel leg is authenticated via mTLS using the API server's kubelet
+client certificate, both verified against the cluster CA. No unauthenticated path exists.
+
+**End-to-end TLS between API server and kubelet.**
+The plane tunnel authenticates and routes the outer CONNECT channel but does not terminate the inner
+TLS session. The API server verifies the kubelet's serving certificate, and the kubelet verifies the
+API server's client certificate, exactly as in a direct connection. TLS verification is unaffected by
+node IP changes, certificate rotation, or any mismatch between `node.Status.Addresses` and the certificate.
+
+**No routing table required.**
+Because every replica holds a tunnel for every worker, any replica can serve any request. The load
+balancer in front of the plane tunnel Service may distribute connections freely. No `/etc/hosts`
+management, no sidecar agent in the API server pod, and no per-replica routing reconciliation is needed.
+
+**Graceful scale-out.**
+When a new plane tunnel replica starts, worker agents discover it on their next DNS poll and open an
+additional tunnel. Existing traffic on other replicas is not interrupted. No flag equivalent to
+konnectivity's `--server-count` is required.
+
+**N×M connection count.**
+The design sustains one multiplexed TCP connection per worker per replica (100 workers × 3 replicas =
+300 connections). This is the same count as konnectivity, but connections are multiplexed: all requests
+from a given worker to a given replica share one TCP socket, so per-request overhead is minimal and file
+descriptor consumption is bounded by the worker and replica counts rather than by request rate.
+
 **No iptables.**
 The design requires no iptables rules in any network namespace. Routing is handled entirely at the
-application layer: `/etc/hosts` directs connections to the correct replica, and SNI identifies the
-target worker within that replica.
-
-**SNI carries worker identity.**
-Because the API server connects to workers by hostname and Go's TLS stack sets the SNI to the dialled
-hostname regardless of the resolved IP, the plane tunnel receives `SNI=worker2` even though the TCP
-connection was established to a pod IP. The plane tunnel peeks at the ClientHello without consuming it,
-reads the SNI field, then forwards the full stream, including the peeked bytes, through the agent tunnel.
-
-**Multiple workers share a Pod IP in `/etc/hosts`.**
-Unlike the previous design, no virtual IP allocation is required. Two workers connected to the same
-replica both resolve to that replica's real Pod IP. The SNI field is the sole routing key within a
-replica, so IP uniqueness per worker is unnecessary.
+application layer: the HTTP CONNECT target hostname identifies the worker, and the plane tunnel looks
+it up in its in-memory tunnel registry.
 
 **No dynamic port binding.**
 The plane tunnel never binds a per-worker port. There is one listener on port 10250 and one in-memory
@@ -166,24 +219,8 @@ map from worker hostname to agent tunnel. Port exhaustion is not a concern.
 The design requires no changes to the cluster CNI, no dedicated IP CIDRs, no secondary pod IPs, and no
 host-level routing configuration. It works on any standard Kubernetes cluster.
 
-**Master agent is limited to `/etc/hosts` management.**
-Master agent owns exactly one resource: the set of managed lines in `/etc/hosts` inside the API server
-pod. It performs no syscalls, installs no iptables rules, and touches no kernel state.
-
-**Reconnect lag.**
-When a worker disconnects from one replica and reconnects to another, `/etc/hosts` continues pointing to
-the old replica until master agent's next reconcile cycle completes. Connections to that worker during
-this window fail and must be retried by the caller. The lag is bounded by the reconcile period.
-
-**TLS verification works without IP SANs.**
-Because the API server connects to worker nodes by hostname and the TLS ServerName is set to that
-hostname, the kubelet's serving certificate only needs a hostname SAN, which is always present and
-stable. No IP SAN is required. TLS verification is unaffected by node IP changes, certificate rotation
-windows, or any mismatch between `node.Status.Addresses` and the certificate.
-
-**API server address type must be configured.**
-The only API server change required is setting `--kubelet-preferred-address-types=Hostname`. Beyond
-that single flag, the API server is fully unaware of the tunnel infrastructure, it addresses worker
-nodes by hostname as it would in a traditional deployment, and the entire mechanism of `/etc/hosts`
-resolution, SNI-based routing, and agent tunnel multiplexing operates transparently below the
-application layer.
+**API server changes are limited to two flags.**
+The API server requires `--kubelet-preferred-address-types=Hostname` and
+`--egress-selector-config-file`. Beyond those two flags, the API server is unaware of the tunnel
+infrastructure: it issues standard kubelet requests and the egress selector handles routing and
+authentication transparently.

@@ -88,6 +88,7 @@ func (b *TunnelServer) handle(ctx context.Context, log *logrus.Entry, conn net.C
 		conn.Close()
 		return
 	}
+	defer cleaner.Clean()
 	cleaner.Add(func() {
 		if err := tlsConn.Close(); err != nil {
 			log.WithError(err).Error("failed to close connection")

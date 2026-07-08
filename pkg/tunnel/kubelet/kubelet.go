@@ -58,7 +58,6 @@ func (s *Server) Serve(ctx context.Context) error {
 func (s *Server) handle(ctx context.Context, conn net.Conn) {
 	lg := log.WithField("remote", conn.RemoteAddr())
 	defer conn.Close()
-
 	recorder := &recordConn{Conn: conn}
 	sni, err := extractSNI(recorder)
 	if err != nil {
