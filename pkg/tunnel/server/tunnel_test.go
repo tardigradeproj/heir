@@ -1,4 +1,4 @@
-package tunnel
+package server
 
 import (
 	"context"
@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	tunnelbroker "github.com/tardigradeproj/heir/pkg/tunnel/broker"
+	tunnelbroker "github.com/tardigradeproj/heir/pkg/tunnel/server/broker"
 	"github.com/tardigradeproj/outbound"
 )
 
@@ -237,7 +237,7 @@ func TestServe(t *testing.T) {
 			registry := outbound.NewRegistry()
 			b := tunnelbroker.New(registry, serveKeepAlive)
 			addr := freeAddr(t)
-			ts := NewTunnelServer(pki.serverCertFile, pki.serverKeyFile, pki.caCertFile, addr, serveKeepAlive, b)
+			ts := NewTunnelServer(pki.serverCertFile, pki.serverKeyFile, pki.caCertFile, addr, b)
 
 			ctx, cancel := context.WithCancel(context.Background())
 			t.Cleanup(cancel)

@@ -1,4 +1,4 @@
-package tunnel
+package server
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
-	broker "github.com/tardigradeproj/heir/pkg/tunnel/broker"
+	"github.com/tardigradeproj/heir/pkg/tunnel/server/broker"
 	"gvisor.dev/gvisor/pkg/cleanup"
 )
 
@@ -26,7 +26,7 @@ type TunnelServer struct {
 
 func NewTunnelServer(
 	serverCertPath, serverKeyPath, caCertPath, listenAddr string,
-	connectionKeepAliveInterval time.Duration, broker *broker.Broker) *TunnelServer {
+	broker *broker.Broker) *TunnelServer {
 	return &TunnelServer{
 		serverCertPath: serverCertPath,
 		serverKeyPath:  serverKeyPath,
