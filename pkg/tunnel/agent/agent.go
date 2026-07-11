@@ -11,6 +11,7 @@ import (
 
 	"github.com/avast/retry-go"
 	log "github.com/sirupsen/logrus"
+	obs "github.com/tardigradeproj/heir/pkg/observability"
 	"github.com/tardigradeproj/heir/pkg/tunnel/shrd"
 	"github.com/tardigradeproj/heir/pkg/util"
 	"github.com/tardigradeproj/outbound"
@@ -18,12 +19,7 @@ import (
 
 type managedConn struct {
 	tunnel   *outbound.Tunnel
-	identity *PlaneTunnelIdentity
-}
-
-type PlaneTunnelIdentity struct {
-	Id                string `json:"id"`
-	NumberOfInstances int    `json:"NumberOfInstances"`
+	identity *shrd.PlaneTunnelIdentity
 }
 
 type connState struct {
@@ -93,7 +89,7 @@ func (a *Agent) establishNewConnection(ctx context.Context, lg *log.Entry) error
 		}
 		a.conn.tracker[identity.Id] = managedConn{tunnel: tunnel, identity: identity}
 		a.conn.target = identity.NumberOfInstances
-		connLg := lg.WithField("plane_tunnel.id", identity.Id)
+		connLg := lg.WithField(obs.PlaneTunnelID, identity.Id)
 		go func() {
 			for {
 				if err := tunnel.Serve(ctx); err != nil {
@@ -135,8 +131,8 @@ func (a *Agent) establishNewConnection(ctx context.Context, lg *log.Entry) error
 // identity is already tracked, are dropped immediately and retried.
 func (a *Agent) connectionManager(ctx context.Context) error {
 	lg := log.WithFields(log.Fields{
-		"component": "connection-manager",
-		"server":    a.tunnelServerAddr,
+		obs.Component: "connection-manager",
+		obs.Server:    a.tunnelServerAddr,
 	})
 
 	for {
@@ -151,8 +147,8 @@ func (a *Agent) connectionManager(ctx context.Context) error {
 				return ctx.Err()
 			case id := <-a.conn.disconnected:
 				lg.WithFields(log.Fields{
-					"plane_tunnel.id": id,
-					"target":          target,
+					obs.PlaneTunnelID: id,
+					"target":             target,
 				}).Info("connection lost, reconnecting")
 			}
 			continue
@@ -173,14 +169,14 @@ func (a *Agent) connectionManager(ctx context.Context) error {
 		lg.WithFields(log.Fields{
 			"connections": current,
 			"target":      target,
-		}).Info("connection established")
+		}).Info("connection with server has been successfully established")
 	}
 }
 
 // connect dials the plane tunnel server, establishes an outbound session, and
 // fetches the server's identity. The returned tunnel is owned by the caller.
-func (a *Agent) connect(ctx context.Context) (*outbound.Tunnel, *PlaneTunnelIdentity, error) {
-	lg := log.WithField("server", a.tunnelServerAddr)
+func (a *Agent) connect(ctx context.Context) (*outbound.Tunnel, *shrd.PlaneTunnelIdentity, error) {
+	lg := log.WithField(obs.Server, a.tunnelServerAddr)
 
 	conn, err := tls.Dial("tcp", a.tunnelServerAddr, a.tlsConfig)
 	if err != nil {
@@ -208,13 +204,13 @@ func (a *Agent) connect(ctx context.Context) (*outbound.Tunnel, *PlaneTunnelIden
 		return nil, nil, err
 	}
 
-	lg.WithField("plane_tunnel.id", identity.Id).Debug("plane tunnel identity received")
+	lg.WithField(obs.PlaneTunnelID, identity.Id).Debug("plane tunnel identity received")
 	return tunnel, identity, nil
 }
 
 // fetchIdentity dials the identity upstream and reads the server's identity payload.
-func (a *Agent) fetchIdentity(ctx context.Context, tunnel *outbound.Tunnel) (*PlaneTunnelIdentity, error) {
-	lg := log.WithField("server", a.tunnelServerAddr)
+func (a *Agent) fetchIdentity(ctx context.Context, tunnel *outbound.Tunnel) (*shrd.PlaneTunnelIdentity, error) {
+	lg := log.WithField(obs.Server, a.tunnelServerAddr)
 
 	stream, err := tunnel.Dial(ctx, shrd.IdentityUpstreamID)
 	if err != nil {
@@ -229,11 +225,12 @@ func (a *Agent) fetchIdentity(ctx context.Context, tunnel *outbound.Tunnel) (*Pl
 		return nil, fmt.Errorf("failed to read identity response: %w", err)
 	}
 
-	var identity PlaneTunnelIdentity
+	var identity shrd.PlaneTunnelIdentity
 	if err := json.Unmarshal(b, &identity); err != nil {
 		lg.WithError(err).Error("failed to unmarshal identity")
 		return nil, fmt.Errorf("failed to unmarshal identity: %w", err)
 	}
-
+	lg.WithFields(log.Fields{obs.PlaneTunnelID: identity.Id, "plane_tunnel.nrOfInstances": identity.NumberOfInstances}).
+		Info("plane tunnel identity received")
 	return &identity, nil
 }

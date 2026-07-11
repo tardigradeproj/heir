@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
+	obs "github.com/tardigradeproj/heir/pkg/observability"
 	"github.com/tardigradeproj/outbound"
 )
 
@@ -67,7 +68,7 @@ func (b *Broker) Register(ctx context.Context, nodeName string, cnn net.Conn) (s
 	set.conns = append(set.conns, t)
 	b.mu.Unlock()
 
-	logEntry := log.WithFields(log.Fields{"node.name": nodeName, "conn.id": id})
+	logEntry := log.WithFields(log.Fields{obs.NodeName: nodeName, obs.ConnID: id})
 	logEntry.Debug("tunnel registered")
 
 	// This goroutine owns the connection's whole life: serve streams until the
@@ -77,7 +78,7 @@ func (b *Broker) Register(ctx context.Context, nodeName string, cnn net.Conn) (s
 		defer func() {
 			b.Unregister(nodeName, id)
 			_ = tunnel.Close() // idempotent; tears down session + cnn
-			logEntry.Debug("tunnel unregistered")
+			logEntry.Info("tunnel unregistered")
 		}()
 
 		for {
@@ -99,7 +100,11 @@ func (b *Broker) Register(ctx context.Context, nodeName string, cnn net.Conn) (s
 			}
 		}
 	}()
-
+	logEntry.WithFields(log.Fields{
+		"nr.connections": len(set.conns),
+		obs.ConnID:    id,
+	}).
+		Info("tunnel successfully registered")
 	return id, nil
 }
 

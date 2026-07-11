@@ -14,6 +14,7 @@ import (
 	"sync"
 
 	"github.com/sirupsen/logrus"
+	obs "github.com/tardigradeproj/heir/pkg/observability"
 	"github.com/tardigradeproj/heir/pkg/tunnel/server/broker"
 	"github.com/tardigradeproj/heir/pkg/tunnel/shrd"
 )
@@ -71,6 +72,9 @@ func (s *Server) Serve(ctx context.Context) error {
 		<-ctx.Done()
 		_ = s.srv.Shutdown(context.Background())
 	}()
+	logrus.WithField(obs.Addr, ln.Addr()).
+		WithField(obs.Component, "egress_selector").
+		Info("Listening for connections")
 	if err := s.srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
@@ -104,7 +108,7 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 		nodeName = r.Host
 	}
 
-	lg := log.WithField("node", nodeName)
+	lg := log.WithField(obs.NodeName, nodeName)
 
 	stream, err := s.broker.Dial(r.Context(), nodeName, shrd.KubeletUpstreamID)
 	if err != nil {

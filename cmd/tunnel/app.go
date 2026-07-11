@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/tardigradeproj/heir/pkg/observability"
 	"github.com/tardigradeproj/heir/pkg/provision/worker/typ"
 	"github.com/tardigradeproj/heir/pkg/tunnel/agent"
 	"github.com/tardigradeproj/heir/pkg/tunnel/server"
@@ -30,10 +31,23 @@ func bindEnvs(cmd *cobra.Command, bindings []envBinding) {
 }
 
 func Cmd() *cobra.Command {
+	var logLevel string
+
 	root := &cobra.Command{
 		Use:   "tunnel",
 		Short: "Plane tunnel components",
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			if logLevel == "" {
+				logLevel = os.Getenv("TUNNEL_LOG_LEVEL")
+			}
+			if err := observability.SetLogLevel(logLevel); err != nil {
+				return err
+			}
+			return nil
+		},
 	}
+	root.PersistentFlags().StringVar(&logLevel, "log-level", "", "Log level (debug, info, warn, error). Overrides TUNNEL_LOG_LEVEL (default: info).")
+
 	root.AddCommand(agentCmd())
 	root.AddCommand(serverCmd())
 	return root
@@ -61,11 +75,9 @@ func agentCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "agent",
 		Short: "Run the plane tunnel agent on a worker node",
-		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			bindEnvs(cmd, envBindings)
-			return nil
-		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			bindEnvs(cmd, envBindings)
+
 			ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGTERM, os.Interrupt)
 			defer stop()
 
@@ -91,15 +103,16 @@ func agentCmd() *cobra.Command {
 
 func serverCmd() *cobra.Command {
 	var (
-		tunnelCert   string
-		tunnelKey    string
-		tunnelCACert string
-		tunnelAddr   string
-		egressCert   string
-		egressKey    string
-		egressCACert string
-		egressAddr   string
-		keepAlive    time.Duration
+		tunnelCert          string
+		tunnelKey           string
+		tunnelCACert        string
+		tunnelAddr          string
+		egressCert          string
+		egressKey           string
+		egressCACert        string
+		egressAddr          string
+		keepAlive           time.Duration
+		replicaDiscoveryDNS string
 	)
 
 	envBindings := []envBinding{
@@ -112,16 +125,15 @@ func serverCmd() *cobra.Command {
 		{"egress-ca-cert", "TUNNEL_SERVER_EGRESS_CA_CERT"},
 		{"egress-addr", "TUNNEL_SERVER_EGRESS_ADDR"},
 		{"keep-alive", "TUNNEL_SERVER_KEEP_ALIVE"},
+		{"replica-discovery-dns", "TUNNEL_SERVER_REPLICA_DISCOVERY_DNS"},
 	}
 
 	cmd := &cobra.Command{
 		Use:   "server",
 		Short: "Run the plane tunnel server on the management cluster",
-		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			bindEnvs(cmd, envBindings)
-			return nil
-		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			bindEnvs(cmd, envBindings)
+
 			ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGTERM, os.Interrupt)
 			defer stop()
 
@@ -139,6 +151,7 @@ func serverCmd() *cobra.Command {
 					Addr:       egressAddr,
 				},
 				keepAlive,
+				replicaDiscoveryDNS,
 			)
 			if err != nil {
 				return err
@@ -156,6 +169,7 @@ func serverCmd() *cobra.Command {
 	cmd.Flags().StringVar(&egressCACert, "egress-ca-cert", "", "Egress selector listener CA certificate path (env: TUNNEL_SERVER_EGRESS_CA_CERT).")
 	cmd.Flags().StringVar(&egressAddr, "egress-addr", ":8444", "Egress selector listener address host:port (env: TUNNEL_SERVER_EGRESS_ADDR).")
 	cmd.Flags().DurationVar(&keepAlive, "keep-alive", 30*time.Second, "Connection keep-alive interval (env: TUNNEL_SERVER_KEEP_ALIVE).")
+	cmd.Flags().StringVar(&replicaDiscoveryDNS, "replica-discovery-dns", "", "Headless Service DNS name to resolve for replica count (env: TUNNEL_SERVER_REPLICA_DISCOVERY_DNS).")
 
 	_ = cmd.MarkFlagRequired("tunnel-cert")
 	_ = cmd.MarkFlagRequired("tunnel-key")

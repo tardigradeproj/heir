@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+	obs "github.com/tardigradeproj/heir/pkg/observability"
 	"github.com/tardigradeproj/heir/pkg/tunnel/server/broker"
 	"gvisor.dev/gvisor/pkg/cleanup"
 )
@@ -38,7 +39,7 @@ func NewTunnelServer(
 
 func (b *TunnelServer) Serve(ctx context.Context) error {
 	log := logrus.WithFields(logrus.Fields{
-		"component": "tunnel",
+		obs.Component: "tunnel",
 	})
 	serverCert, err := tls.LoadX509KeyPair(b.serverCertPath, b.serverKeyPath)
 	if err != nil {
@@ -69,7 +70,7 @@ func (b *TunnelServer) Serve(ctx context.Context) error {
 		return fmt.Errorf("failed to start listener: %w", err)
 	}
 	defer listener.Close()
-	log.WithField("addr", b.listenAddr).Info("Listening for connections")
+	log.WithField(obs.Addr, b.listenAddr).Info("Listening for connections")
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
@@ -106,16 +107,22 @@ func (b *TunnelServer) handle(ctx context.Context, log *logrus.Entry, conn net.C
 		log.Warn("no client certificate")
 		return
 	}
-	nodeName, err := extractNodeName(state.PeerCertificates[0].Subject.CommonName)
+	clientCN := state.PeerCertificates[0].Subject.CommonName
+	log.WithField("client.cert.CN", clientCN)
+	nodeName, err := extractNodeName(clientCN)
 	if err != nil {
 		log.WithError(err).Warn("failed to extract node name")
 		return
 	}
+	log.WithField(obs.NodeName, nodeName).Debug("extracted node name")
 	tunnelId, err := b.broker.Register(ctx, nodeName, tlsConn)
 	if err != nil {
 		log.WithError(err).Warn("failed to register connection tunnel")
 	}
-	log.WithField("tunnel.id", tunnelId).Info("connection tunnel successfully registered")
+	log.WithFields(logrus.Fields{
+		"tunnel.id":    tunnelId,
+		obs.NodeName: nodeName,
+	}).Info("connection tunnel successfully registered")
 	cleaner.Release()
 }
 

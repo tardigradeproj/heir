@@ -142,7 +142,7 @@ func newMTLSServer(t *testing.T, pki *testPKI, handler func(conn net.Conn)) stri
 
 // outboundHandler returns a server-side connection handler that speaks the
 // outbound protocol and serves the given identity on upstream 0.
-func outboundHandler(identity *PlaneTunnelIdentity) func(net.Conn) {
+func outboundHandler(identity *shrd.PlaneTunnelIdentity) func(net.Conn) {
 	return func(conn net.Conn) {
 		defer conn.Close()
 		session, err := outbound.Server(conn, nil)
@@ -176,11 +176,11 @@ func newTestAgent(t *testing.T, pki *testPKI, addr string) *Agent {
 
 type result struct {
 	tunnel   *outbound.Tunnel
-	identity *PlaneTunnelIdentity
+	identity *shrd.PlaneTunnelIdentity
 	err      error
 }
 
-func assertion(t *testing.T, got result, wantErr bool, wantIdentity *PlaneTunnelIdentity) {
+func assertion(t *testing.T, got result, wantErr bool, wantIdentity *shrd.PlaneTunnelIdentity) {
 	t.Helper()
 	if wantErr {
 		require.Error(t, got.err)
@@ -199,13 +199,13 @@ func assertion(t *testing.T, got result, wantErr bool, wantIdentity *PlaneTunnel
 
 func TestConnect(t *testing.T) {
 	pki := newTestPKI(t)
-	wantIdentity := &PlaneTunnelIdentity{Id: "abc-123", NumberOfInstances: 3}
+	wantIdentity := &shrd.PlaneTunnelIdentity{Id: "abc-123", NumberOfInstances: 3}
 
 	cases := []struct {
 		name         string
 		setupServer  func(t *testing.T) string
 		wantErr      bool
-		wantIdentity *PlaneTunnelIdentity
+		wantIdentity *shrd.PlaneTunnelIdentity
 	}{
 		{
 			name: "valid connection returns tunnel and identity",
