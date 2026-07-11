@@ -9,12 +9,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/tardigradeproj/heir/pkg/tunnel/server/broker"
 	"github.com/tardigradeproj/heir/pkg/tunnel/server/egress_selector"
+	"github.com/tardigradeproj/heir/pkg/tunnel/shrd"
 	"github.com/tardigradeproj/outbound"
 )
-
-// identityUpstreamID is the upstream ID workers dial to retrieve this
-// plane-tunnel instance's stable identity.
-const identityUpstreamID uint8 = 0
 
 type ListenerConfig struct {
 	CertPath   string
@@ -32,7 +29,7 @@ func New(tunnel, egressSel *ListenerConfig, connectionKeepAliveInterval time.Dur
 	id := uuid.New().String()
 	registry := outbound.NewRegistry()
 	registry.Register(outbound.Upstream{
-		Id:   identityUpstreamID,
+		Id:   shrd.IdentityUpstreamID,
 		Name: "identity",
 		Dial: func(ctx context.Context) (net.Conn, error) {
 			local, remote := net.Pipe()

@@ -11,22 +11,26 @@ import (
 
 	"github.com/avast/retry-go"
 	log "github.com/sirupsen/logrus"
+	"github.com/tardigradeproj/heir/pkg/tunnel/shrd"
 	"github.com/tardigradeproj/heir/pkg/util"
 	"github.com/tardigradeproj/outbound"
-)
-
-const (
-	identityUpstreamID uint8 = 0
-	kubeletUpstreamID  uint8 = 1
 )
 
 type managedConn struct {
 	tunnel   *outbound.Tunnel
 	identity *PlaneTunnelIdentity
 }
+
 type PlaneTunnelIdentity struct {
 	Id                string `json:"id"`
 	NumberOfInstances int    `json:"NumberOfInstances"`
+}
+
+type connState struct {
+	mu           sync.RWMutex
+	tracker      map[string]managedConn
+	disconnected chan string
+	target       int
 }
 
 type Agent struct {
@@ -35,17 +39,14 @@ type Agent struct {
 	kubeletAddr                 string
 	connectionKeepAliveInterval time.Duration
 	registry                    *outbound.Registry
-	connTracker                 map[string]managedConn
-	mu                          sync.RWMutex
-	disconnected                chan string
-	target                      int
+	conn                        connState
 }
 
 func New(
 	certPath string,
 	keyPath string,
 	caCertPath string,
-	serverAddr string,
+	tunnelServerAddr string,
 	kubeletAddr string,
 
 	connectionKeepAliveInterval time.Duration,
@@ -56,19 +57,21 @@ func New(
 	}
 	registry := outbound.NewRegistry()
 	registry.Register(outbound.Upstream{
-		Id:   kubeletUpstreamID,
+		Id:   shrd.KubeletUpstreamID,
 		Name: "kubelet",
 		Dial: outbound.TCPUpstream(kubeletAddr),
 	})
 	return &Agent{
 		tlsConfig:                   tlsConfig,
-		tunnelServerAddr:            serverAddr,
+		tunnelServerAddr:            tunnelServerAddr,
 		kubeletAddr:                 kubeletAddr,
 		connectionKeepAliveInterval: connectionKeepAliveInterval,
 		registry:                    registry,
-		connTracker:                 make(map[string]managedConn),
-		disconnected:                make(chan string, 16),
-		target:                      1,
+		conn: connState{
+			tracker:      make(map[string]managedConn),
+			disconnected: make(chan string, 16),
+			target:       1,
+		},
 	}, nil
 }
 
@@ -82,14 +85,14 @@ func (a *Agent) establishNewConnection(ctx context.Context, lg *log.Entry) error
 		if err != nil {
 			return err
 		}
-		a.mu.Lock()
-		defer a.mu.Unlock()
-		if _, ok := a.connTracker[identity.Id]; ok {
+		a.conn.mu.Lock()
+		defer a.conn.mu.Unlock()
+		if _, ok := a.conn.tracker[identity.Id]; ok {
 			_ = tunnel.Close()
 			return fmt.Errorf("already connected to plane tunnel instance %s", identity.Id)
 		}
-		a.connTracker[identity.Id] = managedConn{tunnel: tunnel, identity: identity}
-		a.target = identity.NumberOfInstances
+		a.conn.tracker[identity.Id] = managedConn{tunnel: tunnel, identity: identity}
+		a.conn.target = identity.NumberOfInstances
 		connLg := lg.WithField("plane_tunnel.id", identity.Id)
 		go func() {
 			for {
@@ -106,11 +109,11 @@ func (a *Agent) establishNewConnection(ctx context.Context, lg *log.Entry) error
 				}
 			}
 			_ = tunnel.Close()
-			a.mu.Lock()
-			delete(a.connTracker, identity.Id)
-			a.mu.Unlock()
+			a.conn.mu.Lock()
+			delete(a.conn.tracker, identity.Id)
+			a.conn.mu.Unlock()
 			select {
-			case a.disconnected <- identity.Id:
+			case a.conn.disconnected <- identity.Id:
 			default:
 			}
 		}()
@@ -129,8 +132,7 @@ func (a *Agent) establishNewConnection(ctx context.Context, lg *log.Entry) error
 // replica. It learns the desired replica count from the NumberOfInstances field
 // in each identity response and keeps exactly that many distinct connections
 // alive (keyed by the instance Id). Duplicate connections, where the remote
-// identity is already tracked, are dropped immediately and retried. All
-// retries use exponential backoff.
+// identity is already tracked, are dropped immediately and retried.
 func (a *Agent) connectionManager(ctx context.Context) error {
 	lg := log.WithFields(log.Fields{
 		"component": "connection-manager",
@@ -138,16 +140,16 @@ func (a *Agent) connectionManager(ctx context.Context) error {
 	})
 
 	for {
-		a.mu.RLock()
-		current := len(a.connTracker)
-		target := a.target
-		a.mu.RUnlock()
+		a.conn.mu.RLock()
+		current := len(a.conn.tracker)
+		target := a.conn.target
+		a.conn.mu.RUnlock()
 
 		if current >= target {
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
-			case id := <-a.disconnected:
+			case id := <-a.conn.disconnected:
 				lg.WithFields(log.Fields{
 					"plane_tunnel.id": id,
 					"target":          target,
@@ -164,10 +166,10 @@ func (a *Agent) connectionManager(ctx context.Context) error {
 			continue
 		}
 
-		a.mu.RLock()
-		current = len(a.connTracker)
-		target = a.target
-		a.mu.RUnlock()
+		a.conn.mu.RLock()
+		current = len(a.conn.tracker)
+		target = a.conn.target
+		a.conn.mu.RUnlock()
 		lg.WithFields(log.Fields{
 			"connections": current,
 			"target":      target,
@@ -214,7 +216,7 @@ func (a *Agent) connect(ctx context.Context) (*outbound.Tunnel, *PlaneTunnelIden
 func (a *Agent) fetchIdentity(ctx context.Context, tunnel *outbound.Tunnel) (*PlaneTunnelIdentity, error) {
 	lg := log.WithField("server", a.tunnelServerAddr)
 
-	stream, err := tunnel.Dial(ctx, identityUpstreamID)
+	stream, err := tunnel.Dial(ctx, shrd.IdentityUpstreamID)
 	if err != nil {
 		lg.WithError(err).Error("failed to dial identity upstream")
 		return nil, fmt.Errorf("failed to dial identity upstream: %w", err)

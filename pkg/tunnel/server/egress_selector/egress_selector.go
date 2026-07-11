@@ -15,10 +15,8 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/tardigradeproj/heir/pkg/tunnel/server/broker"
+	"github.com/tardigradeproj/heir/pkg/tunnel/shrd"
 )
-
-// kubeletUpstreamID is the outbound upstream ID the node agent registers for its local kubelet.
-const kubeletUpstreamID uint8 = 1
 
 type brokerDialer interface {
 	Dial(ctx context.Context, nodeName string, upstreamID uint8) (net.Conn, error)
@@ -108,7 +106,7 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 
 	lg := log.WithField("node", nodeName)
 
-	stream, err := s.broker.Dial(r.Context(), nodeName, kubeletUpstreamID)
+	stream, err := s.broker.Dial(r.Context(), nodeName, shrd.KubeletUpstreamID)
 	if err != nil {
 		lg.WithError(err).Warn("failed to dial kubelet upstream")
 		fmt.Fprintf(conn, "HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n")
