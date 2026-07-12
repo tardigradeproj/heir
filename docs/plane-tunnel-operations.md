@@ -242,3 +242,129 @@ level=info msg="connection established" connections=1 target=1
 ```
 
 `connections` reaching `target` means the agent is fully meshed.
+
+---
+
+## Simulating the API Server against the Egress Selector
+
+The egress selector speaks a simple protocol: a client opens an mTLS connection to `:8444`,
+sends an HTTP `CONNECT <node-name>:10250` request, and receives `200 Connection Established`.
+After that the connection is a transparent TCP pipe into the kubelet on that worker node.
+
+The steps below let you play the API server role manually, with no Kubernetes involved.
+
+**Prerequisites:** `tunnel server` and `tunnel agent` are both running and the agent log
+shows `connections=1 target=1`.
+
+### Step 0 — Start the mock kubelet
+
+`docs/mock-kubelet.py` is a minimal mTLS HTTPS server. It requires a server certificate
+with `DNS:worker1` as a SAN so that curl can verify the hostname after the CONNECT tunnel
+is established.
+
+Generate the server cert:
+
+```bash
+mkdir -p pki/nodes/worker1
+
+cat > /tmp/kubelet-server.ext <<EOF
+subjectAltName = DNS:worker1
+EOF
+
+openssl genrsa -out pki/nodes/worker1/kubelet-server.key 2048
+
+openssl req -new \
+  -key pki/nodes/worker1/kubelet-server.key \
+  -subj "/CN=worker1" \
+  -out /tmp/kubelet-server.csr
+
+openssl x509 -req \
+  -in /tmp/kubelet-server.csr \
+  -CA pki/ca.crt \
+  -CAkey pki/ca.key \
+  -CAcreateserial \
+  -days 365 \
+  -extfile /tmp/kubelet-server.ext \
+  -out pki/nodes/worker1/kubelet-server.crt
+```
+
+Start the mock in a separate terminal:
+
+```bash
+python3 docs/mock-kubelet.py \
+  --cert    pki/nodes/worker1/kubelet-server.crt \
+  --key     pki/nodes/worker1/kubelet-server.key \
+  --ca-cert pki/ca.crt
+```
+
+The mock requires a client certificate signed by the cluster CA and logs the client CN on
+every request.
+
+### Step 1 — Verify the CONNECT handshake
+
+`openssl s_client` can send the raw CONNECT over the mTLS connection and print the
+response before the tunnel switches to opaque TCP:
+
+```bash
+openssl s_client \
+  -connect 127.0.0.1:8444 \
+  -CAfile pki/ca.crt \
+  -cert   pki/nodes/worker1/kubelet.crt \
+  -key    pki/nodes/worker1/kubelet.key \
+  -quiet 2>/dev/null <<'EOF'
+CONNECT worker1:10250 HTTP/1.1
+Host: worker1:10250
+
+EOF
+```
+
+Expected first line:
+
+```
+HTTP/1.1 200 Connection Established
+```
+
+A `200` confirms the egress selector resolved the `worker1` tunnel and opened a stream to
+its kubelet upstream. A `502 Bad Gateway` means no tunnel is registered for that node name —
+check that the agent is connected and its CN matches `system:node:worker1`.
+
+### Step 2 — Proxy a real request end-to-end
+
+`curl` can act as a full API-server client. Two sets of TLS credentials are needed:
+
+- `--proxy-cert` / `--proxy-key` — presented to the **egress selector** (mTLS to `:8444`)
+- `--cert` / `--key` — presented to the **mock kubelet** (mTLS inside the tunnel)
+
+```bash
+# Add worker1 to /etc/hosts if it does not resolve locally
+echo "127.0.0.1 worker1" | sudo tee -a /etc/hosts
+
+curl \
+  --proxy        https://127.0.0.1:8444 \
+  --proxy-cacert pki/ca.crt \
+  --proxy-cert   pki/nodes/worker1/kubelet.crt \
+  --proxy-key    pki/nodes/worker1/kubelet.key \
+  --proxytunnel \
+  --cacert pki/ca.crt \
+  --cert   pki/nodes/worker1/kubelet.crt \
+  --key    pki/nodes/worker1/kubelet.key \
+  https://worker1:10250/healthz
+```
+
+Expected output:
+
+```
+mock kubelet: ok (client=system:node:worker1)
+```
+
+What happens under the hood:
+
+1. `curl` opens a TLS connection to `127.0.0.1:8444`, presenting the node certificate.
+2. The egress selector verifies the client cert against the cluster CA and accepts the connection.
+3. `curl` sends `CONNECT worker1:10250 HTTP/1.1`; the egress selector dials the kubelet
+   upstream through the outbound tunnel registered for `worker1`.
+4. The agent receives the dial request, opens a TCP connection to `127.0.0.1:10250`
+   (the mock kubelet), and pipes it back through the tunnel.
+5. The egress selector responds `200 Connection Established`; the raw TCP pipe is now open.
+6. `curl` performs a TLS handshake with the mock kubelet, presenting the node cert as client cert.
+7. The mock kubelet verifies the client cert and responds with `mock kubelet: ok`.

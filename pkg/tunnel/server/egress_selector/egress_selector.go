@@ -4,19 +4,18 @@ import (
 	"bufio"
 	"context"
 	"crypto/tls"
-	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
-	"os"
 	"sync"
 
 	"github.com/sirupsen/logrus"
 	obs "github.com/tardigradeproj/heir/pkg/observability"
 	"github.com/tardigradeproj/heir/pkg/tunnel/server/broker"
 	"github.com/tardigradeproj/heir/pkg/tunnel/shrd"
+	"github.com/tardigradeproj/heir/pkg/util"
 )
 
 type brokerDialer interface {
@@ -46,23 +45,9 @@ func New(addr, serverCertPath, serverKeyPath, caCertPath string, broker *broker.
 }
 
 func (s *Server) Serve(ctx context.Context) error {
-	serverCert, err := tls.LoadX509KeyPair(s.serverCertPath, s.serverKeyPath)
+	tlsConfig, err := util.SetupMTLSServerConfig(s.serverCertPath, s.serverKeyPath, s.caCertPath)
 	if err != nil {
-		return fmt.Errorf("failed to load server cert/key: %w", err)
-	}
-	caPEM, err := os.ReadFile(s.caCertPath)
-	if err != nil {
-		return fmt.Errorf("failed to read CA cert: %w", err)
-	}
-	clientCAs := x509.NewCertPool()
-	if !clientCAs.AppendCertsFromPEM(caPEM) {
-		return fmt.Errorf("failed to append CA cert")
-	}
-	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{serverCert},
-		ClientAuth:   tls.RequireAndVerifyClientCert,
-		ClientCAs:    clientCAs,
-		MinVersion:   tls.VersionTLS12,
+		return err
 	}
 	ln, err := tls.Listen("tcp", s.srv.Addr, tlsConfig)
 	if err != nil {
@@ -100,6 +85,7 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 
 	conn, bufrw, err := hijacker.Hijack()
 	if err != nil {
+		log.WithError(err).Error("failed to setup request data stream")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -117,6 +103,9 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 		conn.Close()
 		return
 	}
+	log.WithField("upstreamID", shrd.KubeletUpstreamID).
+		WithField("node.name", nodeName).
+		Debug("dialing upstream")
 	defer stream.Close()
 
 	if _, err := fmt.Fprintf(bufrw, "HTTP/1.1 200 Connection Established\r\n\r\n"); err != nil {
@@ -147,7 +136,6 @@ func (h *hijackedConn) Read(b []byte) (int, error) {
 func splice(conn, tunnel net.Conn) {
 	var wg sync.WaitGroup
 	wg.Add(2)
-
 	closeWrite := func(c net.Conn) {
 		if cw, ok := c.(interface{ CloseWrite() error }); ok {
 			cw.CloseWrite()

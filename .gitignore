@@ -44,3 +44,4 @@ integration-test/kubeconfig.yaml
 .local-cred
 # Added by goreleaser init:
 dist/
+/tunnel
