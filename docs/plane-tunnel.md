@@ -181,8 +181,3 @@ Port exhaustion is not a concern.
 The design requires no changes to the cluster CNI, no dedicated IP CIDRs, no secondary pod IPs, and no
 host-level routing configuration. It works on any standard Kubernetes cluster.
 
-**API server changes are limited to two flags.**
-The API server requires `--kubelet-preferred-address-types=Hostname` and
-`--egress-selector-config-file`. Beyond those two flags, the API server is unaware of the tunnel
-infrastructure: it issues standard kubelet requests and the egress selector handles routing and
-authentication transparently.
