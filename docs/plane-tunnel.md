@@ -23,10 +23,14 @@ each worker node runs a konnectivity-agent that must hold a persistent tunnel to
 one per konnectivity-server replica. For any API server to reach any node, the full agent × server mesh must be live,
 so total open connections grow as N×M, a 100-node cluster behind 3 replicas sustains 300 persistent tunnels,
 and every new control plane replica forces every agent to open another, compounding memory and file descriptor overhead at scale.
+This design implicitly assumes that the API server is a fixed, singleton process that does not scale out
+dynamically. In Heir's model the API server runs as a replicated, stateless deployment and may scale
+horizontally at any time, an assumption konnectivity was never built to accommodate.
 The other challenges are described below:
-- Adding a server replica forces every existing agent to reconnect to it before traffic
+
+* Adding a server replica forces every existing agent to reconnect to it before traffic
   can be load-balanced to the new replica.
-- `--server-count` must be kept in sync with the actual replica count, making autoscaling
+* `--server-count` must be kept in sync with the actual replica count, making autoscaling
   the server deployment complex.
 
 This RFC proposes a solution to that challenge.
@@ -39,22 +43,25 @@ Because worker nodes sit behind NAT, connections must be initiated outbound from
 uses TCP multiplexing over a single persistent connection per worker per replica: the agent dials the server, and that
 channel is then used bidirectionally, worker-to-control-plane requests and control-plane-to-worker requests
 alike flow over the same tunnel. This is implemented with
-[outbound](https://github.com/tardigradeproj/outbound), which creates local addresses for remote systems.
+[outbound](https://github.com/tardigradeproj/outbound), a library which creates local addresses for remote systems.
 
 **[outbound](https://github.com/tardigradeproj/outbound) does not cover identity.** It provides the multiplexed transport layer but has no notion of who
 is on the other end. Authentication is handled separately via mutual TLS: each agent presents a client
 certificate when dialing the server, and the server verifies it against the cluster CA before accepting the
-connection. The agent's identity is read from the certificate's Common Name field, for example
-`CN=system:node:worker2`, so the server knows exactly which node owns the tunnel without any out-of-band
+connection. The agent's identity is read from the certificate's Common Name field (for example
+`CN=system:node:worker2`), so the server knows exactly which node owns the tunnel without any out-of-band
 signalling.
 
 ### Agent Connections
 
-Each worker node agent maintains one tunnel to **every** plane tunnel replica. The agent discovers
-all replica pod IPs by resolving the plane tunnel headless Service DNS name and periodically re-resolving
-it to detect new or removed replicas. For each discovered pod IP the agent dials an mTLS connection,
-presenting its node client certificate. The plane tunnel verifies the certificate against the cluster CA
-and registers the tunnel.
+Each worker node agent maintains one tunnel to **every** plane tunnel replica. The agent dials a single
+server address and, on every connection, receives an identity payload containing a `NumberOfInstances`
+field. The server resolves this count at request time by performing a DNS lookup against the plane tunnel
+headless Service (configured via `--replica-discovery-dns`). If DNS resolution fails or the flag is
+omitted the server returns `1`. The agent treats the received count as the desired number of concurrent
+tunnels, all dialled against the same server address, and reconnects as needed to keep the count satisfied.
+Each tunnel is identified by a server-assigned UUID; duplicate connections are detected and dropped before
+they are registered.
 
 Because every replica holds a tunnel for every worker, any replica can serve any kubelet request. No
 per-request routing table is required and there is no wrong-replica scenario: a Service VIP in front of
@@ -63,11 +70,12 @@ the plane tunnel deployment is sufficient, and the load balancer may direct traf
 This design retains an N×M connection count (100 workers × 3 replicas = 300 multiplexed TCP connections),
 the same as konnectivity. The key differences are:
 
-- Connections are multiplexed over a single TCP socket per worker-replica pair, so per-request overhead
+* Connections are multiplexed over a single TCP socket per worker-replica pair, so per-request overhead
   is minimal.
-- Adding a replica does **not** force existing tunnels to drop. Agents discover the new pod IP on their
-  next DNS poll and open one additional connection. All existing traffic continues uninterrupted.
-- No `--server-count` equivalent is required; replica count is discovered dynamically.
+* Adding a replica does not force existing tunnels to drop. As new replicas start the headless Service
+  gains additional DNS records; the next identity response carries the updated count and agents open the
+  additional connections without interrupting existing traffic.
+* No `--server-count` equivalent is required; replica count is discovered dynamically via DNS on the server side.
 
 ### Request Routing
 
@@ -76,18 +84,6 @@ The full request flow is:
 ```
 API server → (HTTP CONNECT worker2:10250, mTLS) → plane tunnel Service → (agent tunnel) → kubelet
 ```
-
-**Prerequisite — API server address type.**
-The API server selects the target address for kubelet requests via the `--kubelet-preferred-address-types`
-flag. It must be set to:
-
-```
---kubelet-preferred-address-types=Hostname
-```
-
-This ensures the API server connects to worker nodes using their registered hostname. The hostname becomes
-the target in the HTTP CONNECT request, which the plane tunnel uses to look up the correct agent tunnel.
-Using `InternalIP` instead would send an IP address as the CONNECT target, making tunnel lookup impossible.
 
 **Prerequisite — egress selector.**
 The API server must be configured with `--egress-selector-config-file` pointing to an
@@ -103,7 +99,7 @@ egressSelections:
     proxyProtocol: HTTPConnect
     transport:
       tcp:
-        url: https://plane-tunnel.<namespace>.svc:10250
+        url: https://plane-tunnel.<namespace>.svc:8444
         tlsConfig:
           caBundle: /path/to/cluster-ca.crt
           clientKey: /path/to/apiserver-kubelet-client.key
@@ -141,42 +137,6 @@ connection.
 
 ---
 
-## Report Endpoint
-
-Each plane tunnel instance exposes an HTTP endpoint for observability:
-
-```
-GET /v1/report
-```
-
-Response body:
-
-```go
-type ReportResponse struct {
-    Node []ConnectedNode `json:"node"`
-}
-
-type ConnectedNode struct {
-    Name string `json:"name"` // node name, e.g. "worker2"
-}
-```
-
-Example:
-
-```json
-{
-  "node": [
-    { "name": "worker2" },
-    { "name": "worker5" }
-  ]
-}
-```
-
-With the full-mesh design this endpoint is not required for routing. It is retained for operational
-visibility: operators can query any replica to confirm which nodes are currently connected.
-
----
-
 ## Properties
 
 **Authentication on every leg.**
@@ -196,9 +156,10 @@ balancer in front of the plane tunnel Service may distribute connections freely.
 management, no sidecar agent in the API server pod, and no per-replica routing reconciliation is needed.
 
 **Graceful scale-out.**
-When a new plane tunnel replica starts, worker agents discover it on their next DNS poll and open an
-additional tunnel. Existing traffic on other replicas is not interrupted. No flag equivalent to
-konnectivity's `--server-count` is required.
+When a new plane tunnel replica starts, the headless Service gains an additional DNS record. The next
+identity response any agent receives carries the updated `NumberOfInstances` count; agents open the
+additional connection without interrupting existing traffic. No flag equivalent to konnectivity's
+`--server-count` is required.
 
 **N×M connection count.**
 The design sustains one multiplexed TCP connection per worker per replica (100 workers × 3 replicas =
@@ -212,8 +173,9 @@ application layer: the HTTP CONNECT target hostname identifies the worker, and t
 it up in its in-memory tunnel registry.
 
 **No dynamic port binding.**
-The plane tunnel never binds a per-worker port. There is one listener on port 10250 and one in-memory
-map from worker hostname to agent tunnel. Port exhaustion is not a concern.
+The plane tunnel never binds a per-worker port. There is one listener on port 8443 for agent tunnels,
+one on port 8444 for API server egress, and an in-memory map from worker hostname to agent tunnel.
+Port exhaustion is not a concern.
 
 **No infrastructure changes required.**
 The design requires no changes to the cluster CNI, no dedicated IP CIDRs, no secondary pod IPs, and no
