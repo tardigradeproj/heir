@@ -33,7 +33,6 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	controlplanev1alpha1 "github.com/tardigradeproj/heir/api/v1alpha1"
-	"github.com/tardigradeproj/heir/pkg/provision/worker/typ"
 	heirruntime "github.com/tardigradeproj/heir/pkg/runtime"
 )
 
@@ -155,7 +154,7 @@ func (r *RuntimeReconciler) setupService(
 	ctx context.Context,
 	controlPlaneRuntime *controlplanev1alpha1.Runtime,
 ) error {
-	desired, err := heirruntime.GenerateService(controlPlaneRuntime, typ.NewWorkerContextWithDefaults())
+	desired, err := heirruntime.GenerateService(controlPlaneRuntime)
 	if err != nil {
 		return err
 	}

@@ -9,11 +9,12 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/tardigradeproj/heir/pkg/tunnel/shrd"
 )
 
 func TestEstablishNewConnection(t *testing.T) {
 	pki := newTestPKI(t)
-	wantIdentity := &PlaneTunnelIdentity{Id: "abc-123", NumberOfInstances: 3}
+	wantIdentity := &shrd.PlaneTunnelIdentity{Id: "abc-123", NumberOfInstances: 3}
 
 	type callResult struct {
 		err        error
@@ -117,7 +118,7 @@ func TestEstablishNewConnection(t *testing.T) {
 // closes.
 func TestEstablishNewConnectionCleanup(t *testing.T) {
 	pki := newTestPKI(t)
-	wantIdentity := &PlaneTunnelIdentity{Id: "abc-123", NumberOfInstances: 3}
+	wantIdentity := &shrd.PlaneTunnelIdentity{Id: "abc-123", NumberOfInstances: 3}
 
 	assertion := func(t *testing.T, disconnectedID string, trackerStillPresent bool) {
 		t.Helper()

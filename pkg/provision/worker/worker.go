@@ -23,8 +23,7 @@ import (
 )
 
 const (
-	apiServerStream    = "apiserver"
-	konnectivityStream = "konnectivity"
+	apiServerStream = "apiserver"
 )
 
 func Run(ctx context.Context, opts ...typ.Option) error {
@@ -72,23 +71,11 @@ func Run(ctx context.Context, opts ...typ.Option) error {
 		return fmt.Errorf("failed to read worker node profile: %w", err)
 	}
 
-	// Phase 2 — update the API server upstream with definitive addresses from
-	// the profile, then bring up the konnectivity proxy now that its port is known.
+	// Phase 2 — update the API server upstream with definitive addresses from the profile.
 	apiUpstream.Update(endpointsFromAddresses(
 		profile.ControlPlaneEndpoint.Addresses,
 		int(profile.ControlPlaneEndpoint.APIServer.Port),
 	))
-	proxyManager.AddUpstream(konnectivityStream, endpointsFromAddresses(
-		profile.ControlPlaneEndpoint.Addresses,
-		int(profile.ControlPlaneEndpoint.Konnectivity.Port),
-	))
-	proxyManager.AddDownstream(konnectivityStream, workerCtx.KonnectivityWorkerProxyServerAddress)
-	go func() {
-		if err := proxyManager.Link(konnectivityStream, konnectivityStream); err != nil {
-			proxyErr <- err
-			log.WithError(err).Error("konnectivity proxy manager exited with error")
-		}
-	}()
 
 	runners := []Runner{
 		component.NewContainerd(workerCtx),

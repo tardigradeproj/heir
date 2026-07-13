@@ -160,7 +160,7 @@ func setupConfig(ctx context.Context, cleaner *cleanup.Cleanup, client kubernete
 }
 
 func setupService(ctx context.Context, cleaner *cleanup.Cleanup, client kubernetes.Interface, runtime *v1alpha1.Runtime, wrkCtx *typ.WorkerContext) error {
-	svc, err := heirruntime.GenerateService(runtime, wrkCtx)
+	svc, err := heirruntime.GenerateService(runtime)
 	if err != nil {
 		return err
 	}

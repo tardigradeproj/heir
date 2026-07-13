@@ -49,8 +49,7 @@ spec:
         - "10.0.2.2"
       apiServer:
         port: 30080
-      konnectivity:
-        port: 30081
+
 `
 
 // runtimeConfigWithExternalAddress has a controlPlaneEndpoint address set.

@@ -40,8 +40,8 @@ type UpstreamCluster struct {
 	// Scheduler holds extra flags passed to the tenant kube-scheduler.
 	// +kubebuilder:default={}
 	Scheduler SchedulerSpec `json:"scheduler"`
-	// Network configures pod CIDR, service CIDR, CNI plugin, kube-proxy, CoreDNS,
-	// and the Konnectivity proxy for the tenant cluster.
+	// Network configures pod CIDR, service CIDR, CNI plugin, kube-proxy, and CoreDNS
+	// for the tenant cluster.
 	// +kubebuilder:default={}
 	Network NetworkSpec `json:"network"`
 	// Storage configures the backend used by the tenant API server in place of etcd.
@@ -81,9 +81,6 @@ type ControlPlaneEndpointSpec struct {
 	// apiServer defines the port on the above addresses that exposes the Kubernetes API server.
 	//+kubebuilder:default={port:30080}
 	APIServer ComponentEndpoint `json:"apiServer"`
-	// konnectivity defines the port on the above addresses that exposes the Konnectivity proxy server.
-	//+kubebuilder:default={port:30081}
-	Konnectivity ComponentEndpoint `json:"konnectivity"`
 }
 
 // ComponentEndpoint holds the port of a single control-plane component endpoint.
@@ -137,69 +134,6 @@ type NetworkSpec struct {
 	// coredns configures CoreDNS in the tenant cluster.
 	// +kubebuilder:default={}
 	Coredns CorednsSpec `json:"coredns"`
-	// konnectivity configures the Konnectivity proxy, required when worker nodes
-	// are in a network that cannot directly reach the control plane.
-	// +kubebuilder:default={enabled:true}
-	Konnectivity KonnectivitySpec `json:"konnectivity"`
-}
-
-// KonnectivitySpec configures the Konnectivity network proxy, which tunnels traffic
-// between the API server and worker nodes across network boundaries.
-type KonnectivitySpec struct {
-	// enabled controls whether the Konnectivity proxy is deployed.
-	// Set to false only when worker nodes have direct network access to the control plane.
-	// +kubebuilder:default=true
-	Enabled bool `json:"enabled"`
-	// server configures the Konnectivity server that runs alongside the API server.
-	//+kubebuilder:default={image:"registry.k8s.io/kas-network-proxy/proxy-server:v0.0.37",port:8132}
-	KonnectivityServerSpec KonnectivityServerSpec `json:"server,omitempty"`
-	// agent configures the Konnectivity agent deployed on worker nodes.
-	//+kubebuilder:default={image:"registry.k8s.io/kas-network-proxy/proxy-agent:v0.0.37",mode:"DaemonSet"}
-	KonnectivityAgentSpec KonnectivityAgentSpec `json:"agent,omitempty"`
-}
-
-// KonnectivityServerSpec configures the Konnectivity server component.
-type KonnectivityServerSpec struct {
-	// image is the container image for the Konnectivity server.
-	//+kubebuilder:default="registry.k8s.io/kas-network-proxy/proxy-server:v0.0.37"
-	Image string `json:"image,omitempty"`
-	// resources defines the CPU and memory requests and limits for the Konnectivity server container.
-	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
-	// extraArgs is a map of additional flags passed directly to the Konnectivity server process.
-	ExtraArgs map[string]string `json:"extraArgs,omitempty"`
-}
-
-// KonnectivityAgentMode specifies how the Konnectivity agent is deployed on worker nodes.
-type KonnectivityAgentMode string
-
-var (
-	KonnectivityAgentModeDaemonSet KonnectivityAgentMode = "DaemonSet"
-)
-
-// KonnectivityAgentSpec configures the Konnectivity agent deployed on worker nodes.
-type KonnectivityAgentSpec struct {
-	// image is the container image for the Konnectivity agent.
-	//+kubebuilder:default="registry.k8s.io/kas-network-proxy/proxy-agent:v0.0.37"
-	Image string `json:"image,omitempty"`
-	// tolerations are applied to the agent pods to allow scheduling on tainted nodes,
-	// such as nodes that are not yet ready or have custom taints.
-	//+kubebuilder:default={{key: "CriticalAddonsOnly", operator: "Exists"}}
-	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
-	// extraArgs is a map of additional flags passed directly to the Konnectivity agent process.
-	ExtraArgs map[string]string `json:"extraArgs,omitempty"`
-	// hostNetwork causes agent pods to use the host network namespace instead of the pod network.
-	// Enable this to allow the agent to reach the control plane before CNI is initialised,
-	// or to give it direct access to the host network for troubleshooting.
-	//+kubebuilder:default=true
-	HostNetwork bool `json:"hostNetwork,omitempty"`
-	// mode controls whether the agent is deployed as a DaemonSet (one pod per node, default)
-	// or as a Deployment (fixed replica count, set via replicas).
-	//+kubebuilder:default="DaemonSet"
-	//+kubebuilder:validation:Enum=DaemonSet;Deployment
-	Mode KonnectivityAgentMode `json:"mode,omitempty"`
-	// replicas is the number of agent pods when mode is Deployment. Must be 0 when mode is DaemonSet.
-	//+kubebuilder:validation:Optional
-	Replicas *int32 `json:"replicas,omitempty"`
 }
 
 // CNISpec selects the Container Network Interface plugin to install in the tenant cluster.
@@ -273,8 +207,7 @@ type HeirSpec struct {
 type ServiceSpec struct {
 	// additionalMetadata allows attaching extra labels and annotations to the generated Service.
 	AdditionalMetadata AdditionalMetadata `json:"additionalMetadata,omitempty"`
-	// additionalPorts adds extra ports to the Service, in addition to the default API server
-	// and Konnectivity ports.
+	// additionalPorts adds extra ports to the Service, in addition to the default API server port.
 	AdditionalPorts []AdditionalPort `json:"additionalPorts,omitempty"`
 	// serviceType controls how the Service is exposed.
 	//+kubebuilder:validation:Enum=NodePort;ClusterIP;LoadBalancer;ExternalName
@@ -284,10 +217,6 @@ type ServiceSpec struct {
 	// Only used when serviceType is NodePort.
 	//+kubebuilder:default=30080
 	ApiServerNodePort int32 `json:"apiServerNodePort"`
-	// konnectivityNodePort is the NodePort assigned to the Konnectivity proxy port.
-	// Only used when serviceType is NodePort.
-	//+kubebuilder:default=30081
-	KonnectivityNodePort int32 `json:"KonnectivityNodePort"`
 }
 
 // AdditionalPort defines an extra port to add to a Service.

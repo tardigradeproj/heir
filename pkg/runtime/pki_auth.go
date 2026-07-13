@@ -124,21 +124,6 @@ func GeneratePKIAuthSecret(runtime *controlplanev1alpha1.Runtime, layout Control
 		layout.Auth.ControllerManagerConf.SecretKey: controllerManagerConf,
 		layout.Auth.SchedulerConf.SecretKey:         schedulerConf,
 	}
-	if runtime.Spec.UpstreamCluster.Network.Konnectivity.Enabled {
-		konnectivityCert, err := pki.SignCSR(*ca, pki.CSR{
-			CN:        "system:konnectivity-server",
-			O:         "system:konnectivity-server",
-			Hostnames: []string{},
-		}, CertificateDuration)
-		if err != nil {
-			return nil, err
-		}
-		konnectivityConf, err := generateKubeconfig("system:konnectivity-server", ca.Cert, konnectivityCert)
-		if err != nil {
-			return nil, err
-		}
-		data[layout.Auth.KonnectivityConf.SecretKey] = konnectivityConf
-	}
 	labels := map[string]string{
 		"app.kubernetes.io/name":       runtime.Name,
 		"app.kubernetes.io/managed-by": "heir",
