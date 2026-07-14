@@ -1,0 +1,4 @@
+FROM gcr.io/distroless/static:nonroot
+ARG TARGETPLATFORM
+COPY ${TARGETPLATFORM}/tunnel /tunnel
+ENTRYPOINT ["/tunnel"]

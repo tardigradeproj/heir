@@ -57,6 +57,23 @@ type UpstreamCluster struct {
 	ExtraResources ExtraResourcesSpec `json:"extraResources"`
 }
 
+// PlaneTunnelSpec configures the plane tunnel TCP multiplexer, which tunnels traffic
+// between worker nodes and the API server.
+type PlaneTunnelSpec struct {
+	// server configures the plane tunnel server Deployment that runs in the management cluster.
+	//+kubebuilder:default={image:"ghcr.io/tardigradeproj/heir-tunnel:latest"}
+	Server PlaneTunnelSpecServerSpec `json:"server,omitempty"`
+}
+
+// PlaneTunnelSpecServerSpec configures the plane tunnel server component.
+type PlaneTunnelSpecServerSpec struct {
+	// image is the container image for the plane tunnel server.
+	//+kubebuilder:default="ghcr.io/tardigradeproj/heir-tunnel:latest"
+	Image string `json:"image,omitempty"`
+	// deployment configures the Deployment resource created for the plane tunnel server pods.
+	Deployment DeploymentSpec `json:"deployment,omitempty"`
+}
+
 // KubeletSpec defines configuration applied to kubelet on worker nodes that
 // join this tenant cluster.
 type KubeletSpec struct {
@@ -194,6 +211,9 @@ type ControlPlaneSpec struct {
 	Deployment DeploymentSpec `json:"deployment,omitempty"`
 	// service configures the Service resource that exposes the tenant control plane.
 	Service ServiceSpec `json:"service,omitempty"`
+	// planeTunnel configures the plane tunnel server Deployment and Service.
+	// +kubebuilder:default={}
+	PlaneTunnel PlaneTunnelSpec `json:"planeTunnel,omitempty"`
 }
 
 // HeirSpec identifies the Heir distribution image used for the tenant control plane.
@@ -217,6 +237,10 @@ type ServiceSpec struct {
 	// Only used when serviceType is NodePort.
 	//+kubebuilder:default=30080
 	ApiServerNodePort int32 `json:"apiServerNodePort"`
+	// PlaneTunnelNodePort is the NodePort assigned to the plane tunnel proxy port.
+	// Only used when serviceType is NodePort.
+	//+kubebuilder:default=30081
+	PlaneTunnelNodePort int32 `json:"planeTunnelNodePort"`
 }
 
 // AdditionalPort defines an extra port to add to a Service.
@@ -267,6 +291,8 @@ type DeploymentSpec struct {
 	// serviceAccountName is the name of the ServiceAccount mounted into the tenant control plane pods.
 	//+kubebuilder:default="default"
 	ServiceAccountName string `json:"serviceAccountName,omitempty"`
+	// resources defines the CPU and memory requests and limits for the container.
+	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
 }
 
 // RegistrySettings configures a container image registry reference,

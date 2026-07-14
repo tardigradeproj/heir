@@ -89,6 +89,7 @@ func GenerateDeployment(runtime *controlplanev1alpha1.Runtime, layout ControlPla
 		{Name: "config", MountPath: layout.Config.APIServer.MountPath, SubPath: layout.Config.APIServer.SecretKey, ReadOnly: true},
 		{Name: "config", MountPath: layout.Config.ControllerManager.MountPath, SubPath: layout.Config.ControllerManager.SecretKey, ReadOnly: true},
 		{Name: "config", MountPath: layout.Config.Scheduler.MountPath, SubPath: layout.Config.Scheduler.SecretKey, ReadOnly: true},
+		{Name: "config", MountPath: layout.Config.EgressSelector.MountPath, SubPath: layout.Config.EgressSelector.SecretKey, ReadOnly: true},
 		// mount static configs
 		{Name: "static-config", MountPath: layout.StaticManifest.Bootstrap.MountPath, SubPath: layout.StaticManifest.Bootstrap.SecretKey, ReadOnly: true},
 		{Name: "static-config", MountPath: layout.StaticManifest.KubeProxy.MountPath, SubPath: layout.StaticManifest.KubeProxy.SecretKey, ReadOnly: true},

@@ -30,6 +30,15 @@ func GenerateControlPlaneConfig(runtime *controlplanev1alpha1.Runtime, layout Co
 	if err != nil {
 		return nil, "", err
 	}
+	egressSelectorConfiguration, err := component.CreateEgressSelectorConfiguration(component.EgressSelectorConfig{
+		EgressURL:      fmt.Sprintf("https://%s", PlaneTunnelName(runtime.Name)),
+		CACertPath:     layout.PKI.CACert.MountPath,
+		ClientCertPath: layout.PKI.ApiServerPlaneTunnelCert.MountPath,
+		ClientKeyPath:  layout.PKI.ApiServerPlaneTunnelKey.MountPath,
+	})
+	if err != nil {
+		return nil, "", err
+	}
 	nodeProfile, err := component.CreateNodeProfileManifest(workerProfile, runtime)
 	if err != nil {
 		return nil, "", err
@@ -98,6 +107,7 @@ func GenerateControlPlaneConfig(runtime *controlplanev1alpha1.Runtime, layout Co
 		layout.Config.APIServer.SecretKey:           apiserverScript,
 		layout.Config.ControllerManager.SecretKey:   controllerManagerScript,
 		layout.Config.Scheduler.SecretKey:           schedulerScript,
+		layout.Config.EgressSelector.SecretKey:      string(egressSelectorConfiguration),
 		layout.StaticManifest.Bootstrap.SecretKey:   string(tlsbootstrap),
 		layout.StaticManifest.NodeProfile.SecretKey: string(nodeProfile),
 		layout.StaticManifest.Coredns.SecretKey:     string(coredns),
@@ -157,6 +167,7 @@ func MergeArgs(defaults, extra map[string]string) map[string]string {
 	}
 	return merged
 }
+
 // RenderRunScript produces a shell run-script for the given binary and args.
 // Args are emitted in sorted order for deterministic output.
 func RenderRunScript(binary string, args map[string]string) string {

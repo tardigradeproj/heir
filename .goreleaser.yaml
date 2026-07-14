@@ -34,6 +34,21 @@ builds:
     goarch:
       - arm64
       - amd64
+  - main: cmd/tunnel.go
+    id: tunnel
+    binary: tunnel
+    ldflags:
+      - -s -w
+      - -X github.com/tardigradeproj/heir/pkg/buildinfo.Version={{.Version}}
+      - -X github.com/tardigradeproj/heir/pkg/buildinfo.CommitID={{.Commit}}
+      - -X github.com/tardigradeproj/heir/pkg/buildinfo.BuildTime={{.Date}}
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - arm64
+      - amd64
   - main: cmd/masteragent.go
     id: masteragent
     binary: masteragent
@@ -87,6 +102,18 @@ archives:
         formats: [zip]
 
 dockers_v2:
+  - id: tunnel
+    dockerfile: images/Dockerfile.tunnel
+    ids:
+      - tunnel
+    images:
+      - ghcr.io/tardigradeproj/heir-tunnel
+    tags:
+      - "{{ .Tag }}"
+      - "{{ if not .IsNightly }}latest{{ end }}"
+    platforms:
+      - linux/amd64
+      - linux/arm64
   - id: heir-base
     dockerfile: images/base/Dockerfile
     ids:

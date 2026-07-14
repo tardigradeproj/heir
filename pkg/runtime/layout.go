@@ -10,12 +10,16 @@ type MountEntry struct {
 
 // PKILayout describes the certificate and key entries stored in the <name>-pki Secret.
 type PKILayout struct {
-	CACert             MountEntry
-	CAKey              MountEntry
-	APIServerCert      MountEntry
-	APIServerKey       MountEntry
-	ServiceAccountCert MountEntry
-	ServiceAccountKey  MountEntry
+	CACert                   MountEntry
+	CAKey                    MountEntry
+	APIServerCert            MountEntry
+	APIServerKey             MountEntry
+	ServiceAccountCert       MountEntry
+	ServiceAccountKey        MountEntry
+	PlaneTunnelKey           MountEntry
+	PlaneTunnelCert          MountEntry
+	ApiServerPlaneTunnelKey  MountEntry
+	ApiServerPlaneTunnelCert MountEntry
 }
 
 // AuthLayout describes the kubeconfig entries stored in the <name>-auth Secret.
@@ -40,6 +44,7 @@ type ConfigLayout struct {
 	APIServer         MountEntry
 	ControllerManager MountEntry
 	Scheduler         MountEntry
+	EgressSelector    MountEntry
 }
 
 // ControlPlaneLayout groups all Secret/ConfigMap keys and their container mount paths for a
@@ -57,12 +62,16 @@ type ControlPlaneLayout struct {
 func NewControlPlaneLayout() ControlPlaneLayout {
 	return ControlPlaneLayout{
 		PKI: PKILayout{
-			CACert:             MountEntry{SecretKey: "ca.crt", MountPath: "/etc/kubernetes/pki/ca.crt"},
-			CAKey:              MountEntry{SecretKey: "ca.key", MountPath: "/etc/kubernetes/pki/ca.key"},
-			APIServerCert:      MountEntry{SecretKey: "apiserver.crt", MountPath: "/etc/kubernetes/pki/apiserver.crt"},
-			APIServerKey:       MountEntry{SecretKey: "apiserver.key", MountPath: "/etc/kubernetes/pki/apiserver.key"},
-			ServiceAccountCert: MountEntry{SecretKey: "sa.crt", MountPath: "/etc/kubernetes/pki/sa.crt"},
-			ServiceAccountKey:  MountEntry{SecretKey: "sa.key", MountPath: "/etc/kubernetes/pki/sa.key"},
+			CACert:                   MountEntry{SecretKey: "ca.crt", MountPath: "/etc/kubernetes/pki/ca.crt"},
+			CAKey:                    MountEntry{SecretKey: "ca.key", MountPath: "/etc/kubernetes/pki/ca.key"},
+			APIServerCert:            MountEntry{SecretKey: "apiserver.crt", MountPath: "/etc/kubernetes/pki/apiserver.crt"},
+			APIServerKey:             MountEntry{SecretKey: "apiserver.key", MountPath: "/etc/kubernetes/pki/apiserver.key"},
+			ServiceAccountCert:       MountEntry{SecretKey: "sa.crt", MountPath: "/etc/kubernetes/pki/sa.crt"},
+			ServiceAccountKey:        MountEntry{SecretKey: "sa.key", MountPath: "/etc/kubernetes/pki/sa.key"},
+			PlaneTunnelKey:           MountEntry{SecretKey: "plane-tunnel.key", MountPath: "/etc/kubernetes/pki/plane-tunnel.key"},
+			PlaneTunnelCert:          MountEntry{SecretKey: "plane-tunnel.crt", MountPath: "/etc/kubernetes/pki/plane-tunnel.crt"},
+			ApiServerPlaneTunnelKey:  MountEntry{SecretKey: "apiserver-plane-tunnel.key", MountPath: "/etc/kubernetes/pki/apiserver-plane-tunnel.key"},
+			ApiServerPlaneTunnelCert: MountEntry{SecretKey: "apiserver-plane-tunnel.crt", MountPath: "/etc/kubernetes/pki/apiserver-plane-tunnel.crt"},
 		},
 		Auth: AuthLayout{
 			AdminConf:             MountEntry{SecretKey: "admin.conf", MountPath: "/etc/kubernetes/admin.conf"},
@@ -80,6 +89,7 @@ func NewControlPlaneLayout() ControlPlaneLayout {
 			APIServer:         MountEntry{SecretKey: "kube-apiserver.sh", MountPath: "/etc/kubernetes/manifests/kube-apiserver.sh"},
 			ControllerManager: MountEntry{SecretKey: "kube-controller-manager.sh", MountPath: "/etc/kubernetes/manifests/kube-controller-manager.sh"},
 			Scheduler:         MountEntry{SecretKey: "kube-scheduler.sh", MountPath: "/etc/kubernetes/manifests/kube-scheduler.sh"},
+			EgressSelector:    MountEntry{SecretKey: "egress-selector-configuration.yaml", MountPath: "/etc/kubernetes/manifests/egress-selector-configuration.yaml"},
 		},
 	}
 }

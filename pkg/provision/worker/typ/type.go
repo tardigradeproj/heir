@@ -81,6 +81,9 @@ type WorkerContext struct {
 	CNIBinFolderPath string `default:"/opt/cni/bin"`
 
 	ApiServerWorkerProxyServerAddress string `default:"0.0.0.0:6443"`
+
+	PlaneTunnelServerEgressSelectorPort int `default:"9443"`
+	PlaneTunnelServerServer             int `default:"9445"`
 }
 
 func NewWorkerContextWithDefaults() *WorkerContext {

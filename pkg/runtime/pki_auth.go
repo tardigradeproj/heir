@@ -55,8 +55,23 @@ func GeneratePKIAuthSecret(runtime *controlplanev1alpha1.Runtime, layout Control
 	if err != nil {
 		return nil, err
 	}
-
-	apiserverCert, err := pki.SignCSR(*ca, pki.CSR{
+	planeTunnelServer, err := pki.SignCSR(*ca, pki.CSR{
+		Name:      "plane-tunnel",
+		O:         "system:plane-tunnel",
+		Hostnames: []string{},
+	}, CertificateDuration)
+	if err != nil {
+		return nil, err
+	}
+	apiServerPlaneTunnelServer, err := pki.SignCSR(*ca, pki.CSR{
+		Name:      "plane-tunnel",
+		O:         "system:apiserver:plane-tunnel",
+		Hostnames: []string{},
+	}, CertificateDuration)
+	if err != nil {
+		return nil, err
+	}
+	apiServerCert, err := pki.SignCSR(*ca, pki.CSR{
 		Name:      "kubernetes",
 		O:         "kubernetes",
 		CN:        "kube-apiserver",
@@ -114,15 +129,19 @@ func GeneratePKIAuthSecret(runtime *controlplanev1alpha1.Runtime, layout Control
 		return nil, err
 	}
 	data := map[string][]byte{
-		layout.PKI.CACert.SecretKey:                 ca.Cert,
-		layout.PKI.CAKey.SecretKey:                  ca.Key,
-		layout.PKI.APIServerCert.SecretKey:          apiserverCert.Cert,
-		layout.PKI.APIServerKey.SecretKey:           apiserverCert.Key,
-		layout.PKI.ServiceAccountCert.SecretKey:     serviceAccountCert.Cert,
-		layout.PKI.ServiceAccountKey.SecretKey:      serviceAccountCert.Key,
-		layout.Auth.AdminConf.SecretKey:             adminConf,
-		layout.Auth.ControllerManagerConf.SecretKey: controllerManagerConf,
-		layout.Auth.SchedulerConf.SecretKey:         schedulerConf,
+		layout.PKI.CACert.SecretKey:                   ca.Cert,
+		layout.PKI.CAKey.SecretKey:                    ca.Key,
+		layout.PKI.APIServerCert.SecretKey:            apiServerCert.Cert,
+		layout.PKI.APIServerKey.SecretKey:             apiServerCert.Key,
+		layout.PKI.ServiceAccountCert.SecretKey:       serviceAccountCert.Cert,
+		layout.PKI.ServiceAccountKey.SecretKey:        serviceAccountCert.Key,
+		layout.PKI.PlaneTunnelKey.SecretKey:           planeTunnelServer.Key,
+		layout.PKI.PlaneTunnelCert.SecretKey:          planeTunnelServer.Cert,
+		layout.PKI.ApiServerPlaneTunnelKey.SecretKey:  apiServerPlaneTunnelServer.Key,
+		layout.PKI.ApiServerPlaneTunnelCert.SecretKey: apiServerPlaneTunnelServer.Cert,
+		layout.Auth.AdminConf.SecretKey:               adminConf,
+		layout.Auth.ControllerManagerConf.SecretKey:   controllerManagerConf,
+		layout.Auth.SchedulerConf.SecretKey:           schedulerConf,
 	}
 	labels := map[string]string{
 		"app.kubernetes.io/name":       runtime.Name,
