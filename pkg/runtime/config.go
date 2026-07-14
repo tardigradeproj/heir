@@ -48,6 +48,7 @@ func GenerateControlPlaneConfig(runtime *controlplanev1alpha1.Runtime, layout Co
 		// kubelet-preferred-address-types=Hostname ensures the API server connects to worker nodes using their registered hostname. The hostname is used
 		//as the TLS ServerName (SNI), which the kubelet's serving certificate always carries as a hostname SAN.
 		"kubelet-preferred-address-types":  "Hostname",
+		"egress-selector-config-file":      layout.Config.EgressSelector.MountPath,
 		"advertise-address":                "",
 		"allow-privileged":                 "true",
 		"endpoint-reconciler-type":         "none",
