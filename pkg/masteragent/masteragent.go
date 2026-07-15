@@ -30,9 +30,6 @@ func Run(ctx context.Context, conf Config) error {
 	go func() {
 		errCh <- RunReadyz(ctx, conf.Healthz)
 	}()
-	go func() {
-		errCh <- NewPlaneTunnel(conf.PlaneTunnel).Run(ctx)
-	}()
 	return <-errCh
 }
 

@@ -19,6 +19,7 @@ import (
 	"github.com/tardigradeproj/heir/pkg/provision/worker/proxy"
 	"github.com/tardigradeproj/heir/pkg/provision/worker/sys"
 	"github.com/tardigradeproj/heir/pkg/provision/worker/typ"
+	"github.com/tardigradeproj/heir/pkg/tunnel/agent"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
@@ -76,6 +77,25 @@ func Run(ctx context.Context, opts ...typ.Option) error {
 		profile.ControlPlaneEndpoint.Addresses,
 		int(profile.ControlPlaneEndpoint.APIServer.Port),
 	))
+	log.Debug("starting plane tunnel agent")
+	planeTunnelAgent, err := agent.New(
+		fmt.Sprintf("%s/kubelet.crt", workerCtx.KubeletPKIPath),
+		fmt.Sprintf("%s/kubelet.key", workerCtx.KubeletPKIPath),
+		workerCtx.KubeletPKICaCertPath,
+		profile.ControlPlaneEndpoint.Addresses[0],
+		"127.0.0.1:10250",
+		15*time.Second,
+	)
+	if err != nil {
+		log.WithError(err).Error("failed to setup plane tunnel agent")
+		return fmt.Errorf("failed to setup plane tunnel agent: %w", err)
+	}
+	go func() {
+		log.Info("starting plane tunnel node agent")
+		if err = planeTunnelAgent.Start(ctx); err != nil {
+			log.WithError(err).Error("failed to start plane tunnel agent")
+		}
+	}()
 
 	runners := []Runner{
 		component.NewContainerd(workerCtx),

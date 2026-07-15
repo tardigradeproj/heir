@@ -98,6 +98,9 @@ type ControlPlaneEndpointSpec struct {
 	// apiServer defines the port on the above addresses that exposes the Kubernetes API server.
 	//+kubebuilder:default={port:30080}
 	APIServer ComponentEndpoint `json:"apiServer"`
+	// PlaneTunnel defines the port on the above addresses that exposes the PlaneTunnel proxy server.
+	//+kubebuilder:default={port:30081}
+	PlaneTunnel ComponentEndpoint `json:"planeTunnel"`
 }
 
 // ComponentEndpoint holds the port of a single control-plane component endpoint.

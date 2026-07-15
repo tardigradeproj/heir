@@ -2370,8 +2370,23 @@ spec:
                         required:
                         - port
                         type: object
+                      planeTunnel:
+                        default:
+                          port: 30081
+                        description: PlaneTunnel defines the port on the above addresses
+                          that exposes the PlaneTunnel proxy server.
+                        properties:
+                          port:
+                            description: port is the TCP port number on the remote
+                              endpoint.
+                            format: int32
+                            type: integer
+                        required:
+                        - port
+                        type: object
                     required:
                     - apiServer
+                    - planeTunnel
                     type: object
                   controllerManager:
                     default: {}

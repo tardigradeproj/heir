@@ -37,10 +37,6 @@ func bindEnvs(cmd *cobra.Command, bindings []envBinding) {
 
 func Cmd() *cobra.Command {
 	cfg := masteragent.Config{
-		PlaneTunnel: masteragent.PlaneTunnelConfig{
-			SynchronizationPeriod: 5 * time.Second,
-			HostsPath:             "/etc/hosts",
-		},
 		Healthz: masteragent.HealthzConfig{
 			Port:                  8084,
 			APIServerPort:         6443,
@@ -73,9 +69,6 @@ func Cmd() *cobra.Command {
 	}
 
 	envBindings := []envBinding{
-		{"plane-tunnel-proxy-hostname", "HEIR_PLANE_TUNNEL_PROXY_HOSTNAME"},
-		{"plane-tunnel-sync-period", "HEIR_PLANE_TUNNEL_SYNC_PERIOD"},
-		{"plane-tunnel-hosts-path", "HEIR_PLANE_TUNNEL_HOSTS_PATH"},
 		{"storage-endpoint", "HEIR_STORAGE_ENDPOINT"},
 		{"storage-emulated-etcd-version", "HEIR_STORAGE_EMULATED_ETCD_VERSION"},
 		{"storage-metrics-bind-address", "HEIR_STORAGE_METRICS_BIND_ADDRESS"},
@@ -99,24 +92,6 @@ func Cmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(
-		&cfg.PlaneTunnel.ProxyHostname,
-		"plane-tunnel-proxy-hostname",
-		"",
-		"Headless Service DNS name to resolve for plane tunnel pod IPs (env: HEIR_PLANE_TUNNEL_PROXY_HOSTNAME).",
-	)
-	cmd.Flags().DurationVar(
-		&cfg.PlaneTunnel.SynchronizationPeriod,
-		"plane-tunnel-sync-period",
-		5*time.Second,
-		"How often to reconcile hosts file against plane tunnel reports (env: HEIR_PLANE_TUNNEL_SYNC_PERIOD).",
-	)
-	cmd.Flags().StringVar(
-		&cfg.PlaneTunnel.HostsPath,
-		"plane-tunnel-hosts-path",
-		"/etc/hosts",
-		"Path to the hosts file to (env: HEIR_PLANE_TUNNEL_HOSTS_PATH).",
-	)
 	cmd.Flags().StringVar(
 		&cfg.Storage.Endpoint,
 		"storage-endpoint",
