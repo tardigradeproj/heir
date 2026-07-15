@@ -79,10 +79,11 @@ func Run(ctx context.Context, opts ...typ.Option) error {
 	))
 	log.Debug("starting plane tunnel agent")
 	planeTunnelAgent, err := agent.New(
-		fmt.Sprintf("%s/kubelet.crt", workerCtx.KubeletPKIPath),
-		fmt.Sprintf("%s/kubelet.key", workerCtx.KubeletPKIPath),
+		fmt.Sprintf("%s/kubelet-client-current.pem", workerCtx.KubeletPKIPath),
+		fmt.Sprintf("%s/kubelet-client-current.pem", workerCtx.KubeletPKIPath),
 		workerCtx.KubeletPKICaCertPath,
-		profile.ControlPlaneEndpoint.Addresses[0],
+		fmt.Sprintf("%s:%d", profile.ControlPlaneEndpoint.Addresses[0],
+			profile.ControlPlaneEndpoint.PlaneTunnel.Port),
 		"127.0.0.1:10250",
 		15*time.Second,
 	)

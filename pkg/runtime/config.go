@@ -31,7 +31,9 @@ func GenerateControlPlaneConfig(runtime *controlplanev1alpha1.Runtime, layout Co
 		return nil, "", err
 	}
 	egressSelectorConfiguration, err := component.CreateEgressSelectorConfiguration(component.EgressSelectorConfig{
-		EgressURL:      fmt.Sprintf("https://%s", PlaneTunnelName(runtime.Name)),
+		EgressURL: fmt.Sprintf("https://%s:%d",
+			PlaneTunnelEgressName(runtime.Name),
+			int32(workerProfile.PlaneTunnelServerEgressSelectorPort)),
 		CACertPath:     layout.PKI.CACert.MountPath,
 		ClientCertPath: layout.PKI.ApiServerPlaneTunnelCert.MountPath,
 		ClientKeyPath:  layout.PKI.ApiServerPlaneTunnelKey.MountPath,

@@ -16,6 +16,17 @@ import (
 // CertificateDuration is the default lifetime for all generated certificates.
 var CertificateDuration = time.Duration(8760) * time.Hour
 
+func planeTunnelAltNames(externalAddresses []string) []string {
+	sans := make([]string, 0, len(externalAddresses))
+	for _, addr := range externalAddresses {
+		if addr != "" {
+			sans = append(sans, addr)
+		}
+	}
+	slices.Sort(sans)
+	return slices.Compact(sans)
+}
+
 // APIServerAltNames builds the full list of Subject Alternative Names for the
 // kube-apiserver certificate, merging user-supplied SANs with the required defaults.
 func APIServerAltNames(cluster controlplanev1alpha1.UpstreamCluster) []string {
@@ -58,7 +69,7 @@ func GeneratePKIAuthSecret(runtime *controlplanev1alpha1.Runtime, layout Control
 	planeTunnelServer, err := pki.SignCSR(*ca, pki.CSR{
 		Name:      "plane-tunnel",
 		O:         "system:plane-tunnel",
-		Hostnames: []string{},
+		Hostnames: planeTunnelAltNames(runtime.Spec.UpstreamCluster.ControlPlaneEndpoint.Addresses),
 	}, CertificateDuration)
 	if err != nil {
 		return nil, err
@@ -66,7 +77,7 @@ func GeneratePKIAuthSecret(runtime *controlplanev1alpha1.Runtime, layout Control
 	apiServerPlaneTunnelServer, err := pki.SignCSR(*ca, pki.CSR{
 		Name:      "plane-tunnel",
 		O:         "system:apiserver:plane-tunnel",
-		Hostnames: []string{},
+		Hostnames: []string{PlaneTunnelEgressName(runtime.Name)},
 	}, CertificateDuration)
 	if err != nil {
 		return nil, err
