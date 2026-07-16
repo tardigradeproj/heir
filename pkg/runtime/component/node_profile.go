@@ -16,7 +16,7 @@ func CreateNodeProfileManifest(wrkCtx *typ.WorkerContext, runtime *controlplanev
 	if err != nil {
 		return nil, err
 	}
-	kubelet := runtime.Spec.UpstreamCluster.Kubelet
+	kubelet := runtime.Spec.Cluster.Kubelet
 
 	var buf bytes.Buffer
 	if err := (&templatewriter.TemplateWriter{
@@ -46,10 +46,10 @@ func CreateNodeProfileManifest(wrkCtx *typ.WorkerContext, runtime *controlplanev
 }
 
 func getNodeProfileConfig(wrkCtx *typ.WorkerContext, runtime *controlplanev1alpha1.Runtime) (*NodeProfileConfig, error) {
-	coredns := runtime.Spec.UpstreamCluster.Network.Coredns
-	kubelet := runtime.Spec.UpstreamCluster.Kubelet
-	cni := runtime.Spec.UpstreamCluster.Network.CNI
-	controlPlaneEndpoint, err := json.Marshal(runtime.Spec.UpstreamCluster.ControlPlaneEndpoint)
+	coredns := runtime.Spec.Cluster.Network.Coredns
+	kubelet := runtime.Spec.Cluster.Kubelet
+	cni := runtime.Spec.Cluster.Network.CNI
+	controlPlaneEndpoint, err := json.Marshal(runtime.Spec.Cluster.ControlPlaneExternalEndpoint)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal API server external addresses: %w", err)
 	}

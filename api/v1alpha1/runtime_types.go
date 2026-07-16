@@ -23,14 +23,14 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
-// UpstreamCluster defines the configuration for the Kubernetes cluster
+// ClusterSpec defines the configuration for the Kubernetes cluster
 // running inside the control plane pod and worker nodes, including networking, storage, and
 // individual component settings.
-type UpstreamCluster struct {
-	// ControlPlaneEndpoint describes the addresses and ports through which worker
-	// nodes reach the API server.
+type ClusterSpec struct {
+	// ControlPlaneExternalEndpoint describes the per-component host and port through which
+	// worker nodes reach the API server and plane tunnel.
 	// +kubebuilder:default={}
-	ControlPlaneEndpoint ControlPlaneEndpointSpec `json:"controlPlaneEndpoint"`
+	ControlPlaneExternalEndpoint ControlPlaneExternalEndpointSpec `json:"controlPlaneExternalEndpoint"`
 	// APIServer holds flags and SANs passed to the tenant kube-apiserver.
 	// +kubebuilder:default={}
 	APIServer APIServerSpec `json:"apiServer"`
@@ -60,17 +60,20 @@ type UpstreamCluster struct {
 // PlaneTunnelSpec configures the plane tunnel TCP multiplexer, which tunnels traffic
 // between worker nodes and the API server.
 type PlaneTunnelSpec struct {
-	// server configures the plane tunnel server Deployment that runs in the management cluster.
+	// Server configures the plane tunnel server Deployment that runs in the management cluster.
 	//+kubebuilder:default={image:"ghcr.io/tardigradeproj/heir-tunnel:latest"}
 	Server PlaneTunnelSpecServerSpec `json:"server,omitempty"`
+	// Service configures the Service that exposes the plane tunnel server.
+	// +kubebuilder:default={}
+	Service PlaneTunnelServiceSpec `json:"service,omitempty"`
 }
 
 // PlaneTunnelSpecServerSpec configures the plane tunnel server component.
 type PlaneTunnelSpecServerSpec struct {
-	// image is the container image for the plane tunnel server.
+	// Image is the container image for the plane tunnel server.
 	//+kubebuilder:default="ghcr.io/tardigradeproj/heir-tunnel:latest"
 	Image string `json:"image,omitempty"`
-	// deployment configures the Deployment resource created for the plane tunnel server pods.
+	// Deployment configures the Deployment resource created for the plane tunnel server pods.
 	Deployment DeploymentSpec `json:"deployment,omitempty"`
 }
 
@@ -87,78 +90,80 @@ type KubeletSpec struct {
 	ConfigPatches string `json:"configPatches,omitempty"`
 }
 
-// ControlPlaneEndpointSpec describes the addresses and ports that worker nodes
-// use to reach the tenant control plane. Each worker runs a local proxy that
-// forwards traffic to these endpoints.
-type ControlPlaneEndpointSpec struct {
-	// addresses is the list of IP addresses or hostnames of the hosts exposing
-	// the tenant control plane (e.g. the NodePort addresses of the Management cluster nodes).
-	// It cannot contain protocol nor port.
-	Addresses []string `json:"addresses,omitempty"`
-	// apiServer defines the port on the above addresses that exposes the Kubernetes API server.
+// ControlPlaneExternalEndpointSpec describes the per-component host and port that worker
+// nodes use to reach the tenant control plane. Each component can be exposed on a different host,
+// allowing the API server and plane tunnel to sit behind separate load balancers.
+type ControlPlaneExternalEndpointSpec struct {
+	// APIServer defines the host and port that expose the Kubernetes API server.
 	//+kubebuilder:default={port:30080}
 	APIServer ComponentEndpoint `json:"apiServer"`
-	// PlaneTunnel defines the port on the above addresses that exposes the PlaneTunnel proxy server.
+	// PlaneTunnel defines the host and port that expose the PlaneTunnel proxy server.
 	//+kubebuilder:default={port:30081}
 	PlaneTunnel ComponentEndpoint `json:"planeTunnel"`
 }
 
-// ComponentEndpoint holds the port of a single control-plane component endpoint.
+// ComponentEndpoint holds the host and port of a single control-plane component endpoint.
 type ComponentEndpoint struct {
-	// port is the TCP port number on the remote endpoint.
+	// Host is the IP address or hostname of the endpoint.
+	Host string `json:"host,omitempty"`
+	// Port is the TCP port number on the remote endpoint.
 	Port int32 `json:"port"`
 }
 
 // APIServerSpec defines configuration for the tenant kube-apiserver.
 type APIServerSpec struct {
-	// sans is a list of additional Subject Alternative Names added to the API server's
+	// Sans is a list of additional Subject Alternative Names added to the API server's
 	// serving certificate. Use this to include load-balancer IPs, external hostnames,
 	// or any address through which clients will reach the API server.
 	Sans []string `json:"sans,omitempty"`
-	// extraArgs is a map of additional flags passed directly to the kube-apiserver process.
+	// ExtraArgs is a map of additional flags passed directly to the kube-apiserver process.
 	// Keys are flag names (without the leading --) and values are their string representations.
 	ExtraArgs map[string]string `json:"extraArgs,omitempty"`
 }
 
 // ControllerManagerSpec defines configuration for the tenant kube-controller-manager.
 type ControllerManagerSpec struct {
-	// extraArgs is a map of additional flags passed directly to the kube-controller-manager process.
+	// ExtraArgs is a map of additional flags passed directly to the kube-controller-manager process.
 	// Keys are flag names (without the leading --) and values are their string representations.
 	ExtraArgs map[string]string `json:"extraArgs,omitempty"`
 }
 
 // SchedulerSpec defines configuration for the tenant kube-scheduler.
 type SchedulerSpec struct {
-	// extraArgs is a map of additional flags passed directly to the kube-scheduler process.
+	// ExtraArgs is a map of additional flags passed directly to the kube-scheduler process.
 	// Keys are flag names (without the leading --) and values are their string representations.
 	ExtraArgs map[string]string `json:"extraArgs,omitempty"`
 }
 
 // NetworkSpec defines the pod and service networking configuration for the tenant cluster.
 type NetworkSpec struct {
-	// podCIDR is the IP range from which pod IP addresses are allocated.
+	// PodCIDR is the IP range from which pod IP addresses are allocated.
 	//+kubebuilder:default="10.244.0.0/16"
 	//+kubebuilder:validation:Optional
 	PodCIDR string `json:"podCIDR,omitempty"`
-	// serviceCIDR is the IP range from which ClusterIP service addresses are allocated.
+	// ServiceCIDR is the IP range from which ClusterIP service addresses are allocated.
 	//+kubebuilder:default="10.96.0.0/16"
 	//+kubebuilder:validation:Optional
 	// +optional
 	ServiceCIDR string `json:"serviceCIDR,omitempty"`
-	// cni configures the Container Network Interface plugin installed in the tenant cluster.
+	// DNSDomain is the DNS domain suffix for the tenant cluster (e.g. cluster.local).
+	//+kubebuilder:default="cluster.local"
+	// +optional
+	DNSDomain string `json:"dnsDomain,omitempty"`
+	// CNI configures the Container Network Interface plugin installed in the tenant cluster.
 	// +kubebuilder:default={}
 	CNI CNISpec `json:"cni,omitempty"`
-	// kubeProxy configures kube-proxy in the tenant cluster.
+	// KubeProxy configures kube-proxy in the tenant cluster.
 	// +kubebuilder:default={}
 	KubeProxy KubeProxySpec `json:"kubeProxy"`
-	// coredns configures CoreDNS in the tenant cluster.
+	// Coredns configures CoreDNS in the tenant cluster.
 	// +kubebuilder:default={}
 	Coredns CorednsSpec `json:"coredns"`
 }
 
 // CNISpec selects the Container Network Interface plugin to install in the tenant cluster.
 type CNISpec struct {
-	// supplier is the CNI plugin to install.
+	// Supplier is the CNI plugin to install.
 	// +kubebuilder:validation:Enum=flannel;custom
 	//+kubebuilder:default="flannel"
 	Supplier string `json:"supplier,omitempty"`
@@ -166,11 +171,11 @@ type CNISpec struct {
 
 // StorageSpec configures the storage backend used by the tenant API server.
 type StorageSpec struct {
-	// type selects the storage backend. Currently only kine is supported.
+	// Type selects the storage backend. Currently only kine is supported.
 	// +kubebuilder:validation:Enum=kine
 	//+kubebuilder:default="kine"
 	Type string `json:"type"`
-	// kine holds configuration for the kine storage adapter, which provides
+	// Kine holds configuration for the kine storage adapter, which provides
 	// an etcd-compatible interface backed by a relational database.
 	Kine *KineSpec `json:"kine"`
 }
@@ -178,7 +183,7 @@ type StorageSpec struct {
 // KineSpec configures the kine storage backend.
 // See https://github.com/rancher/kine for supported data source URL formats.
 type KineSpec struct {
-	// dataSourceRef references a Secret key whose value is the kine data source URL
+	// DataSourceRef references a Secret key whose value is the kine data source URL
 	// (e.g. a SQLite file path or a PostgreSQL connection string).
 	// When omitted, kine uses its default SQLite storage location.
 	// +optional
@@ -188,7 +193,7 @@ type KineSpec struct {
 // ExtraResourcesSpec holds a list of arbitrary Kubernetes objects to be applied
 // to the tenant cluster after it becomes available.
 type ExtraResourcesSpec struct {
-	// objects is a list of raw Kubernetes resource manifests applied to the tenant
+	// Objects is a list of raw Kubernetes resource manifests applied to the tenant
 	// cluster on startup. Any valid Kubernetes object is accepted.
 	// +optional
 	Objects []runtime.RawExtension `json:"objects,omitempty"`
@@ -196,71 +201,81 @@ type ExtraResourcesSpec struct {
 
 // RuntimeSpec defines the desired state of Runtime.
 type RuntimeSpec struct {
-	// controlPlane configures how the tenant control plane is deployed in the management cluster.
+	// ControlPlane configures how the tenant control plane is deployed in the management cluster.
 	// +kubebuilder:default={}
 	ControlPlane ControlPlaneSpec `json:"controlPlane,omitempty"`
-	// upstreamCluster configures the tenant Kubernetes cluster running inside the control plane pod.
+	// Cluster configures the tenant Kubernetes cluster running inside the control plane pod.
 	// +kubebuilder:default={}
-	UpstreamCluster UpstreamCluster `json:"upstreamCluster,omitempty"`
+	Cluster ClusterSpec `json:"cluster,omitempty"`
 }
 
 // ControlPlaneSpec defines how the tenant control plane is deployed in the management cluster,
 // including the container image, Deployment, and Service configuration.
 type ControlPlaneSpec struct {
-	// heir specifies the Heir distribution image to run as the heir control plane.
+	// Heir specifies the Heir distribution image to run as the heir control plane.
 	// +required
 	Heir HeirSpec `json:"heir,omitempty"`
-	// deployment configures the Deployment resource created for the heir control plane pods.
+	// Deployment configures the Deployment resource created for the heir control plane pods.
 	Deployment DeploymentSpec `json:"deployment,omitempty"`
-	// service configures the Service resource that exposes the tenant control plane.
+	// Service configures the Service resource that exposes the tenant control plane.
 	Service ServiceSpec `json:"service,omitempty"`
-	// planeTunnel configures the plane tunnel server Deployment and Service.
+	// PlaneTunnel configures the plane tunnel server Deployment and Service.
 	// +kubebuilder:default={}
 	PlaneTunnel PlaneTunnelSpec `json:"planeTunnel,omitempty"`
 }
 
 // HeirSpec identifies the Heir distribution image used for the tenant control plane.
 type HeirSpec struct {
-	// image is the fully qualified container image reference (including tag or digest)
+	// Image is the fully qualified container image reference (including tag or digest)
 	// for the Heir control plane, e.g. ghcr.io/tardigradeproj/heir:v1.2.3.
 	Image string `json:"image,omitempty"`
 }
 
 // ServiceSpec configures the Kubernetes Service that exposes the tenant control plane.
 type ServiceSpec struct {
-	// additionalMetadata allows attaching extra labels and annotations to the generated Service.
+	// AdditionalMetadata allows attaching extra labels and annotations to the generated Service.
 	AdditionalMetadata AdditionalMetadata `json:"additionalMetadata,omitempty"`
-	// additionalPorts adds extra ports to the Service, in addition to the default API server port.
+	// AdditionalPorts adds extra ports to the Service, in addition to the default API server port.
 	AdditionalPorts []AdditionalPort `json:"additionalPorts,omitempty"`
-	// serviceType controls how the Service is exposed.
+	// ServiceType controls how the Service is exposed.
 	//+kubebuilder:validation:Enum=NodePort;ClusterIP;LoadBalancer;ExternalName
 	//+kubebuilder:default="NodePort"
 	ServiceType corev1.ServiceType `json:"serviceType"`
-	// apiServerNodePort is the NodePort assigned to the API server port.
+	// ApiServerNodePort is the NodePort assigned to the API server port.
 	// Only used when serviceType is NodePort.
 	//+kubebuilder:default=30080
 	ApiServerNodePort int32 `json:"apiServerNodePort"`
-	// PlaneTunnelNodePort is the NodePort assigned to the plane tunnel proxy port.
+}
+
+// PlaneTunnelServiceSpec configures the Kubernetes Service that exposes the plane tunnel server.
+type PlaneTunnelServiceSpec struct {
+	// AdditionalMetadata allows attaching extra labels and annotations to the generated Service.
+	AdditionalMetadata AdditionalMetadata `json:"additionalMetadata,omitempty"`
+	// ServiceType controls how the Service is exposed.
+	//+kubebuilder:validation:Enum=NodePort;ClusterIP;LoadBalancer;ExternalName
+	//+kubebuilder:default="NodePort"
+	ServiceType corev1.ServiceType `json:"serviceType"`
+	// NodePort is the NodePort assigned to the plane tunnel port.
 	// Only used when serviceType is NodePort.
 	//+kubebuilder:default=30081
-	PlaneTunnelNodePort int32 `json:"planeTunnelNodePort"`
+	NodePort int32 `json:"nodePort"`
 }
 
 // AdditionalPort defines an extra port to add to a Service.
 type AdditionalPort struct {
-	// name is the port name within the Service. Must be unique across all ports.
+	// Name is the port name within the Service. Must be unique across all ports.
 	Name string `json:"name"`
-	// protocol is the IP protocol for this port.
+	// Protocol is the IP protocol for this port.
 	//+kubebuilder:validation:Enum=TCP;UDP;SCTP
 	//+kubebuilder:default=TCP
 	Protocol corev1.Protocol `json:"protocol,omitempty"`
-	// appProtocol is a hint to implementations about the application-layer protocol
+	// AppProtocol is a hint to implementations about the application-layer protocol
 	// carried on this port (e.g. "http", "https"). Follows Kubernetes label syntax.
 	// +optional
 	AppProtocol *string `json:"appProtocol,omitempty"`
-	// port is the port number exposed by the Service.
+	// Port is the port number exposed by the Service.
 	Port int32 `json:"port"`
-	// targetPort is the port number or named port on the tenant control plane pods
+	// TargetPort is the port number or named port on the tenant control plane pods
 	// that receives traffic for this Service port.
 	// +optional
 	TargetPort intstr.IntOrString `json:"targetPort"`
@@ -268,51 +283,51 @@ type AdditionalPort struct {
 
 // AdditionalMetadata holds extra labels and annotations to attach to a generated resource.
 type AdditionalMetadata struct {
-	// labels are added to the resource's metadata.labels map.
+	// Labels are added to the resource's metadata.labels map.
 	Labels map[string]string `json:"labels,omitempty"`
-	// annotations are added to the resource's metadata.annotations map.
+	// Annotations are added to the resource's metadata.annotations map.
 	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
 // DeploymentSpec configures the Deployment created for the tenant control plane pods.
 type DeploymentSpec struct {
-	// additionalMetadata allows attaching extra labels and annotations to the generated Deployment.
+	// AdditionalMetadata allows attaching extra labels and annotations to the generated Deployment.
 	AdditionalMetadata AdditionalMetadata `json:"additionalMetadata,omitempty"`
-	// replicas is the desired number of tenant control plane pod replicas.
+	// Replicas is the desired number of tenant control plane pod replicas.
 	//+kubebuilder:default=1
 	// +kubebuilder:validation:Minimum=1
 	Replicas *int32 `json:"replicas,omitempty"`
-	// runtimeClassName references a RuntimeClass object that controls which container
+	// RuntimeClassName references a RuntimeClass object that controls which container
 	// runtime is used for the tenant control plane pods. When empty, the cluster default is used.
 	RuntimeClassName string `json:"runtimeClassName,omitempty"`
-	// tolerations applied to the tenant control plane pods.
+	// Tolerations applied to the tenant control plane pods.
 	// More info: https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/
 	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
-	// affinity defines scheduling constraints for the tenant control plane pods.
+	// Affinity defines scheduling constraints for the tenant control plane pods.
 	// More info: https://kubernetes.io/docs/tasks/configure-pod-container/assign-pods-nodes-using-node-affinity/
 	Affinity *corev1.Affinity `json:"affinity,omitempty"`
-	// serviceAccountName is the name of the ServiceAccount mounted into the tenant control plane pods.
+	// ServiceAccountName is the name of the ServiceAccount mounted into the tenant control plane pods.
 	//+kubebuilder:default="default"
 	ServiceAccountName string `json:"serviceAccountName,omitempty"`
-	// resources defines the CPU and memory requests and limits for the container.
+	// Resources defines the CPU and memory requests and limits for the container.
 	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
 }
 
 // RegistrySettings configures a container image registry reference,
 // including the registry host, image name, and pull policy.
 type RegistrySettings struct {
-	// registry is the container registry hostname, e.g. registry.k8s.io.
+	// Registry is the container registry hostname, e.g. registry.k8s.io.
 	//+kubebuilder:default="registry.k8s.io"
 	Registry string `json:"registry,omitempty"`
-	// image is the image name within the registry, without the tag or digest.
+	// Image is the image name within the registry, without the tag or digest.
 	Image string `json:"image,omitempty"`
-	// pullPolicy controls when the kubelet pulls the image.
+	// PullPolicy controls when the kubelet pulls the image.
 	PullPolicy corev1.PullPolicy `json:"pullPolicy,omitempty"`
 }
 
 // RuntimeStatus defines the observed state of Runtime.
 type RuntimeStatus struct {
-	// conditions reflect the current status of the Runtime.
+	// Conditions reflect the current status of the Runtime.
 	// Standard types are:
 	//   Available   — the control plane is fully operational.
 	//   Progressing — the control plane is being created or updated.
@@ -321,7 +336,7 @@ type RuntimeStatus struct {
 	// +listMapKey=type
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
-	// certificatesExpireAt is the time at which the PKI certificates stored in the -pki Secret will expire.
+	// CertificatesExpireAt is the time at which the PKI certificates stored in the -pki Secret will expire.
 	CertificatesExpireAt *metav1.Time `json:"certificatesExpireAt,omitempty"`
 }
 
@@ -336,11 +351,11 @@ type Runtime struct {
 	// +optional
 	metav1.ObjectMeta `json:"metadata,omitzero"`
 
-	// spec defines the desired state of Runtime
+	// Spec defines the desired state of Runtime
 	// +required
 	Spec RuntimeSpec `json:"spec"`
 
-	// status defines the observed state of Runtime
+	// Status defines the observed state of Runtime
 	// +optional
 	Status RuntimeStatus `json:"status,omitzero"`
 }

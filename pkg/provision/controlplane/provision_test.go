@@ -42,13 +42,12 @@ spec:
       serviceAccountName: default
     service:
       serviceType: ClusterIP
-  upstreamCluster:
+  cluster:
     storage:
       type: kine
-    controlPlaneEndpoint:
-      addresses:
-        - "10.0.2.2"
+    controlPlaneExternalEndpoint:
       apiServer:
+        host: "10.0.2.2"
         port: 30080
 
 `
@@ -68,11 +67,10 @@ spec:
       serviceAccountName: default
     service:
       serviceType: ClusterIP
-  upstreamCluster:
-    controlPlaneEndpoint:
-      addresses:
-      - "my-cluster.example.com"
+  cluster:
+    controlPlaneExternalEndpoint:
       apiServer:
+        host: "my-cluster.example.com"
         port: 6443
     storage:
       type: kine

@@ -23,13 +23,13 @@ func CreateCorednsManifest(runtime *controlplanev1alpha1.Runtime) ([]byte, error
 }
 
 func getCoreDnsConfig(runtime *controlplanev1alpha1.Runtime) *coreDNSConfig {
-	coredns := runtime.Spec.UpstreamCluster.Network.Coredns
+	coredns := runtime.Spec.Cluster.Network.Coredns
 	cfg := &coreDNSConfig{
 		Replicas:                   int(*coredns.Replicas),
 		ClusterDNSIP:               coredns.ClusterDNSIP,
 		ClusterDomain:              "cluster.local",
-		Image:                      fmt.Sprintf("%s/%s", coredns.RegisterSetting.Registry, coredns.RegisterSetting.Image),
-		PullPolicy:                 string(coredns.RegisterSetting.PullPolicy),
+		Image:                      fmt.Sprintf("%s/%s", coredns.RegistrySettings.Registry, coredns.RegistrySettings.Image),
+		PullPolicy:                 string(coredns.RegistrySettings.PullPolicy),
 		MaxUnavailableReplicas:     ptr.To(uint(1)),
 		DisablePodAntiAffinity:     true,
 		DisablePodDisruptionBudget: true,

@@ -74,31 +74,30 @@ func doSyncEndpoints(ctx context.Context, client kubernetes.Interface, wctx *wor
 		return fmt.Errorf("configmap %q missing key %q", wctx.WorkerProfileConfigMapName, wctx.ControlPlaneEndpointNodeProfileConfigmapKey)
 	}
 	log.WithField("config.size", len(raw)).Debug("sync kubernetes endpoint")
-	var cpe v1alpha1.ControlPlaneEndpointSpec
+	var cpe v1alpha1.ControlPlaneExternalEndpointSpec
 	if err := json.Unmarshal([]byte(raw), &cpe); err != nil {
 		return fmt.Errorf("unmarshal control plane endpoint: %w", err)
 	}
 
+	host := cpe.APIServer.Host
 	port := cpe.APIServer.Port
 	var resolved []resolvedEndpoint
-	for _, addr := range cpe.Addresses {
-		log.WithField("address", addr).Debug("resolving address")
-		if net.ParseIP(addr) != nil {
-			resolved = append(resolved, resolvedEndpoint{ip: addr, port: port})
-			continue
-		}
-		ips, err := net.LookupHost(addr)
+	log.WithField("address", host).Debug("resolving address")
+	if net.ParseIP(host) != nil {
+		resolved = append(resolved, resolvedEndpoint{ip: host, port: port})
+	} else if host != "" {
+		ips, err := net.LookupHost(host)
 		if err != nil {
-			log.WithError(err).WithField("host", addr).Warn("DNS resolution failed, skipping")
-			continue
-		}
-		for _, ip := range ips {
-			resolved = append(resolved, resolvedEndpoint{ip: ip, port: port})
+			log.WithError(err).WithField("host", host).Warn("DNS resolution failed")
+		} else {
+			for _, ip := range ips {
+				resolved = append(resolved, resolvedEndpoint{ip: ip, port: port})
+			}
 		}
 	}
 
 	if len(resolved) == 0 {
-		return fmt.Errorf("no endpoints resolved from addresses %v", cpe.Addresses)
+		return fmt.Errorf("no endpoints resolved from host %q", host)
 	}
 
 	ready := true

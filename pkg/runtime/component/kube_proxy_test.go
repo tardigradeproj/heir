@@ -45,7 +45,7 @@ func parseManifest(t *testing.T, manifest []byte) map[string][]byte {
 func kubeProxyRuntime(spec controlplanev1alpha1.KubeProxySpec) *controlplanev1alpha1.Runtime {
 	return &controlplanev1alpha1.Runtime{
 		Spec: controlplanev1alpha1.RuntimeSpec{
-			UpstreamCluster: controlplanev1alpha1.UpstreamCluster{
+			Cluster: controlplanev1alpha1.ClusterSpec{
 				Network: controlplanev1alpha1.NetworkSpec{
 					PodCIDR:   "10.244.0.0/16",
 					KubeProxy: spec,
@@ -65,7 +65,7 @@ func TestGetConfig_Disabled(t *testing.T) {
 
 func TestGetConfig_BasicFields(t *testing.T) {
 	runtime := kubeProxyRuntime(controlplanev1alpha1.KubeProxySpec{
-		RegisterSetting: controlplanev1alpha1.RegistrySettings{
+		RegistrySettings: controlplanev1alpha1.RegistrySettings{
 			Registry:   "registry.k8s.io",
 			Image:      "kube-proxy:v1.34.0",
 			PullPolicy: corev1.PullIfNotPresent,
@@ -175,7 +175,7 @@ func TestCreateManifest(t *testing.T) {
 		{
 			name: "all expected resource kinds are present",
 			spec: controlplanev1alpha1.KubeProxySpec{
-				RegisterSetting: controlplanev1alpha1.RegistrySettings{
+				RegistrySettings: controlplanev1alpha1.RegistrySettings{
 					Registry: "registry.k8s.io",
 					Image:    "kube-proxy:v1.34.0",
 				},
@@ -236,7 +236,7 @@ func TestCreateManifest(t *testing.T) {
 		{
 			name: "daemonset uses image from registry settings",
 			spec: controlplanev1alpha1.KubeProxySpec{
-				RegisterSetting: controlplanev1alpha1.RegistrySettings{
+				RegistrySettings: controlplanev1alpha1.RegistrySettings{
 					Registry:   "my.registry.io",
 					Image:      "kube-proxy:v1.30.0",
 					PullPolicy: corev1.PullAlways,

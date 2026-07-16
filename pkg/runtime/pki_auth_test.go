@@ -18,12 +18,12 @@ import (
 func TestAPIServerAltNames(t *testing.T) {
 	tests := []struct {
 		name     string
-		cluster  controlplanev1alpha1.UpstreamCluster
+		cluster  controlplanev1alpha1.ClusterSpec
 		expected []string
 	}{
 		{
 			name:    "defaults only when no extra SANs provided",
-			cluster: controlplanev1alpha1.UpstreamCluster{},
+			cluster: controlplanev1alpha1.ClusterSpec{},
 			expected: []string{
 				"0.0.0.0",
 				"10.96.0.1",
@@ -38,7 +38,7 @@ func TestAPIServerAltNames(t *testing.T) {
 		},
 		{
 			name: "extra SANs are merged with defaults",
-			cluster: controlplanev1alpha1.UpstreamCluster{
+			cluster: controlplanev1alpha1.ClusterSpec{
 				APIServer: controlplanev1alpha1.APIServerSpec{
 					Sans: []string{"my-cluster.example.com", "10.0.0.1"},
 				},
@@ -58,10 +58,10 @@ func TestAPIServerAltNames(t *testing.T) {
 			},
 		},
 		{
-			name: "controlPlaneEndpoint address is added as SAN",
-			cluster: controlplanev1alpha1.UpstreamCluster{
-				ControlPlaneEndpoint: controlplanev1alpha1.ControlPlaneEndpointSpec{
-					Addresses: []string{"my-cluster.example.com"},
+			name: "controlPlaneExternalEndpoint host is added as SAN",
+			cluster: controlplanev1alpha1.ClusterSpec{
+				ControlPlaneExternalEndpoint: controlplanev1alpha1.ControlPlaneExternalEndpointSpec{
+					APIServer: controlplanev1alpha1.ComponentEndpoint{Host: "my-cluster.example.com"},
 				},
 			},
 			expected: []string{
@@ -79,12 +79,12 @@ func TestAPIServerAltNames(t *testing.T) {
 		},
 		{
 			name: "duplicate SANs are deduplicated",
-			cluster: controlplanev1alpha1.UpstreamCluster{
+			cluster: controlplanev1alpha1.ClusterSpec{
 				APIServer: controlplanev1alpha1.APIServerSpec{
 					Sans: []string{"kubernetes", "127.0.0.1"},
 				},
-				ControlPlaneEndpoint: controlplanev1alpha1.ControlPlaneEndpointSpec{
-					Addresses: []string{"kubernetes"},
+				ControlPlaneExternalEndpoint: controlplanev1alpha1.ControlPlaneExternalEndpointSpec{
+					APIServer: controlplanev1alpha1.ComponentEndpoint{Host: "kubernetes"},
 				},
 			},
 			expected: []string{
@@ -101,7 +101,7 @@ func TestAPIServerAltNames(t *testing.T) {
 		},
 		{
 			name: "empty SANs are removed",
-			cluster: controlplanev1alpha1.UpstreamCluster{
+			cluster: controlplanev1alpha1.ClusterSpec{
 				APIServer: controlplanev1alpha1.APIServerSpec{
 					Sans: []string{"", "valid.example.com", ""},
 				},
@@ -138,10 +138,10 @@ func parseCert(t *testing.T, pemBytes []byte) *x509.Certificate {
 	return cert
 }
 
-func pkiAuthRuntime(name, namespace string, cluster controlplanev1alpha1.UpstreamCluster) *controlplanev1alpha1.Runtime {
+func pkiAuthRuntime(name, namespace string, cluster controlplanev1alpha1.ClusterSpec) *controlplanev1alpha1.Runtime {
 	return &controlplanev1alpha1.Runtime{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
-		Spec:       controlplanev1alpha1.RuntimeSpec{UpstreamCluster: cluster},
+		Spec:       controlplanev1alpha1.RuntimeSpec{Cluster: cluster},
 	}
 }
 
@@ -155,12 +155,12 @@ func TestGeneratePKIAuthSecret(t *testing.T) {
 	}{
 		{
 			name:     "secret name and namespace match the runtime",
-			runtime:  pkiAuthRuntime("my-cluster", "default", controlplanev1alpha1.UpstreamCluster{}),
+			runtime:  pkiAuthRuntime("my-cluster", "default", controlplanev1alpha1.ClusterSpec{}),
 			validate: func(t *testing.T, _ map[string][]byte) {},
 		},
 		{
 			name:    "all PKI keys are present",
-			runtime: pkiAuthRuntime("my-cluster", "default", controlplanev1alpha1.UpstreamCluster{}),
+			runtime: pkiAuthRuntime("my-cluster", "default", controlplanev1alpha1.ClusterSpec{}),
 			validate: func(t *testing.T, data map[string][]byte) {
 				for _, key := range []string{
 					layout.PKI.CACert.SecretKey,
@@ -177,7 +177,7 @@ func TestGeneratePKIAuthSecret(t *testing.T) {
 		},
 		{
 			name:    "all auth kubeconfig keys are present and valid",
-			runtime: pkiAuthRuntime("my-cluster", "default", controlplanev1alpha1.UpstreamCluster{}),
+			runtime: pkiAuthRuntime("my-cluster", "default", controlplanev1alpha1.ClusterSpec{}),
 			validate: func(t *testing.T, data map[string][]byte) {
 				for _, key := range []string{
 					layout.Auth.AdminConf.SecretKey,
@@ -193,7 +193,7 @@ func TestGeneratePKIAuthSecret(t *testing.T) {
 		},
 		{
 			name:    "CA certificate is valid PEM and currently valid",
-			runtime: pkiAuthRuntime("my-cluster", "default", controlplanev1alpha1.UpstreamCluster{}),
+			runtime: pkiAuthRuntime("my-cluster", "default", controlplanev1alpha1.ClusterSpec{}),
 			validate: func(t *testing.T, data map[string][]byte) {
 				now := time.Now()
 				ca := parseCert(t, data[layout.PKI.CACert.SecretKey])
@@ -204,7 +204,7 @@ func TestGeneratePKIAuthSecret(t *testing.T) {
 		},
 		{
 			name:    "component certificates have correct duration, are currently valid, and are signed by the CA",
-			runtime: pkiAuthRuntime("my-cluster", "default", controlplanev1alpha1.UpstreamCluster{}),
+			runtime: pkiAuthRuntime("my-cluster", "default", controlplanev1alpha1.ClusterSpec{}),
 			validate: func(t *testing.T, data map[string][]byte) {
 				now := time.Now()
 				ca := parseCert(t, data[layout.PKI.CACert.SecretKey])
@@ -227,10 +227,10 @@ func TestGeneratePKIAuthSecret(t *testing.T) {
 			},
 		},
 		{
-			name: "controlPlaneEndpoint address is included as apiserver cert SAN",
-			runtime: pkiAuthRuntime("my-cluster", "default", controlplanev1alpha1.UpstreamCluster{
-				ControlPlaneEndpoint: controlplanev1alpha1.ControlPlaneEndpointSpec{
-					Addresses: []string{"my-cluster.example.com"},
+			name: "controlPlaneExternalEndpoint host is included as apiserver cert SAN",
+			runtime: pkiAuthRuntime("my-cluster", "default", controlplanev1alpha1.ClusterSpec{
+				ControlPlaneExternalEndpoint: controlplanev1alpha1.ControlPlaneExternalEndpointSpec{
+					APIServer: controlplanev1alpha1.ComponentEndpoint{Host: "my-cluster.example.com"},
 				},
 			}),
 			validate: func(t *testing.T, data map[string][]byte) {
@@ -248,7 +248,7 @@ func TestGeneratePKIAuthSecret(t *testing.T) {
 		},
 		{
 			name:    "admin kubeconfig current context uses runtime name",
-			runtime: pkiAuthRuntime("prod-cluster", "production", controlplanev1alpha1.UpstreamCluster{}),
+			runtime: pkiAuthRuntime("prod-cluster", "production", controlplanev1alpha1.ClusterSpec{}),
 			validate: func(t *testing.T, data map[string][]byte) {
 				cfg, err := clientcmd.Load(data[layout.Auth.AdminConf.SecretKey])
 				require.NoError(t, err)

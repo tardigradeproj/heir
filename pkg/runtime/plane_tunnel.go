@@ -28,7 +28,7 @@ func GeneratePlaneTunnelService(wrkCtx typ.WorkerContext, runtime *controlplanev
 		"app.kubernetes.io/name":       PlaneTunnelName(runtime.Name),
 		"app.kubernetes.io/managed-by": "heir",
 	}
-	svcSpec := runtime.Spec.ControlPlane.Service
+	tunnelSvcSpec := runtime.Spec.ControlPlane.PlaneTunnel.Service
 	tunnelPort := int32(wrkCtx.PlaneTunnelServerServer)
 	egressPort := int32(wrkCtx.PlaneTunnelServerEgressSelectorPort)
 
@@ -64,7 +64,7 @@ func GeneratePlaneTunnelService(wrkCtx typ.WorkerContext, runtime *controlplanev
 			Labels:    selectorLabels,
 		},
 		Spec: corev1.ServiceSpec{
-			Type:     runtime.Spec.ControlPlane.Service.ServiceType,
+			Type:     tunnelSvcSpec.ServiceType,
 			Selector: selectorLabels,
 			Ports: []corev1.ServicePort{
 				{
@@ -72,7 +72,7 @@ func GeneratePlaneTunnelService(wrkCtx typ.WorkerContext, runtime *controlplanev
 					Port:       tunnelPort,
 					TargetPort: intstr.FromInt32(tunnelPort),
 					Protocol:   corev1.ProtocolTCP,
-					NodePort:   svcSpec.PlaneTunnelNodePort,
+					NodePort:   tunnelSvcSpec.NodePort,
 				},
 			},
 		},

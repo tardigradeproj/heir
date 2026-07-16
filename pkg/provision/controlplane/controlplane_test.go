@@ -475,7 +475,7 @@ func TestParseConfig(t *testing.T) {
 				return writeTempRuntimeConfig(t, minimalRuntimeConfig)
 			},
 			validate: func(t *testing.T, r *v1alpha1.Runtime) {
-				assert.Equal(t, "10.244.0.0/16", r.Spec.UpstreamCluster.Network.PodCIDR)
+				assert.Equal(t, "10.244.0.0/16", r.Spec.Cluster.Network.PodCIDR)
 			},
 		},
 		{
@@ -484,7 +484,7 @@ func TestParseConfig(t *testing.T) {
 				return writeTempRuntimeConfig(t, minimalRuntimeConfig)
 			},
 			validate: func(t *testing.T, r *v1alpha1.Runtime) {
-				assert.Equal(t, "10.96.0.0/16", r.Spec.UpstreamCluster.Network.ServiceCIDR)
+				assert.Equal(t, "10.96.0.0/16", r.Spec.Cluster.Network.ServiceCIDR)
 			},
 		},
 		{
@@ -493,7 +493,7 @@ func TestParseConfig(t *testing.T) {
 				return writeTempRuntimeConfig(t, minimalRuntimeConfig)
 			},
 			validate: func(t *testing.T, r *v1alpha1.Runtime) {
-				assert.Equal(t, "10.96.0.10", r.Spec.UpstreamCluster.Network.Coredns.ClusterDNSIP)
+				assert.Equal(t, "10.96.0.10", r.Spec.Cluster.Network.Coredns.ClusterDNSIP)
 			},
 		},
 		{
@@ -502,8 +502,8 @@ func TestParseConfig(t *testing.T) {
 				return writeTempRuntimeConfig(t, minimalRuntimeConfig)
 			},
 			validate: func(t *testing.T, r *v1alpha1.Runtime) {
-				require.NotNil(t, r.Spec.UpstreamCluster.Network.Coredns.Replicas)
-				assert.Equal(t, int32(2), *r.Spec.UpstreamCluster.Network.Coredns.Replicas)
+				require.NotNil(t, r.Spec.Cluster.Network.Coredns.Replicas)
+				assert.Equal(t, int32(2), *r.Spec.Cluster.Network.Coredns.Replicas)
 			},
 		},
 		{
@@ -522,7 +522,7 @@ spec:
       serviceAccountName: default
     service:
       serviceType: ClusterIP
-  upstreamCluster:
+  cluster:
     storage:
       type: kine
 `)
@@ -549,7 +549,7 @@ spec:
       serviceAccountName: default
     service:
       serviceType: ClusterIP
-  upstreamCluster:
+  cluster:
     storage:
       type: kine
     network:
@@ -557,7 +557,7 @@ spec:
 `)
 			},
 			validate: func(t *testing.T, r *v1alpha1.Runtime) {
-				assert.Equal(t, "192.168.0.0/16", r.Spec.UpstreamCluster.Network.PodCIDR)
+				assert.Equal(t, "192.168.0.0/16", r.Spec.Cluster.Network.PodCIDR)
 			},
 		},
 		{
@@ -577,7 +577,7 @@ spec:
       serviceAccountName: default
     service:
       serviceType: ClusterIP
-  upstreamCluster:
+  cluster:
     storage:
       type: kine
     network:
@@ -586,8 +586,8 @@ spec:
 `)
 			},
 			validate: func(t *testing.T, r *v1alpha1.Runtime) {
-				require.NotNil(t, r.Spec.UpstreamCluster.Network.Coredns.Replicas)
-				assert.Equal(t, int32(3), *r.Spec.UpstreamCluster.Network.Coredns.Replicas)
+				require.NotNil(t, r.Spec.Cluster.Network.Coredns.Replicas)
+				assert.Equal(t, int32(3), *r.Spec.Cluster.Network.Coredns.Replicas)
 			},
 		},
 		{
@@ -617,7 +617,7 @@ spec:
       serviceAccountName: default
     service:
       serviceType: ClusterIP
-  upstreamCluster:
+  cluster:
     storage:
       type: kine
     network:
@@ -626,17 +626,17 @@ spec:
 `)
 			},
 			validate: func(t *testing.T, r *v1alpha1.Runtime) {
-				assert.True(t, r.Spec.UpstreamCluster.Network.KubeProxy.Disabled)
+				assert.True(t, r.Spec.Cluster.Network.KubeProxy.Disabled)
 			},
 		},
 		{
-			name: "controlPlaneEndpoint addresses are preserved",
+			name: "controlPlaneExternalEndpoint host is preserved",
 			makeConfig: func(t *testing.T) string {
 				return writeTempRuntimeConfig(t, runtimeConfigWithExternalAddress)
 			},
 			validate: func(t *testing.T, r *v1alpha1.Runtime) {
-				assert.Equal(t, []string{"my-cluster.example.com"},
-					r.Spec.UpstreamCluster.ControlPlaneEndpoint.Addresses)
+				assert.Equal(t, "my-cluster.example.com",
+					r.Spec.Cluster.ControlPlaneExternalEndpoint.APIServer.Host)
 			},
 		},
 	}

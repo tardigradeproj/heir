@@ -15,7 +15,7 @@ import (
 type NodeProfile struct {
 	KubeletConfiguration string                            `json:"kubeletConfiguration"`
 	KubeletExtraArgs     map[string]string                 `json:"KubeletExtraArgs"`
-	ControlPlaneEndpoint v1alpha1.ControlPlaneEndpointSpec `json:"controlPlaneEndpoint"`
+	ControlPlaneExternalEndpoint v1alpha1.ControlPlaneExternalEndpointSpec `json:"controlPlaneExternalEndpoint"`
 	CNIProvider          string                            `json:"CNIProvider"`
 }
 

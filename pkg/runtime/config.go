@@ -20,7 +20,7 @@ import (
 // owner reference and persisting the result.
 func GenerateControlPlaneConfig(runtime *controlplanev1alpha1.Runtime, layout ControlPlaneLayout) (*corev1.ConfigMap, string, error) {
 	workerProfile := typ.NewWorkerContextWithDefaults()
-	net := runtime.Spec.UpstreamCluster.Network
+	net := runtime.Spec.Cluster.Network
 	kubeproxy, err := component.CreateKubeProxyManifest(runtime)
 	if err != nil {
 		return nil, "", err
@@ -75,7 +75,7 @@ func GenerateControlPlaneConfig(runtime *controlplanev1alpha1.Runtime, layout Co
 		"v":                                "2",
 	}
 	apiserverScript := RenderRunScript("/usr/local/bin/kube-apiserver",
-		MergeArgs(apiServerParameters, runtime.Spec.UpstreamCluster.APIServer.ExtraArgs),
+		MergeArgs(apiServerParameters, runtime.Spec.Cluster.APIServer.ExtraArgs),
 	)
 
 	controllerManagerScript := RenderRunScript("/usr/local/bin/kube-controller-manager",
@@ -93,7 +93,7 @@ func GenerateControlPlaneConfig(runtime *controlplanev1alpha1.Runtime, layout Co
 			"use-service-account-credentials":  "true",
 			"controllers":                      "*,tokencleaner",
 			"v":                                "2",
-		}, runtime.Spec.UpstreamCluster.ControllerManager.ExtraArgs),
+		}, runtime.Spec.Cluster.ControllerManager.ExtraArgs),
 	)
 
 	schedulerScript := RenderRunScript("/usr/local/bin/kube-scheduler",
@@ -103,7 +103,7 @@ func GenerateControlPlaneConfig(runtime *controlplanev1alpha1.Runtime, layout Co
 			"bind-address":              "127.0.0.1",
 			"kubeconfig":                layout.Auth.SchedulerConf.MountPath,
 			"leader-elect":              "true",
-		}, runtime.Spec.UpstreamCluster.Scheduler.ExtraArgs),
+		}, runtime.Spec.Cluster.Scheduler.ExtraArgs),
 	)
 
 	data := map[string]string{
@@ -116,7 +116,7 @@ func GenerateControlPlaneConfig(runtime *controlplanev1alpha1.Runtime, layout Co
 		layout.StaticManifest.Coredns.SecretKey:     string(coredns),
 		layout.StaticManifest.KubeProxy.SecretKey:   string(kubeproxy),
 	}
-	if runtime.Spec.UpstreamCluster.Network.CNI.Supplier == "flannel" {
+	if runtime.Spec.Cluster.Network.CNI.Supplier == "flannel" {
 		flannelConfig, err := component.CreateFlannelCNIManifest(runtime)
 		if err != nil {
 			return nil, "", err
