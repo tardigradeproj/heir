@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"sync"
 	"time"
 
@@ -15,6 +16,10 @@ import (
 	"github.com/tardigradeproj/heir/pkg/tunnel/shrd"
 	"github.com/tardigradeproj/heir/pkg/util"
 	"github.com/tardigradeproj/outbound"
+)
+
+var (
+	refreshTargetInstances = 15 * time.Second
 )
 
 type managedConn struct {
@@ -135,6 +140,9 @@ func (a *Agent) connectionManager(ctx context.Context) error {
 		obs.Server:    a.tunnelServerAddr,
 	})
 
+	identityRefresh := time.NewTicker(refreshTargetInstances)
+	defer identityRefresh.Stop()
+
 	for {
 		a.conn.mu.RLock()
 		current := len(a.conn.tracker)
@@ -148,8 +156,10 @@ func (a *Agent) connectionManager(ctx context.Context) error {
 			case id := <-a.conn.disconnected:
 				lg.WithFields(log.Fields{
 					obs.PlaneTunnelID: id,
-					"target":             target,
+					"target":          target,
 				}).Info("connection lost, reconnecting")
+			case <-identityRefresh.C:
+				a.refreshTarget(ctx, lg)
 			}
 			continue
 		}
@@ -206,6 +216,39 @@ func (a *Agent) connect(ctx context.Context) (*outbound.Tunnel, *shrd.PlaneTunne
 
 	lg.WithField(obs.PlaneTunnelID, identity.Id).Debug("plane tunnel identity received")
 	return tunnel, identity, nil
+}
+
+// refreshTarget picks a random tracked connection, fetches its identity, and
+// updates a.conn.target so the connection manager can react to scale-ups.
+func (a *Agent) refreshTarget(ctx context.Context, lg *log.Entry) {
+	lg.Debug("refreshing plane tunnel servers count")
+	a.conn.mu.RLock()
+	conns := make([]managedConn, 0, len(a.conn.tracker))
+	for _, c := range a.conn.tracker {
+		conns = append(conns, c)
+	}
+	a.conn.mu.RUnlock()
+
+	if len(conns) == 0 {
+		return
+	}
+
+	mc := conns[rand.IntN(len(conns))]
+	identity, err := a.fetchIdentity(ctx, mc.tunnel)
+	if err != nil {
+		lg.WithError(err).Warn("failed to refresh plane tunnel identity")
+		return
+	}
+
+	a.conn.mu.Lock()
+	if identity.NumberOfInstances != a.conn.target {
+		lg.WithFields(log.Fields{
+			"old.target": a.conn.target,
+			"new.target": identity.NumberOfInstances,
+		}).Info("plane tunnel target instance count updated")
+		a.conn.target = identity.NumberOfInstances
+	}
+	a.conn.mu.Unlock()
 }
 
 // fetchIdentity dials the identity upstream and reads the server's identity payload.
