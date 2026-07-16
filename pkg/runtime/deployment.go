@@ -61,7 +61,7 @@ func GenerateDeployment(runtime *controlplanev1alpha1.Runtime, layout ControlPla
 			},
 		},
 	}
-	storage := runtime.Spec.UpstreamCluster.Storage
+	storage := runtime.Spec.Cluster.Storage
 	var env []corev1.EnvVar
 	if storage.Type == "kine" {
 		if storage.Kine != nil && storage.Kine.DataSourceRef.Name != "" {
@@ -96,7 +96,7 @@ func GenerateDeployment(runtime *controlplanev1alpha1.Runtime, layout ControlPla
 		{Name: "static-config", MountPath: layout.StaticManifest.Coredns.MountPath, SubPath: layout.StaticManifest.Coredns.SecretKey, ReadOnly: true},
 		{Name: "static-config", MountPath: layout.StaticManifest.NodeProfile.MountPath, SubPath: layout.StaticManifest.NodeProfile.SecretKey, ReadOnly: true},
 	}
-	if runtime.Spec.UpstreamCluster.Network.CNI.Supplier == "flannel" {
+	if runtime.Spec.Cluster.Network.CNI.Supplier == "flannel" {
 		volumeMounts = append(volumeMounts, corev1.VolumeMount{
 			Name: "static-config", MountPath: layout.StaticManifest.FlannelCNI.MountPath, SubPath: layout.StaticManifest.FlannelCNI.SecretKey, ReadOnly: true},
 		)

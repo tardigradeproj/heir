@@ -15,7 +15,7 @@ import (
 func defaultNodeProfileRuntime(kubelet controlplanev1alpha1.KubeletSpec) *controlplanev1alpha1.Runtime {
 	return &controlplanev1alpha1.Runtime{
 		Spec: controlplanev1alpha1.RuntimeSpec{
-			UpstreamCluster: controlplanev1alpha1.UpstreamCluster{
+			Cluster: controlplanev1alpha1.ClusterSpec{
 				Network: controlplanev1alpha1.NetworkSpec{
 					Coredns: controlplanev1alpha1.CorednsSpec{
 						ClusterDNSIP: "10.96.0.10",

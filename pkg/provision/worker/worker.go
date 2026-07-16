@@ -74,16 +74,16 @@ func Run(ctx context.Context, opts ...typ.Option) error {
 
 	// Phase 2 — update the API server upstream with definitive addresses from the profile.
 	apiUpstream.Update(endpointsFromAddresses(
-		profile.ControlPlaneEndpoint.Addresses,
-		int(profile.ControlPlaneEndpoint.APIServer.Port),
+		[]string{profile.ControlPlaneExternalEndpoint.APIServer.Host},
+		int(profile.ControlPlaneExternalEndpoint.APIServer.Port),
 	))
 	log.Debug("starting plane tunnel agent")
 	planeTunnelAgent, err := agent.New(
 		fmt.Sprintf("%s/kubelet-client-current.pem", workerCtx.KubeletPKIPath),
 		fmt.Sprintf("%s/kubelet-client-current.pem", workerCtx.KubeletPKIPath),
 		workerCtx.KubeletPKICaCertPath,
-		fmt.Sprintf("%s:%d", profile.ControlPlaneEndpoint.Addresses[0],
-			profile.ControlPlaneEndpoint.PlaneTunnel.Port),
+		fmt.Sprintf("%s:%d", profile.ControlPlaneExternalEndpoint.PlaneTunnel.Host,
+			profile.ControlPlaneExternalEndpoint.PlaneTunnel.Port),
 		"127.0.0.1:10250",
 		15*time.Second,
 	)
@@ -165,8 +165,8 @@ func resolveInitialAPIServerEndpoints(log *logrus.Entry, workerCtx *typ.WorkerCo
 		}
 		log.WithField("source", "node-profile").Debug("seeding API server proxy from cached profile")
 		return endpointsFromAddresses(
-			nodeProfile.ControlPlaneEndpoint.Addresses,
-			int(nodeProfile.ControlPlaneEndpoint.APIServer.Port),
+			[]string{nodeProfile.ControlPlaneExternalEndpoint.APIServer.Host},
+			int(nodeProfile.ControlPlaneExternalEndpoint.APIServer.Port),
 		), nil
 	}
 	if !errors.Is(statErr, os.ErrNotExist) {

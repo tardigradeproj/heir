@@ -52,9 +52,9 @@ func CreateBootstrapToken(ctx context.Context, kubeconfig, contextName string, e
 		return "", fmt.Errorf("failed to create kubernetes client: %w", err)
 	}
 
-	externalAddresses, err := readExternalAddressesFromNodeProfileConfigMap(ctx, client)
+	apiServerAddress, err := readAPIServerAddressFromNodeProfileConfigMap(ctx, client)
 	if err != nil {
-		return "", fmt.Errorf("failed to read external addresses from node profile configmap: %w", err)
+		return "", fmt.Errorf("failed to read external address from node profile configmap: %w", err)
 	}
 
 	secret := NewSecret(t, expiry)
@@ -62,7 +62,7 @@ func CreateBootstrapToken(ctx context.Context, kubeconfig, contextName string, e
 		return "", fmt.Errorf("failed to create bootstrap token secret: %w", err)
 	}
 
-	bootstrapKubeconfig, err := buildBootstrapKubeconfig(t, caData, externalAddresses)
+	bootstrapKubeconfig, err := buildBootstrapKubeconfig(t, caData, apiServerAddress)
 	if err != nil {
 		return "", fmt.Errorf("failed to build bootstrap kubeconfig: %w", err)
 	}
@@ -70,27 +70,23 @@ func CreateBootstrapToken(ctx context.Context, kubeconfig, contextName string, e
 	return base64.StdEncoding.EncodeToString(bootstrapKubeconfig), nil
 }
 
-// readExternalAddressesFromNodeProfileConfigMap fetches the node profile configmap from
-// kube-system and returns the external API server addresses.
-func readExternalAddressesFromNodeProfileConfigMap(ctx context.Context, client kubernetes.Interface) ([]string, error) {
+// readAPIServerAddressFromNodeProfileConfigMap fetches the node profile configmap from
+// kube-system and returns the external API server address as a URL string.
+func readAPIServerAddressFromNodeProfileConfigMap(ctx context.Context, client kubernetes.Interface) (string, error) {
 	wrkDefaults := typ.NewWorkerContextWithDefaults()
 	cm, err := client.CoreV1().ConfigMaps(metav1.NamespaceSystem).Get(ctx, wrkDefaults.WorkerProfileConfigMapName, metav1.GetOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("failed to get node profile configmap %q: %w", wrkDefaults.WorkerProfileConfigMapName, err)
+		return "", fmt.Errorf("failed to get node profile configmap %q: %w", wrkDefaults.WorkerProfileConfigMapName, err)
 	}
 	raw, ok := cm.Data[wrkDefaults.ControlPlaneEndpointNodeProfileConfigmapKey]
 	if !ok {
-		return nil, fmt.Errorf("node profile configmap does not contain api server external addresses")
+		return "", fmt.Errorf("node profile configmap does not contain api server external address")
 	}
-	var nodeProfile v1alpha1.ControlPlaneEndpointSpec
+	var nodeProfile v1alpha1.ControlPlaneExternalEndpointSpec
 	if err := json.Unmarshal([]byte(raw), &nodeProfile); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal external addresses: %w", err)
+		return "", fmt.Errorf("failed to unmarshal external address: %w", err)
 	}
-	addresses := make([]string, 0, len(nodeProfile.Addresses))
-	for _, addr := range nodeProfile.Addresses {
-		addresses = append(addresses, fmt.Sprintf("https://%s:%d", addr, nodeProfile.APIServer.Port))
-	}
-	return addresses, nil
+	return fmt.Sprintf("https://%s:%d", nodeProfile.APIServer.Host, nodeProfile.APIServer.Port), nil
 }
 
 func extractClusterInfo(clientConfig clientcmd.ClientConfig, contextName string) (server string, caData []byte, err error) {
@@ -123,27 +119,18 @@ func extractClusterInfo(clientConfig clientcmd.ClientConfig, contextName string)
 	return cluster.Server, cluster.CertificateAuthorityData, nil
 }
 
-// buildBootstrapKubeconfig builds a kubeconfig containing one primary cluster entry
-// (used for TLS bootstrap) plus one additional entry per external address so that
-// the worker's API server proxy is seeded with all known upstream hosts.
-func buildBootstrapKubeconfig(t Token, caData []byte, externalAddresses []string) ([]byte, error) {
-
+// buildBootstrapKubeconfig builds a bootstrap kubeconfig with a single cluster entry
+// pointing at apiServerAddress. The worker's API server proxy uses this to seed its
+// upstream before the full node profile is available.
+func buildBootstrapKubeconfig(t Token, caData []byte, apiServerAddress string) ([]byte, error) {
 	const (
 		clusterName = "bootstrap"
 		userName    = "tls-bootstrap-token-user"
 	)
 	cfg := clientcmdapi.NewConfig()
-	// Add one cluster entry per external address. These are picked up by the worker's
-	// API server proxy to seed its upstream list before the node profile is available.
-	for i, addr := range externalAddresses {
-		clusterIndName := fmt.Sprintf("%s-%d", clusterName, i)
-		if i == 0 {
-			clusterIndName = clusterName
-		}
-		cfg.Clusters[clusterIndName] = &clientcmdapi.Cluster{
-			Server:                   addr,
-			CertificateAuthorityData: caData,
-		}
+	cfg.Clusters[clusterName] = &clientcmdapi.Cluster{
+		Server:                   apiServerAddress,
+		CertificateAuthorityData: caData,
 	}
 	cfg.AuthInfos[userName] = &clientcmdapi.AuthInfo{
 		Token: t.String(),

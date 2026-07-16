@@ -5,7 +5,7 @@ type CorednsSpec struct {
 	// +kubebuilder:validation:Minimum=1
 	Replicas *int32 `json:"replicas,omitempty"`
 	//+kubebuilder:default={"register":"registry.k8s.io", "image":"coredns/coredns:v1.12.1"}
-	RegisterSetting RegistrySettings `json:"registerSetting,omitempty"`
+	RegistrySettings RegistrySettings `json:"registrySettings,omitempty"`
 	//+kubebuilder:default="10.96.0.10"
 	ClusterDNSIP string `json:"clusterDNSIP,omitempty"`
 }

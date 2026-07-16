@@ -30,10 +30,10 @@ func CreateKubeProxyManifest(runtime *controlplanev1alpha1.Runtime) ([]byte, err
 }
 
 func getConfig(runtime *controlplanev1alpha1.Runtime) (*proxyConfig, error) {
-	if runtime.Spec.UpstreamCluster.Network.KubeProxy.Disabled {
+	if runtime.Spec.Cluster.Network.KubeProxy.Disabled {
 		return nil, nil
 	}
-	network := runtime.Spec.UpstreamCluster.Network
+	network := runtime.Spec.Cluster.Network
 	args := map[string]string{
 		"config":            "/var/lib/kube-proxy/config.conf",
 		"hostname-override": "$(NODE_NAME)",
@@ -56,8 +56,8 @@ func getConfig(runtime *controlplanev1alpha1.Runtime) (*proxyConfig, error) {
 		Enabled:              true,
 		ClusterCIDR:          network.PodCIDR,
 		ControlPlaneEndpoint: "https://127.0.0.1:6443",
-		Image:                fmt.Sprintf("%s/%s", network.KubeProxy.RegisterSetting.Registry, network.KubeProxy.RegisterSetting.Image),
-		PullPolicy:           string(network.KubeProxy.RegisterSetting.PullPolicy),
+		Image:                fmt.Sprintf("%s/%s", network.KubeProxy.RegistrySettings.Registry, network.KubeProxy.RegistrySettings.Image),
+		PullPolicy:           string(network.KubeProxy.RegistrySettings.PullPolicy),
 		DualStack:            false,
 		Mode:                 network.KubeProxy.Mode,
 		MetricsBindAddress:   network.KubeProxy.MetricsBindAddress,

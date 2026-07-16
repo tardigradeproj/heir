@@ -17,7 +17,7 @@ import (
 func corednsRuntime(spec controlplanev1alpha1.CorednsSpec) *controlplanev1alpha1.Runtime {
 	return &controlplanev1alpha1.Runtime{
 		Spec: controlplanev1alpha1.RuntimeSpec{
-			UpstreamCluster: controlplanev1alpha1.UpstreamCluster{
+			Cluster: controlplanev1alpha1.ClusterSpec{
 				Network: controlplanev1alpha1.NetworkSpec{
 					Coredns: spec,
 				},
@@ -36,7 +36,7 @@ func TestCreateCorednsManifest(t *testing.T) {
 			name: "all expected resource kinds are present",
 			spec: controlplanev1alpha1.CorednsSpec{
 				Replicas: ptr.To(int32(2)),
-				RegisterSetting: controlplanev1alpha1.RegistrySettings{
+				RegistrySettings: controlplanev1alpha1.RegistrySettings{
 					Registry: "registry.k8s.io",
 					Image:    "coredns/coredns:v1.12.1",
 				},
@@ -88,7 +88,7 @@ func TestCreateCorednsManifest(t *testing.T) {
 			name: "deployment uses image from registry settings",
 			spec: controlplanev1alpha1.CorednsSpec{
 				Replicas: ptr.To(int32(2)),
-				RegisterSetting: controlplanev1alpha1.RegistrySettings{
+				RegistrySettings: controlplanev1alpha1.RegistrySettings{
 					Registry:   "my.registry.io",
 					Image:      "coredns/coredns:v1.11.0",
 					PullPolicy: corev1.PullAlways,

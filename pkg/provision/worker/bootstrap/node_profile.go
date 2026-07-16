@@ -64,13 +64,13 @@ func ReadWorkerNodeProfile(ctx context.Context, wrkCtx *typ.WorkerContext) (*typ
 				return retry.Unrecoverable(fmt.Errorf("failed to unmarshal kubelet extra args content: %v", err))
 			}
 
-			controlPlaneEndpointNodeProfile := v1alpha1.ControlPlaneEndpointSpec{}
+			controlPlaneEndpointNodeProfile := v1alpha1.ControlPlaneExternalEndpointSpec{}
 			if err = json.Unmarshal([]byte(controlPlaneEndpointNodeProfileInfo), &controlPlaneEndpointNodeProfile); err != nil {
 				log.WithError(err).Errorf("failed to unmarshal API server external address content: %v", err)
 				return retry.Unrecoverable(fmt.Errorf("failed to unmarshal API server external address content: %v", err))
 			}
 
-			profile = &typ.NodeProfile{KubeletConfiguration: kubeletConfig, KubeletExtraArgs: extraArgs, ControlPlaneEndpoint: controlPlaneEndpointNodeProfile, CNIProvider: cniProvider}
+			profile = &typ.NodeProfile{KubeletConfiguration: kubeletConfig, KubeletExtraArgs: extraArgs, ControlPlaneExternalEndpoint: controlPlaneEndpointNodeProfile, CNIProvider: cniProvider}
 			return nil
 		},
 		retry.Attempts(4),

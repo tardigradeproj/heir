@@ -10,7 +10,7 @@ import (
 
 func CreateFlannelCNIManifest(runtime *controlplanev1alpha1.Runtime) ([]byte, error) {
 	cfg := &flannelCNIConfig{
-		PodCIDR: runtime.Spec.UpstreamCluster.Network.PodCIDR,
+		PodCIDR: runtime.Spec.Cluster.Network.PodCIDR,
 	}
 	var buf bytes.Buffer
 	if err := (&templatewriter.TemplateWriter{

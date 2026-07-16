@@ -16,22 +16,18 @@ import (
 // CertificateDuration is the default lifetime for all generated certificates.
 var CertificateDuration = time.Duration(8760) * time.Hour
 
-func planeTunnelAltNames(externalAddresses []string) []string {
-	sans := make([]string, 0, len(externalAddresses))
-	for _, addr := range externalAddresses {
-		if addr != "" {
-			sans = append(sans, addr)
-		}
+func planeTunnelAltNames(host string) []string {
+	if host == "" {
+		return nil
 	}
-	slices.Sort(sans)
-	return slices.Compact(sans)
+	return []string{host}
 }
 
 // APIServerAltNames builds the full list of Subject Alternative Names for the
 // kube-apiserver certificate, merging user-supplied SANs with the required defaults.
-func APIServerAltNames(cluster controlplanev1alpha1.UpstreamCluster) []string {
+func APIServerAltNames(cluster controlplanev1alpha1.ClusterSpec) []string {
 	apiServer := cluster.APIServer
-	controlPlaneEndpoint := cluster.ControlPlaneEndpoint
+	controlPlaneEndpoint := cluster.ControlPlaneExternalEndpoint
 	sans := append([]string{}, apiServer.Sans...)
 	sans = append(sans,
 		"127.0.0.1",
@@ -44,10 +40,8 @@ func APIServerAltNames(cluster controlplanev1alpha1.UpstreamCluster) []string {
 		"server.kubernetes.local",
 		"api-server.kubernetes.local",
 	)
-	for _, externalAddress := range controlPlaneEndpoint.Addresses {
-		if externalAddress != "" {
-			sans = append(sans, externalAddress)
-		}
+	if h := controlPlaneEndpoint.APIServer.Host; h != "" {
+		sans = append(sans, h)
 	}
 
 	sans = slices.DeleteFunc(sans, func(s string) bool {
@@ -69,7 +63,7 @@ func GeneratePKIAuthSecret(runtime *controlplanev1alpha1.Runtime, layout Control
 	planeTunnelServer, err := pki.SignCSR(*ca, pki.CSR{
 		Name:      "plane-tunnel",
 		O:         "system:plane-tunnel",
-		Hostnames: planeTunnelAltNames(runtime.Spec.UpstreamCluster.ControlPlaneEndpoint.Addresses),
+		Hostnames: planeTunnelAltNames(runtime.Spec.Cluster.ControlPlaneExternalEndpoint.PlaneTunnel.Host),
 	}, CertificateDuration)
 	if err != nil {
 		return nil, err
@@ -86,7 +80,7 @@ func GeneratePKIAuthSecret(runtime *controlplanev1alpha1.Runtime, layout Control
 		Name:      "kubernetes",
 		O:         "kubernetes",
 		CN:        "kube-apiserver",
-		Hostnames: APIServerAltNames(runtime.Spec.UpstreamCluster),
+		Hostnames: APIServerAltNames(runtime.Spec.Cluster),
 	}, CertificateDuration)
 	if err != nil {
 		return nil, err

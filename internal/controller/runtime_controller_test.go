@@ -182,7 +182,7 @@ var _ = Describe("Runtime Controller PKI", func() {
 								ServiceType: corev1.ServiceTypeClusterIP,
 							},
 						},
-						UpstreamCluster: controlplanev1alpha1.UpstreamCluster{
+						Cluster: controlplanev1alpha1.ClusterSpec{
 							APIServer: controlplanev1alpha1.APIServerSpec{
 								Sans: []string{
 									"tardigrade.vm.co.mz",

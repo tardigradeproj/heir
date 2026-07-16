@@ -86,11 +86,8 @@ func Provision(ctx context.Context, opts ...Option) error {
 		return fmt.Errorf("failed to setup plane tunnel: %w", err)
 	}
 	if pCtx.clusterKubeconfig != "" {
-		controlPlaneEndpoint := runtime.Spec.UpstreamCluster.ControlPlaneEndpoint
-		apiServerAddresses := make([]string, 0, len(controlPlaneEndpoint.Addresses))
-		for _, addr := range controlPlaneEndpoint.Addresses {
-			apiServerAddresses = append(apiServerAddresses, fmt.Sprintf("https://%s:%d", addr, controlPlaneEndpoint.APIServer.Port))
-		}
+		controlPlaneEndpoint := runtime.Spec.Cluster.ControlPlaneExternalEndpoint
+		apiServerAddresses := []string{fmt.Sprintf("https://%s:%d", controlPlaneEndpoint.APIServer.Host, controlPlaneEndpoint.APIServer.Port)}
 		if err := writeKubeconfig(kubeconfig, pCtx.clusterKubeconfig, apiServerAddresses, controlPlaneEndpoint.APIServer.Port, pCtx.useLocalHostContext); err != nil {
 			return fmt.Errorf("failed to write kubeconfig to %s: %w", pCtx.clusterKubeconfig, err)
 		}
