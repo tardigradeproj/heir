@@ -1,0 +1,172 @@
+package egress_selector
+
+import (
+	"bufio"
+	"context"
+	"crypto/tls"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"sync"
+
+	"github.com/sirupsen/logrus"
+	obs "github.com/tardigradeproj/heir/pkg/observability"
+	"github.com/tardigradeproj/heir/pkg/tunnel/server/broker"
+	"github.com/tardigradeproj/heir/pkg/tunnel/shrd"
+	"github.com/tardigradeproj/heir/pkg/util"
+)
+
+type brokerDialer interface {
+	Dial(ctx context.Context, nodeName string, upstreamID uint8) (net.Conn, error)
+}
+
+type Server struct {
+	srv            *http.Server
+	broker         brokerDialer
+	serverCertPath string
+	serverKeyPath  string
+	caCertPath     string
+}
+
+func New(addr, serverCertPath, serverKeyPath, caCertPath string, broker *broker.Broker) *Server {
+	s := &Server{
+		broker:         broker,
+		serverCertPath: serverCertPath,
+		serverKeyPath:  serverKeyPath,
+		caCertPath:     caCertPath,
+	}
+	s.srv = &http.Server{
+		Addr:    addr,
+		Handler: http.HandlerFunc(s.handle),
+	}
+	return s
+}
+
+func (s *Server) Serve(ctx context.Context) error {
+	tlsConfig, err := util.SetupMTLSServerConfig(s.serverCertPath, s.serverKeyPath, s.caCertPath)
+	if err != nil {
+		return err
+	}
+	ln, err := tls.Listen("tcp", s.srv.Addr, tlsConfig)
+	if err != nil {
+		return err
+	}
+	go func() {
+		<-ctx.Done()
+		_ = s.srv.Shutdown(context.Background())
+	}()
+	logrus.WithField(obs.Addr, ln.Addr()).
+		WithField(obs.Component, "egress_selector").
+		Info("Listening for connections")
+	if err := s.srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	return nil
+}
+
+func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
+	log := logrus.WithFields(logrus.Fields{"method": r.Method, "host": r.Host, "userAgent": r.UserAgent()})
+	log.Debug("received request")
+	if r.TLS != nil && len(r.TLS.PeerCertificates) > 0 {
+		log.WithField("commonName", r.TLS.PeerCertificates[0].Subject.CommonName).Debug("TLS client identity")
+	}
+	if r.Method != http.MethodConnect {
+		http.Error(w, "this proxy only supports CONNECT passthrough", http.StatusMethodNotAllowed)
+		return
+	}
+
+	hijacker, ok := w.(http.Hijacker)
+	if !ok {
+		http.Error(w, "hijacking not supported", http.StatusInternalServerError)
+		return
+	}
+
+	conn, bufrw, err := hijacker.Hijack()
+	if err != nil {
+		log.WithError(err).Error("failed to setup request data stream")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	nodeName, _, err := net.SplitHostPort(r.Host)
+	if err != nil {
+		nodeName = r.Host
+	}
+
+	lg := log.WithField(obs.NodeName, nodeName)
+
+	stream, err := s.broker.Dial(r.Context(), nodeName, shrd.KubeletUpstreamID)
+	if err != nil {
+		lg.WithError(err).Warn("failed to dial kubelet upstream")
+		fmt.Fprintf(conn, "HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n")
+		conn.Close()
+		return
+	}
+	log.WithField("upstreamID", shrd.KubeletUpstreamID).
+		WithField("node.name", nodeName).
+		Debug("dialing upstream")
+	defer stream.Close()
+
+	if _, err := fmt.Fprintf(bufrw, "HTTP/1.1 200 Connection Established\r\n\r\n"); err != nil {
+		lg.WithError(err).Warn("failed to write 200 response")
+		conn.Close()
+		return
+	}
+	if err := bufrw.Flush(); err != nil {
+		lg.WithError(err).Warn("failed to flush 200 response")
+		conn.Close()
+		return
+	}
+
+	splice(&hijackedConn{Conn: conn, r: bufrw.Reader}, stream)
+}
+
+// hijackedConn wraps a hijacked net.Conn so that reads first drain the buffered
+// reader left by the HTTP server before falling through to the raw connection.
+type hijackedConn struct {
+	net.Conn
+	r *bufio.Reader
+}
+
+func (h *hijackedConn) Read(b []byte) (int, error) {
+	return h.r.Read(b)
+}
+
+func splice(conn, tunnel net.Conn) {
+	var wg sync.WaitGroup
+	wg.Add(2)
+	closeWrite := func(c net.Conn) {
+		if cw, ok := c.(interface{ CloseWrite() error }); ok {
+			cw.CloseWrite()
+		} else {
+			_ = c.Close()
+		}
+	}
+
+	go func() {
+		defer wg.Done()
+		_, err := io.Copy(tunnel, conn)
+		if err != nil {
+			_ = tunnel.Close()
+			_ = conn.Close()
+			return
+		}
+		closeWrite(tunnel)
+	}()
+
+	go func() {
+		defer wg.Done()
+		_, err := io.Copy(conn, tunnel)
+		if err != nil {
+			_ = tunnel.Close()
+			_ = conn.Close()
+			return
+		}
+		closeWrite(conn)
+	}()
+
+	wg.Wait()
+	_ = tunnel.Close()
+	_ = conn.Close()
+}

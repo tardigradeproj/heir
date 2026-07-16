@@ -32,6 +32,9 @@ db/*
 # Kubeconfig might contain secrets
 *.kubeconfig
 
+# Local PKI — certificates and keys generated for development
+pki/
+
 artifacts/*
 !artifacts/embed*.go
 integration-test/tardigrade
@@ -41,3 +44,4 @@ integration-test/kubeconfig.yaml
 .local-cred
 # Added by goreleaser init:
 dist/
+/tunnel

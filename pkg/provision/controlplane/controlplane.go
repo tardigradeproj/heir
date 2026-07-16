@@ -81,6 +81,10 @@ func Provision(ctx context.Context, opts ...Option) error {
 	if err := setupDeployment(ctx, &cleaner, client, runtime, layout, configHash); err != nil {
 		return fmt.Errorf("failed to setup deployment: %w", err)
 	}
+
+	if err := setupPlaneTunnel(ctx, &cleaner, client, runtime, wrkCtx, layout); err != nil {
+		return fmt.Errorf("failed to setup plane tunnel: %w", err)
+	}
 	if pCtx.clusterKubeconfig != "" {
 		controlPlaneEndpoint := runtime.Spec.UpstreamCluster.ControlPlaneEndpoint
 		apiServerAddresses := make([]string, 0, len(controlPlaneEndpoint.Addresses))
@@ -160,7 +164,7 @@ func setupConfig(ctx context.Context, cleaner *cleanup.Cleanup, client kubernete
 }
 
 func setupService(ctx context.Context, cleaner *cleanup.Cleanup, client kubernetes.Interface, runtime *v1alpha1.Runtime, wrkCtx *typ.WorkerContext) error {
-	svc, err := heirruntime.GenerateService(runtime, wrkCtx)
+	svc, err := heirruntime.GenerateService(runtime)
 	if err != nil {
 		return err
 	}
@@ -192,6 +196,40 @@ func setupDeployment(ctx context.Context, cleaner *cleanup.Cleanup, client kuber
 		}
 	})
 	log.Info("deployment created")
+	return nil
+}
+
+func setupPlaneTunnel(ctx context.Context, cleaner *cleanup.Cleanup, client kubernetes.Interface, runtime *v1alpha1.Runtime, wrkCtx *typ.WorkerContext, layout heirruntime.ControlPlaneLayout) error {
+	services, err := heirruntime.GeneratePlaneTunnelService(*wrkCtx, runtime)
+	if err != nil {
+		return err
+	}
+	for i := range services {
+		svc := &services[i]
+		log.WithField("service", svc.Name).Info("creating plane tunnel service")
+		if _, err := client.CoreV1().Services(runtime.Namespace).Create(ctx, svc, metav1.CreateOptions{}); err != nil {
+			return fmt.Errorf("failed to create plane tunnel service %s: %w", svc.Name, err)
+		}
+		name := svc.Name
+		cleaner.Add(func() {
+			if err := client.CoreV1().Services(runtime.Namespace).Delete(ctx, name, metav1.DeleteOptions{}); err != nil {
+				log.WithError(err).WithField("ops", "cleanup").Error("failed to delete plane tunnel service")
+			}
+		})
+	}
+	log.Info("plane tunnel services created")
+
+	deploy := heirruntime.GeneratePlaneTunnelDeployment(*wrkCtx, runtime, layout)
+	log.WithField("deployment", deploy.Name).Info("creating plane tunnel deployment")
+	if _, err := client.AppsV1().Deployments(runtime.Namespace).Create(ctx, deploy, metav1.CreateOptions{}); err != nil {
+		return fmt.Errorf("failed to create plane tunnel deployment: %w", err)
+	}
+	cleaner.Add(func() {
+		if err := client.AppsV1().Deployments(runtime.Namespace).Delete(ctx, deploy.Name, metav1.DeleteOptions{}); err != nil {
+			log.WithError(err).WithField("ops", "cleanup").Error("failed to delete plane tunnel deployment")
+		}
+	})
+	log.Info("plane tunnel deployment created")
 	return nil
 }
 

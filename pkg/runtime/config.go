@@ -30,12 +30,27 @@ func GenerateControlPlaneConfig(runtime *controlplanev1alpha1.Runtime, layout Co
 	if err != nil {
 		return nil, "", err
 	}
+	egressSelectorConfiguration, err := component.CreateEgressSelectorConfiguration(component.EgressSelectorConfig{
+		EgressURL: fmt.Sprintf("https://%s:%d",
+			PlaneTunnelEgressName(runtime.Name),
+			int32(workerProfile.PlaneTunnelServerEgressSelectorPort)),
+		CACertPath:     layout.PKI.CACert.MountPath,
+		ClientCertPath: layout.PKI.ApiServerPlaneTunnelCert.MountPath,
+		ClientKeyPath:  layout.PKI.ApiServerPlaneTunnelKey.MountPath,
+	})
+	if err != nil {
+		return nil, "", err
+	}
 	nodeProfile, err := component.CreateNodeProfileManifest(workerProfile, runtime)
 	if err != nil {
 		return nil, "", err
 	}
 
 	apiServerParameters := map[string]string{
+		// kubelet-preferred-address-types=Hostname ensures the API server connects to worker nodes using their registered hostname. The hostname is used
+		//as the TLS ServerName (SNI), which the kubelet's serving certificate always carries as a hostname SAN.
+		"kubelet-preferred-address-types":  "Hostname",
+		"egress-selector-config-file":      layout.Config.EgressSelector.MountPath,
 		"advertise-address":                "",
 		"allow-privileged":                 "true",
 		"endpoint-reconciler-type":         "none",
@@ -58,9 +73,6 @@ func GenerateControlPlaneConfig(runtime *controlplanev1alpha1.Runtime, layout Co
 		"tls-cert-file":                    layout.PKI.APIServerCert.MountPath,
 		"tls-private-key-file":             layout.PKI.APIServerKey.MountPath,
 		"v":                                "2",
-	}
-	if runtime.Spec.UpstreamCluster.Network.Konnectivity.Enabled {
-		apiServerParameters["egress-selector-config-file"] = layout.Config.Konnectivity.MountPath
 	}
 	apiserverScript := RenderRunScript("/usr/local/bin/kube-apiserver",
 		MergeArgs(apiServerParameters, runtime.Spec.UpstreamCluster.APIServer.ExtraArgs),
@@ -98,18 +110,11 @@ func GenerateControlPlaneConfig(runtime *controlplanev1alpha1.Runtime, layout Co
 		layout.Config.APIServer.SecretKey:           apiserverScript,
 		layout.Config.ControllerManager.SecretKey:   controllerManagerScript,
 		layout.Config.Scheduler.SecretKey:           schedulerScript,
+		layout.Config.EgressSelector.SecretKey:      string(egressSelectorConfiguration),
 		layout.StaticManifest.Bootstrap.SecretKey:   string(tlsbootstrap),
 		layout.StaticManifest.NodeProfile.SecretKey: string(nodeProfile),
 		layout.StaticManifest.Coredns.SecretKey:     string(coredns),
 		layout.StaticManifest.KubeProxy.SecretKey:   string(kubeproxy),
-	}
-	if runtime.Spec.UpstreamCluster.Network.Konnectivity.Enabled {
-		data[layout.Config.Konnectivity.SecretKey] = renderKonnectivityService(workerProfile.KonnectivityUdsName)
-		konnectivityAgent, err := component.CreateKonnectivityAgentManifest(runtime, workerProfile)
-		if err != nil {
-			return nil, "", err
-		}
-		data[layout.StaticManifest.KonnectivityAgent.SecretKey] = string(konnectivityAgent)
 	}
 	if runtime.Spec.UpstreamCluster.Network.CNI.Supplier == "flannel" {
 		flannelConfig, err := component.CreateFlannelCNIManifest(runtime)
@@ -164,19 +169,6 @@ func MergeArgs(defaults, extra map[string]string) map[string]string {
 		merged[k] = v
 	}
 	return merged
-}
-func renderKonnectivityService(udsName string) string {
-	return fmt.Sprintf(`
-apiVersion: apiserver.k8s.io/v1beta1
-kind: EgressSelectorConfiguration
-egressSelections:
-- name: cluster
-  connection:
-    proxyProtocol: GRPC
-    transport:
-      uds:
-        udsName: %s
-`, udsName)
 }
 
 // RenderRunScript produces a shell run-script for the given binary and args.

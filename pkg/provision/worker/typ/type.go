@@ -80,10 +80,10 @@ type WorkerContext struct {
 
 	CNIBinFolderPath string `default:"/opt/cni/bin"`
 
-	KonnectivityUdsName                  string `default:"/etc/kubernetes/konnectivity-server/konnectivity-server.socket"`
-	KonnectivityProxyServerPort          int32  `default:"8132"`
-	ApiServerWorkerProxyServerAddress    string `default:"0.0.0.0:6443"`
-	KonnectivityWorkerProxyServerAddress string `default:"0.0.0.0:8132"`
+	ApiServerWorkerProxyServerAddress string `default:"0.0.0.0:6443"`
+
+	PlaneTunnelServerEgressSelectorPort int `default:"9443"`
+	PlaneTunnelServerServer             int `default:"9445"`
 }
 
 func NewWorkerContextWithDefaults() *WorkerContext {

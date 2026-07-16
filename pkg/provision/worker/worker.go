@@ -19,12 +19,12 @@ import (
 	"github.com/tardigradeproj/heir/pkg/provision/worker/proxy"
 	"github.com/tardigradeproj/heir/pkg/provision/worker/sys"
 	"github.com/tardigradeproj/heir/pkg/provision/worker/typ"
+	"github.com/tardigradeproj/heir/pkg/tunnel/agent"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
 const (
-	apiServerStream    = "apiserver"
-	konnectivityStream = "konnectivity"
+	apiServerStream = "apiserver"
 )
 
 func Run(ctx context.Context, opts ...typ.Option) error {
@@ -72,21 +72,29 @@ func Run(ctx context.Context, opts ...typ.Option) error {
 		return fmt.Errorf("failed to read worker node profile: %w", err)
 	}
 
-	// Phase 2 — update the API server upstream with definitive addresses from
-	// the profile, then bring up the konnectivity proxy now that its port is known.
+	// Phase 2 — update the API server upstream with definitive addresses from the profile.
 	apiUpstream.Update(endpointsFromAddresses(
 		profile.ControlPlaneEndpoint.Addresses,
 		int(profile.ControlPlaneEndpoint.APIServer.Port),
 	))
-	proxyManager.AddUpstream(konnectivityStream, endpointsFromAddresses(
-		profile.ControlPlaneEndpoint.Addresses,
-		int(profile.ControlPlaneEndpoint.Konnectivity.Port),
-	))
-	proxyManager.AddDownstream(konnectivityStream, workerCtx.KonnectivityWorkerProxyServerAddress)
+	log.Debug("starting plane tunnel agent")
+	planeTunnelAgent, err := agent.New(
+		fmt.Sprintf("%s/kubelet-client-current.pem", workerCtx.KubeletPKIPath),
+		fmt.Sprintf("%s/kubelet-client-current.pem", workerCtx.KubeletPKIPath),
+		workerCtx.KubeletPKICaCertPath,
+		fmt.Sprintf("%s:%d", profile.ControlPlaneEndpoint.Addresses[0],
+			profile.ControlPlaneEndpoint.PlaneTunnel.Port),
+		"127.0.0.1:10250",
+		15*time.Second,
+	)
+	if err != nil {
+		log.WithError(err).Error("failed to setup plane tunnel agent")
+		return fmt.Errorf("failed to setup plane tunnel agent: %w", err)
+	}
 	go func() {
-		if err := proxyManager.Link(konnectivityStream, konnectivityStream); err != nil {
-			proxyErr <- err
-			log.WithError(err).Error("konnectivity proxy manager exited with error")
+		log.Info("starting plane tunnel node agent")
+		if err = planeTunnelAgent.Start(ctx); err != nil {
+			log.WithError(err).Error("failed to start plane tunnel agent")
 		}
 	}()
 

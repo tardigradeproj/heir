@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -49,8 +50,7 @@ spec:
         - "10.0.2.2"
       apiServer:
         port: 30080
-      konnectivity:
-        port: 30081
+
 `
 
 // runtimeConfigWithExternalAddress has a controlPlaneEndpoint address set.
@@ -124,9 +124,10 @@ func TestProvision(t *testing.T) {
 		{
 			name: "all resources are created on success",
 			validate: func(t *testing.T, fc *fake.Clientset, _ string) {
-				// pki-auth secret, storage secret, configmap, service, deployment
-				assert.Equal(t, 4, verbCount(fc, "create"),
-					"expected 4 create actions; got: %v", fc.Actions())
+				// pki-auth secret, configmap, service, deployment,
+				// + 3 plane tunnel services (headless, tunnel, egress), plane tunnel deployment
+				assert.Equal(t, 8, verbCount(fc, "create"),
+					"expected 8 create actions; got: %v", fc.Actions())
 			},
 		},
 		{
@@ -160,8 +161,8 @@ func TestProvision(t *testing.T) {
 					if action.GetVerb() == "create" {
 						obj := action.(k8stesting.CreateAction).GetObject().(metav1.Object)
 						assert.True(t,
-							containsPrefix(obj.GetName(), "overridden-cluster"),
-							"expected resource name to start with 'overridden-cluster', got %q",
+							strings.Contains(obj.GetName(), "overridden-cluster"),
+							"expected resource name to contain 'overridden-cluster', got %q",
 							obj.GetName(),
 						)
 					}

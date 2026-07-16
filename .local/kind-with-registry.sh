@@ -105,17 +105,14 @@ data:
 EOF
 
 # 7. Push postgres image to the local registry
-docker tag ghcr.io/tardigradeproj/heir:v1.35.5-heir0 "localhost:${reg_port}/heir-base:v0.0.1"
-docker push "localhost:${reg_port}/heir-base:v0.0.1"
+docker tag ghcr.io/tardigradeproj/heir:latest-arm64 "localhost:${reg_port}/heir:latest-arm64"
+docker push "localhost:${reg_port}/heir:latest-arm64"
 docker pull postgres:16
 docker tag postgres:16 "localhost:${reg_port}/postgres:16"
 docker push "localhost:${reg_port}/postgres:16"
 
-docker tag registry.k8s.io/kas-network-proxy/proxy-server:v0.0.37 "localhost:${reg_port}/proxy-server:v0.0.37"
-docker push "localhost:${reg_port}/proxy-server:v0.0.37"
-docker tag registry.k8s.io/kas-network-proxy/proxy-agent:v0.0.37 "localhost:${reg_port}/proxy-agent:v0.0.37"
-docker push "localhost:${reg_port}/proxy-agent:v0.0.37"
-
+docker tag ghcr.io/tardigradeproj/heir-tunnel:latest-arm64 "localhost:${reg_port}/heir-tunnel:latest-arm64"
+docker push "localhost:${reg_port}/heir-tunnel:latest-arm64"
 # 8. Provision PostgreSQL (secret, deployment, service) and wait until healthy
 kubectl --kubeconfig="${kubeconfig_path}" create secret generic postgres-credentials \
   --from-literal=password=kine-password \
