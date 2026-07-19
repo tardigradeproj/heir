@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -28,11 +29,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	controlplanev1alpha1 "github.com/tardigradeproj/heir/api/v1alpha1"
+	"github.com/tardigradeproj/heir/pkg/provision/worker/typ"
 	heirruntime "github.com/tardigradeproj/heir/pkg/runtime"
 )
 
@@ -45,7 +48,8 @@ var layout = heirruntime.NewControlPlaneLayout()
 // RuntimeReconciler reconciles a Runtime object
 type RuntimeReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme   *runtime.Scheme
+	Recorder events.EventRecorder
 }
 
 // +kubebuilder:rbac:groups=controlplane.tardigrade.runtime.io,resources=runtimes,verbs=get;list;watch;create;update;patch;delete
@@ -55,6 +59,7 @@ type RuntimeReconciler struct {
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update
+// +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -91,7 +96,7 @@ func (r *RuntimeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	// Run each reconciliation step; on any error mark the resource Degraded and requeue.
-	if err := r.setupPKIAuthConfiguration(ctx, controlPlaneRuntime); err != nil {
+	if err := r.setupPKIAuthConfiguration(ctx, controlPlaneRuntime, log); err != nil {
 		log.Error(err, "failed to reconcile PKI auth configuration")
 		return r.setDegraded(ctx, controlPlaneRuntime, "PKIAuthSetupFailed", err.Error())
 	}
@@ -143,6 +148,10 @@ func (r *RuntimeReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&controlplanev1alpha1.Runtime{}).
 		Named("runtime").
+		Owns(&appsv1.Deployment{}).
+		Owns(&corev1.Service{}).
+		Owns(&corev1.ConfigMap{}).
+		Owns(&corev1.Secret{}).
 		Complete(r)
 }
 
@@ -156,6 +165,8 @@ func (r *RuntimeReconciler) setupService(
 ) error {
 	desired, err := heirruntime.GenerateService(controlPlaneRuntime)
 	if err != nil {
+		r.Recorder.Eventf(controlPlaneRuntime, nil, corev1.EventTypeWarning, "ServiceGenerationFailed", "GenerateService",
+			"failed to generate service spec: %v", err)
 		return err
 	}
 	if err := ctrl.SetControllerReference(controlPlaneRuntime, desired, r.Scheme); err != nil {
@@ -165,7 +176,14 @@ func (r *RuntimeReconciler) setupService(
 	existing := &corev1.Service{}
 	err = r.Get(ctx, types.NamespacedName{Name: desired.Name, Namespace: desired.Namespace}, existing)
 	if err != nil && apierrors.IsNotFound(err) {
-		return r.Create(ctx, desired)
+		if err := r.Create(ctx, desired); err != nil {
+			r.Recorder.Eventf(controlPlaneRuntime, nil, corev1.EventTypeWarning, "ServiceCreateFailed", "CreateService",
+				"failed to create service %q: %v", desired.Name, err)
+			return err
+		}
+		r.Recorder.Eventf(controlPlaneRuntime, desired, corev1.EventTypeNormal, "ServiceCreated", "CreateService",
+			"service %q created", desired.Name)
+		return nil
 	}
 	if err != nil {
 		return err
@@ -183,7 +201,14 @@ func (r *RuntimeReconciler) setupService(
 	existing.Spec = desired.Spec
 	existing.Labels = desired.Labels
 	existing.Annotations = desired.Annotations
-	return r.Update(ctx, existing)
+	if err := r.Update(ctx, existing); err != nil {
+		r.Recorder.Eventf(controlPlaneRuntime, existing, corev1.EventTypeWarning, "ServiceUpdateFailed", "UpdateService",
+			"failed to update service %q: %v", existing.Name, err)
+		return err
+	}
+	r.Recorder.Eventf(controlPlaneRuntime, existing, corev1.EventTypeNormal, "ServiceUpdated", "UpdateService",
+		"service %q updated", existing.Name)
+	return nil
 }
 
 // setupDeployment reconciles the Deployment that runs the control-plane container.
@@ -197,6 +222,8 @@ func (r *RuntimeReconciler) setupDeployment(
 ) error {
 	desired, err := heirruntime.GenerateDeployment(controlPlaneRuntime, layout, configHash)
 	if err != nil {
+		r.Recorder.Eventf(controlPlaneRuntime, nil, corev1.EventTypeWarning, "DeploymentGenerationFailed", "GenerateDeployment",
+			"failed to generate deployment spec: %v", err)
 		return err
 	}
 	if err := ctrl.SetControllerReference(controlPlaneRuntime, desired, r.Scheme); err != nil {
@@ -206,7 +233,14 @@ func (r *RuntimeReconciler) setupDeployment(
 	existing := &appsv1.Deployment{}
 	err = r.Get(ctx, types.NamespacedName{Name: desired.Name, Namespace: desired.Namespace}, existing)
 	if err != nil && apierrors.IsNotFound(err) {
-		return r.Create(ctx, desired)
+		if err := r.Create(ctx, desired); err != nil {
+			r.Recorder.Eventf(controlPlaneRuntime, nil, corev1.EventTypeWarning, "DeploymentCreateFailed", "CreateDeployment",
+				"failed to create deployment %q: %v", desired.Name, err)
+			return err
+		}
+		r.Recorder.Eventf(controlPlaneRuntime, desired, corev1.EventTypeNormal, "DeploymentCreated", "CreateDeployment",
+			"deployment %q created", desired.Name)
+		return nil
 	}
 	if err != nil {
 		return err
@@ -217,7 +251,14 @@ func (r *RuntimeReconciler) setupDeployment(
 	}
 	existing.Spec = desired.Spec
 	existing.Labels = desired.Labels
-	return r.Update(ctx, existing)
+	if err := r.Update(ctx, existing); err != nil {
+		r.Recorder.Eventf(controlPlaneRuntime, existing, corev1.EventTypeWarning, "DeploymentUpdateFailed", "UpdateDeployment",
+			"failed to update deployment %q: %v", existing.Name, err)
+		return err
+	}
+	r.Recorder.Eventf(controlPlaneRuntime, existing, corev1.EventTypeNormal, "DeploymentUpdated", "UpdateDeployment",
+		"deployment %q updated (config hash: %s)", existing.Name, configHash[:8])
+	return nil
 }
 
 // setupControlPlaneConfiguration reconciles the <resourceName>-config ConfigMap that holds the
@@ -232,6 +273,8 @@ func (r *RuntimeReconciler) setupControlPlaneConfiguration(
 
 	desired, desiredHash, err := heirruntime.GenerateControlPlaneConfig(controlPlaneRuntime, layout)
 	if err != nil {
+		r.Recorder.Eventf(controlPlaneRuntime, nil, corev1.EventTypeWarning, "ConfigGenerationFailed", "GenerateConfig",
+			"failed to generate control plane configuration: %v", err)
 		return "", err
 	}
 
@@ -241,12 +284,23 @@ func (r *RuntimeReconciler) setupControlPlaneConfiguration(
 		if err := ctrl.SetControllerReference(controlPlaneRuntime, desired, r.Scheme); err != nil {
 			return "", err
 		}
-		return desiredHash, r.Create(ctx, desired)
+		if err := r.Create(ctx, desired); err != nil {
+			r.Recorder.Eventf(controlPlaneRuntime, nil, corev1.EventTypeWarning, "ConfigMapCreateFailed", "CreateConfigMap",
+				"failed to create config map %q: %v", desired.Name, err)
+			return "", err
+		}
+		r.Recorder.Eventf(controlPlaneRuntime, desired, corev1.EventTypeNormal, "ConfigMapCreated", "CreateConfigMap",
+			"config map %q created", desired.Name)
+		return desiredHash, nil
 	}
 	if err != nil {
 		return "", err
 	}
-
+	if !metav1.IsControlledBy(existing, controlPlaneRuntime) {
+		r.Recorder.Eventf(controlPlaneRuntime, existing, corev1.EventTypeWarning, "ConfigMapExists", "ConfigMapOwnershipValidation",
+			"config map %q already exists but is not owned by Heir Runtime", desired.Name)
+		return "", fmt.Errorf("secret %s/%s exists but is not owned by Heir Runtime; refusing to adopt", existing.Namespace, existing.Name)
+	}
 	existingHash, err := heirruntime.HashConfigData(existing.Data)
 	if err != nil {
 		return "", err
@@ -256,35 +310,187 @@ func (r *RuntimeReconciler) setupControlPlaneConfiguration(
 		return existingHash, nil
 	}
 	existing.Data = desired.Data
-	return desiredHash, r.Update(ctx, existing)
+	if err := r.Update(ctx, existing); err != nil {
+		r.Recorder.Eventf(controlPlaneRuntime, existing, corev1.EventTypeWarning, "ConfigMapUpdateFailed", "UpdateConfigMap",
+			"failed to update config map %q: %v", existing.Name, err)
+		return "", err
+	}
+	r.Recorder.Eventf(controlPlaneRuntime, existing, corev1.EventTypeNormal, "ConfigMapUpdated", "UpdateConfigMap",
+		"config map %q updated (config hash changed from %s to %s)", existing.Name, existingHash[:8], desiredHash[:8])
+	return desiredHash, nil
 }
 
-// setupPKIAuthConfiguration reconciles the <resourceName>-pki-auth Secret that holds the root CA,
-// all component certificates, and kubeconfigs. If the Secret already exists it is left untouched.
-// When absent, a new self-signed CA is generated and used to sign all certificates and kubeconfigs
-// before the Secret is created.
+// setupPKIAuthConfiguration reconciles the Secret that holds the root CA,
+// all component certificates, and kubeconfigs.
+//
+// On first creation a fresh self-signed CA is generated and all certs are
+// signed against it. On subsequent reconciliations only the leaf certs whose
+// SANs are driven by the spec (API server cert, plane tunnel cert) are
+// regenerated when the spec changes; the CA is always preserved so that
+// existing clients do not need to re-trust the root.
 func (r *RuntimeReconciler) setupPKIAuthConfiguration(
 	ctx context.Context,
-	controlPlaneRuntime *controlplanev1alpha1.Runtime,
+	runtime *controlplanev1alpha1.Runtime,
+	log logr.Logger,
 ) error {
 	existing := &corev1.Secret{}
 	err := r.Get(ctx, types.NamespacedName{
-		Name:      fmt.Sprintf("%s-pki-auth", controlPlaneRuntime.Name),
-		Namespace: controlPlaneRuntime.Namespace,
+		Name:      runtime.Name,
+		Namespace: runtime.Namespace,
 	}, existing)
-	if err == nil {
+
+	if apierrors.IsNotFound(err) {
+		secret, err := heirruntime.GeneratePKIAuthSecret(runtime, layout)
+		if err != nil {
+			r.Recorder.Eventf(runtime, nil, corev1.EventTypeWarning, "PKIGenerationFailed", "GeneratePKI",
+				"failed to generate PKI material: %v", err)
+			return err
+		}
+		if err := ctrl.SetControllerReference(runtime, secret, r.Scheme); err != nil {
+			return err
+		}
+		if err := r.Create(ctx, secret); err != nil {
+			if apierrors.IsAlreadyExists(err) {
+				return nil
+			}
+			r.Recorder.Eventf(runtime, nil, corev1.EventTypeWarning, "PKISecretCreateFailed", "CreatePKISecret",
+				"failed to create PKI secret %q: %v", secret.Name, err)
+			return err
+		}
+		r.Recorder.Eventf(runtime, secret, corev1.EventTypeNormal, "PKISecretCreated", "CreatePKISecret",
+			"PKI secret %q created with CA and all component certificates", secret.Name)
 		return nil
 	}
-	if !apierrors.IsNotFound(err) {
-		return err
-	}
-
-	secret, err := heirruntime.GeneratePKIAuthSecret(controlPlaneRuntime, layout)
 	if err != nil {
 		return err
 	}
-	if err := ctrl.SetControllerReference(controlPlaneRuntime, secret, r.Scheme); err != nil {
+	if !metav1.IsControlledBy(existing, runtime) {
+		r.Recorder.Eventf(runtime, existing, corev1.EventTypeWarning, "PKISecret", "PKISecretOwnership",
+			"secret is not owned by Heir Runtime: %v", err)
+		return fmt.Errorf("secret %s/%s exists but is not owned by Heir Runtime; refusing to adopt", existing.Namespace, existing.Name)
+	}
+	updated, err := heirruntime.RegeneratePKILeafCerts(existing, runtime, layout)
+	if err != nil {
+		r.Recorder.Eventf(runtime, existing, corev1.EventTypeWarning, "PKICertRegenerationFailed", "RotatePKICerts",
+			"failed to regenerate APIServer and/or Plane Tunnel: %v", err)
+		return fmt.Errorf("failed to regenerate PKI leaf certs: %w", err)
+	}
+	if !updated {
+		log.Info("PKI auth configuration is up to date; skipping update")
+		return nil
+	}
+	if err := r.Update(ctx, existing); err != nil {
+		r.Recorder.Eventf(runtime, existing, corev1.EventTypeWarning, "PKISecretUpdateFailed", "RotatePKICerts",
+			"failed to persist rotated certs in secret: %v", err)
 		return err
 	}
-	return r.Create(ctx, secret)
+	r.Recorder.Eventf(runtime, existing, corev1.EventTypeNormal, "PKICertRotated", "RotatePKICerts",
+		"APIServer and/or Plane Tunnel certificates rotated due to SAN change")
+	return nil
+}
+
+// setupPlaneTunnelService reconciles the three Services required by the plane tunnel server:
+// the external tunnel service (NodePort/LoadBalancer), a headless service for replica
+// discovery, and a ClusterIP egress-selector service for the API server.
+func (r *RuntimeReconciler) setupPlaneTunnelService(
+	ctx context.Context,
+	controlPlaneRuntime *controlplanev1alpha1.Runtime,
+	wrkCtx *typ.WorkerContext,
+) error {
+	desired, err := heirruntime.GeneratePlaneTunnelService(*wrkCtx, controlPlaneRuntime)
+	if err != nil {
+		r.Recorder.Eventf(controlPlaneRuntime, nil, corev1.EventTypeWarning, "PlaneTunnelServiceGenerationFailed", "GeneratePlaneTunnelService",
+			"failed to generate plane tunnel service specs: %v", err)
+		return err
+	}
+
+	for i := range desired {
+		svc := &desired[i]
+		if err := ctrl.SetControllerReference(controlPlaneRuntime, svc, r.Scheme); err != nil {
+			return err
+		}
+		existing := &corev1.Service{}
+		err := r.Get(ctx, types.NamespacedName{Name: svc.Name, Namespace: svc.Namespace}, existing)
+		if apierrors.IsNotFound(err) {
+			if err := r.Create(ctx, svc); err != nil {
+				r.Recorder.Eventf(controlPlaneRuntime, nil, corev1.EventTypeWarning, "PlaneTunnelServiceCreateFailed",
+					"CreatePlaneTunnelService",
+					"failed to create plane tunnel service %q: %v", svc.Name, err)
+				return err
+			}
+			r.Recorder.Eventf(controlPlaneRuntime, svc, corev1.EventTypeNormal, "PlaneTunnelServiceCreated", "CreatePlaneTunnelService",
+				"plane tunnel service %q created", svc.Name)
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if !metav1.IsControlledBy(existing, controlPlaneRuntime) {
+			r.Recorder.Eventf(controlPlaneRuntime, existing, corev1.EventTypeWarning, "PlaneTunnelServiceOwnership",
+				"PlaneTunnelServiceOwnershipFailed",
+				"plane tunnel service is not owned by Heir Runtime: %v", err)
+			return fmt.Errorf("plane tunnel service %s/%s exists but is not owned by Heir Runtime; refusing to adopt", existing.Namespace, existing.Name)
+		}
+		// Preserve ClusterIP — Kubernetes rejects updates that change it.
+		svc.Spec.ClusterIP = existing.Spec.ClusterIP
+		if existing.Spec.Type == svc.Spec.Type &&
+			equality.Semantic.DeepEqual(existing.Spec.Ports, svc.Spec.Ports) &&
+			equality.Semantic.DeepEqual(existing.Labels, svc.Labels) &&
+			equality.Semantic.DeepEqual(existing.Annotations, svc.Annotations) {
+			continue
+		}
+		existing.Spec = svc.Spec
+		existing.Labels = svc.Labels
+		existing.Annotations = svc.Annotations
+		if err := r.Update(ctx, existing); err != nil {
+			r.Recorder.Eventf(controlPlaneRuntime, existing, corev1.EventTypeWarning, "PlaneTunnelServiceUpdateFailed", "UpdatePlaneTunnelService",
+				"failed to update plane tunnel service %q: %v", existing.Name, err)
+			return err
+		}
+		r.Recorder.Eventf(controlPlaneRuntime, existing, corev1.EventTypeNormal, "PlaneTunnelServiceUpdated", "UpdatePlaneTunnelService",
+			"plane tunnel service %q updated", existing.Name)
+	}
+	return nil
+}
+
+// setupPlaneTunnelDeployment reconciles the Deployment that runs the plane tunnel server.
+func (r *RuntimeReconciler) setupPlaneTunnelDeployment(
+	ctx context.Context,
+	controlPlaneRuntime *controlplanev1alpha1.Runtime,
+) error {
+	wrkCtx := typ.NewWorkerContextWithDefaults()
+	desired := heirruntime.GeneratePlaneTunnelDeployment(*wrkCtx, controlPlaneRuntime, layout)
+	if err := ctrl.SetControllerReference(controlPlaneRuntime, desired, r.Scheme); err != nil {
+		return err
+	}
+
+	existing := &appsv1.Deployment{}
+	err := r.Get(ctx, types.NamespacedName{Name: desired.Name, Namespace: desired.Namespace}, existing)
+	if apierrors.IsNotFound(err) {
+		if err := r.Create(ctx, desired); err != nil {
+			r.Recorder.Eventf(controlPlaneRuntime, nil, corev1.EventTypeWarning, "PlaneTunnelDeploymentCreateFailed", "CreatePlaneTunnelDeployment",
+				"failed to create plane tunnel deployment %q: %v", desired.Name, err)
+			return err
+		}
+		r.Recorder.Eventf(controlPlaneRuntime, desired, corev1.EventTypeNormal, "PlaneTunnelDeploymentCreated", "CreatePlaneTunnelDeployment",
+			"plane tunnel deployment %q created", desired.Name)
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if equality.Semantic.DeepEqual(existing.Spec, desired.Spec) &&
+		equality.Semantic.DeepEqual(existing.Labels, desired.Labels) {
+		return nil
+	}
+	existing.Spec = desired.Spec
+	existing.Labels = desired.Labels
+	if err := r.Update(ctx, existing); err != nil {
+		r.Recorder.Eventf(controlPlaneRuntime, existing, corev1.EventTypeWarning, "PlaneTunnelDeploymentUpdateFailed", "UpdatePlaneTunnelDeployment",
+			"failed to update plane tunnel deployment %q: %v", existing.Name, err)
+		return err
+	}
+	r.Recorder.Eventf(controlPlaneRuntime, existing, corev1.EventTypeNormal, "PlaneTunnelDeploymentUpdated", "UpdatePlaneTunnelDeployment",
+		"plane tunnel deployment %q updated", existing.Name)
+	return nil
 }
