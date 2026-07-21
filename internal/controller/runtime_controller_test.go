@@ -115,6 +115,18 @@ var _ = Describe("Runtime Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			By("cleaning up the Runtime resource")
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+
+			// envtest does not cascade-delete owned resources, so clean them up
+			// explicitly to prevent stale owner references from breaking subsequent tests.
+			ns := namespacedName.Namespace
+			_ = k8sClient.Delete(ctx, &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns}})
+			_ = k8sClient.Delete(ctx, &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns}})
+			_ = k8sClient.Delete(ctx, &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns}})
+			_ = k8sClient.Delete(ctx, &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns}})
+			_ = k8sClient.Delete(ctx, &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: heirruntime.PlaneTunnelName(resourceName), Namespace: ns}})
+			_ = k8sClient.Delete(ctx, &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: heirruntime.PlaneTunnelName(resourceName), Namespace: ns}})
+			_ = k8sClient.Delete(ctx, &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: heirruntime.PlaneTunnelHeadlessName(resourceName), Namespace: ns}})
+			_ = k8sClient.Delete(ctx, &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: heirruntime.PlaneTunnelEgressName(resourceName), Namespace: ns}})
 		})
 
 		It("should create all expected control-plane resources", func() {
@@ -227,6 +239,46 @@ var _ = Describe("Runtime Controller", func() {
 			Expect(planeTunnelEgressSelectorSvc.Spec.Type).To(Equal(corev1.ServiceTypeClusterIP))
 			Expect(planeTunnelEgressSelectorSvc.Spec.Ports[0].TargetPort.IntVal).To(Equal(int32(9443)))
 			Expect(planeTunnelEgressSelectorSvc.Spec.Ports[0].Name).To(Equal("egress-selector"))
+		})
+
+		It("should regenerate the API server certificate and roll the deployment when SANs are updated", func() {
+			reconciler := &RuntimeReconciler{
+				Client:   k8sClient,
+				Scheme:   k8sClient.Scheme(),
+				Recorder: events.NewFakeRecorder(32),
+				WrkCtx:   typ.NewWorkerContextWithDefaults(),
+			}
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName})
+			Expect(err).NotTo(HaveOccurred())
+
+			pkiSecret := &corev1.Secret{}
+			Expect(k8sClient.Get(ctx, namespacedName, pkiSecret)).To(Succeed())
+			originalCert := append([]byte(nil), pkiSecret.Data[layout.PKI.APIServerCert.SecretKey]...)
+
+			deploy := &appsv1.Deployment{}
+			Expect(k8sClient.Get(ctx, namespacedName, deploy)).To(Succeed())
+			originalConfigHash := deploy.Spec.Template.Annotations["heir.tardigrade.runtime.io/config-hash"]
+
+			runtime := &controlplanev1alpha1.Runtime{}
+			Expect(k8sClient.Get(ctx, namespacedName, runtime)).To(Succeed())
+			runtime.Spec.Cluster.APIServer.Sans = append(runtime.Spec.Cluster.APIServer.Sans, "new-api.example.com")
+			Expect(k8sClient.Update(ctx, runtime)).To(Succeed())
+
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("verifying the API server certificate is regenerated with the new SAN")
+			Expect(k8sClient.Get(ctx, namespacedName, pkiSecret)).To(Succeed())
+			Expect(pkiSecret.Data[layout.PKI.APIServerCert.SecretKey]).
+				NotTo(Equal(originalCert), "cert bytes must change after SAN update")
+			updatedCert := parseCertPEM(pkiSecret.Data[layout.PKI.APIServerCert.SecretKey])
+			Expect(updatedCert.SANs).To(ContainElement("new-api.example.com"))
+
+			By("verifying the deployment is rolled to pick up the new certificate")
+			Expect(k8sClient.Get(ctx, namespacedName, deploy)).To(Succeed())
+			Expect(deploy.Spec.Template.Annotations["heir.tardigrade.runtime.io/s6-overlay-config-hash"]).
+				NotTo(Equal(originalConfigHash), "pod-template hash must change so pods are restarted")
 		})
 	})
 })
