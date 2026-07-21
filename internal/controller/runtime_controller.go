@@ -122,6 +122,13 @@ func (r *RuntimeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		log.Error(err, "failed to reconcile plane tunnel deployment")
 		return r.setDegraded(ctx, controlPlaneRuntime, "PlaneTunnelDeploymentSyncFailed", err.Error())
 	}
+	// Re-fetch before the final status update so we hold the latest resourceVersion.
+	// Without this, a queued reconciliation triggered by an Owns watch may read a
+	// stale version from the informer cache and lose the optimistic concurrency check.
+	if err := r.Get(ctx, req.NamespacedName, controlPlaneRuntime); err != nil {
+		log.Error(err, "failed to re-fetch runtime before final status update")
+		return ctrl.Result{}, err
+	}
 	meta.SetStatusCondition(&controlPlaneRuntime.Status.Conditions, metav1.Condition{
 		Type:    typeAvailableRuntime,
 		Status:  metav1.ConditionTrue,
@@ -215,8 +222,6 @@ func (r *RuntimeReconciler) setupService(
 			"failed to update service %q: %v", existing.Name, err)
 		return err
 	}
-	r.Recorder.Eventf(controlPlaneRuntime, existing, corev1.EventTypeNormal, "ServiceUpdated", "UpdateService",
-		"service %q updated", existing.Name)
 	return nil
 }
 
@@ -265,8 +270,6 @@ func (r *RuntimeReconciler) setupDeployment(
 			"failed to update deployment %q: %v", existing.Name, err)
 		return err
 	}
-	r.Recorder.Eventf(controlPlaneRuntime, existing, corev1.EventTypeNormal, "DeploymentUpdated", "UpdateDeployment",
-		"deployment %q updated (config hash: %s)", existing.Name, configHash[:8])
 	return nil
 }
 
@@ -324,8 +327,6 @@ func (r *RuntimeReconciler) setupControlPlaneConfiguration(
 			"failed to update config map %q: %v", existing.Name, err)
 		return "", err
 	}
-	r.Recorder.Eventf(controlPlaneRuntime, existing, corev1.EventTypeNormal, "ConfigMapUpdated", "UpdateConfigMap",
-		"config map %q updated (config hash changed from %s to %s)", existing.Name, existingHash[:8], desiredHash[:8])
 	return desiredHash, nil
 }
 
@@ -455,8 +456,6 @@ func (r *RuntimeReconciler) setupPlaneTunnelService(
 				"failed to update plane tunnel service %q: %v", existing.Name, err)
 			return err
 		}
-		r.Recorder.Eventf(controlPlaneRuntime, existing, corev1.EventTypeNormal, "PlaneTunnelServiceUpdated", "UpdatePlaneTunnelService",
-			"plane tunnel service %q updated", existing.Name)
 	}
 	return nil
 }
@@ -497,7 +496,5 @@ func (r *RuntimeReconciler) setupPlaneTunnelDeployment(
 			"failed to update plane tunnel deployment %q: %v", existing.Name, err)
 		return err
 	}
-	r.Recorder.Eventf(controlPlaneRuntime, existing, corev1.EventTypeNormal, "PlaneTunnelDeploymentUpdated", "UpdatePlaneTunnelDeployment",
-		"plane tunnel deployment %q updated", existing.Name)
 	return nil
 }

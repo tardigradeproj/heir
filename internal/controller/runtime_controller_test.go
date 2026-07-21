@@ -163,7 +163,7 @@ var _ = Describe("Runtime Controller", func() {
 
 			By("verifying the API Server plane tunnel egress selector certificate SANs and expiration")
 			APIServerPlaneTunnelEgressSelectorCert := parseCertPEM(pkiSecret.Data[layout.PKI.ApiServerPlaneTunnelCert.SecretKey])
-			Expect(APIServerPlaneTunnelEgressSelectorCert.SANs).To(ContainElements(fmt.Sprintf("tunnel-server-%s-egress", resourceName)))
+			Expect(APIServerPlaneTunnelEgressSelectorCert.SANs).To(ContainElements(fmt.Sprintf("%s-tunnel-egress", resourceName)))
 
 			By("verifying the plane tunnel certificate SANs and expiration")
 			planeTunnelCert := parseCertPEM(pkiSecret.Data[layout.PKI.PlaneTunnelCert.SecretKey])
@@ -198,13 +198,13 @@ var _ = Describe("Runtime Controller", func() {
 
 			By("verifying the plane tunnel Deployment is created")
 			planeTunnelDeployment := &appsv1.Deployment{}
-			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: fmt.Sprintf("tunnel-server-%s", resourceName), Namespace: "default"}, planeTunnelDeployment)).To(Succeed())
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: fmt.Sprintf("%s-tunnel", resourceName), Namespace: "default"}, planeTunnelDeployment)).To(Succeed())
 			Expect(planeTunnelDeployment.Spec.Template.Spec.Containers).To(HaveLen(1))
 
 			By("verifying the plane tunnel headless Service is created")
 			planeTunnelHeadlessSvc := &corev1.Service{}
 			Expect(k8sClient.
-				Get(ctx, types.NamespacedName{Name: fmt.Sprintf("tunnel-server-%s-headless", resourceName), Namespace: "default"}, planeTunnelHeadlessSvc)).
+				Get(ctx, types.NamespacedName{Name: fmt.Sprintf("%s-tunnel-headless", resourceName), Namespace: "default"}, planeTunnelHeadlessSvc)).
 				To(Succeed())
 			Expect(planeTunnelHeadlessSvc.Spec.ClusterIP).To(Equal("None"))
 			Expect(planeTunnelHeadlessSvc.Spec.Ports).To(HaveLen(1))
@@ -213,7 +213,7 @@ var _ = Describe("Runtime Controller", func() {
 			By("verifying the plane tunnel worker agent Service is created")
 			planeTunnelWorkerAgentSvc := &corev1.Service{}
 			Expect(k8sClient.
-				Get(ctx, types.NamespacedName{Name: fmt.Sprintf("tunnel-server-%s", resourceName), Namespace: "default"}, planeTunnelWorkerAgentSvc)).
+				Get(ctx, types.NamespacedName{Name: fmt.Sprintf("%s-tunnel", resourceName), Namespace: "default"}, planeTunnelWorkerAgentSvc)).
 				To(Succeed())
 			Expect(planeTunnelWorkerAgentSvc.Spec.Type).To(Equal(corev1.ServiceTypeNodePort))
 			Expect(planeTunnelWorkerAgentSvc.Spec.Ports[0].TargetPort.IntVal).To(Equal(int32(9445)))
@@ -222,7 +222,7 @@ var _ = Describe("Runtime Controller", func() {
 			By("verifying the plane tunnel egress selector service is created")
 			planeTunnelEgressSelectorSvc := &corev1.Service{}
 			Expect(k8sClient.
-				Get(ctx, types.NamespacedName{Name: fmt.Sprintf("tunnel-server-%s-egress", resourceName), Namespace: "default"}, planeTunnelEgressSelectorSvc)).
+				Get(ctx, types.NamespacedName{Name: fmt.Sprintf("%s-tunnel-egress", resourceName), Namespace: "default"}, planeTunnelEgressSelectorSvc)).
 				To(Succeed())
 			Expect(planeTunnelEgressSelectorSvc.Spec.Type).To(Equal(corev1.ServiceTypeClusterIP))
 			Expect(planeTunnelEgressSelectorSvc.Spec.Ports[0].TargetPort.IntVal).To(Equal(int32(9443)))
