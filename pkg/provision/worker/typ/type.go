@@ -13,10 +13,10 @@ import (
 )
 
 type NodeProfile struct {
-	KubeletConfiguration string                            `json:"kubeletConfiguration"`
-	KubeletExtraArgs     map[string]string                 `json:"KubeletExtraArgs"`
+	KubeletConfiguration         string                                    `json:"kubeletConfiguration"`
+	KubeletExtraArgs             map[string]string                         `json:"KubeletExtraArgs"`
 	ControlPlaneExternalEndpoint v1alpha1.ControlPlaneExternalEndpointSpec `json:"controlPlaneExternalEndpoint"`
-	CNIProvider          string                            `json:"CNIProvider"`
+	CNIProvider                  string                                    `json:"CNIProvider"`
 }
 
 // Save marshals the NodeProfile to JSON and writes it to path.

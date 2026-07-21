@@ -50,6 +50,7 @@ type RuntimeReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
 	Recorder events.EventRecorder
+	WrkCtx   *typ.WorkerContext
 }
 
 // +kubebuilder:rbac:groups=controlplane.tardigrade.runtime.io,resources=runtimes,verbs=get;list;watch;create;update;patch;delete
@@ -112,6 +113,14 @@ func (r *RuntimeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	if err := r.setupService(ctx, controlPlaneRuntime); err != nil {
 		log.Error(err, "failed to reconcile service")
 		return r.setDegraded(ctx, controlPlaneRuntime, "ServiceFailed", err.Error())
+	}
+	if err := r.setupPlaneTunnelService(ctx, controlPlaneRuntime); err != nil {
+		log.Error(err, "failed to reconcile plane tunnel service")
+		return r.setDegraded(ctx, controlPlaneRuntime, "PlaneTunnelServiceSyncFailed", err.Error())
+	}
+	if err := r.setupPlaneTunnelDeployment(ctx, controlPlaneRuntime); err != nil {
+		log.Error(err, "failed to reconcile plane tunnel deployment")
+		return r.setDegraded(ctx, controlPlaneRuntime, "PlaneTunnelDeploymentSyncFailed", err.Error())
 	}
 	meta.SetStatusCondition(&controlPlaneRuntime.Status.Conditions, metav1.Condition{
 		Type:    typeAvailableRuntime,
@@ -395,9 +404,8 @@ func (r *RuntimeReconciler) setupPKIAuthConfiguration(
 func (r *RuntimeReconciler) setupPlaneTunnelService(
 	ctx context.Context,
 	controlPlaneRuntime *controlplanev1alpha1.Runtime,
-	wrkCtx *typ.WorkerContext,
 ) error {
-	desired, err := heirruntime.GeneratePlaneTunnelService(*wrkCtx, controlPlaneRuntime)
+	desired, err := heirruntime.GeneratePlaneTunnelService(*r.WrkCtx, controlPlaneRuntime)
 	if err != nil {
 		r.Recorder.Eventf(controlPlaneRuntime, nil, corev1.EventTypeWarning, "PlaneTunnelServiceGenerationFailed", "GeneratePlaneTunnelService",
 			"failed to generate plane tunnel service specs: %v", err)
@@ -458,8 +466,7 @@ func (r *RuntimeReconciler) setupPlaneTunnelDeployment(
 	ctx context.Context,
 	controlPlaneRuntime *controlplanev1alpha1.Runtime,
 ) error {
-	wrkCtx := typ.NewWorkerContextWithDefaults()
-	desired := heirruntime.GeneratePlaneTunnelDeployment(*wrkCtx, controlPlaneRuntime, layout)
+	desired := heirruntime.GeneratePlaneTunnelDeployment(*r.WrkCtx, controlPlaneRuntime, layout)
 	if err := ctrl.SetControllerReference(controlPlaneRuntime, desired, r.Scheme); err != nil {
 		return err
 	}

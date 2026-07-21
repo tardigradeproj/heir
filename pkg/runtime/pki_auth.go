@@ -53,7 +53,7 @@ func RegeneratePKILeafCerts(secret *corev1.Secret, runtime *controlplanev1alpha1
 	}
 
 	updated := false
-	apiServerAltNames := APIServerAltNames(cluster)
+	apiServerAltNames := APIServerAltNames(*runtime)
 	if wantHash := sansHash(apiServerAltNames); secret.Annotations[pkiAPIServerHashAnnotation] != wantHash {
 		cert, err := pki.SignCSR(ca, pki.CSR{
 			Name:      "kubernetes",
@@ -90,9 +90,11 @@ func RegeneratePKILeafCerts(secret *corev1.Secret, runtime *controlplanev1alpha1
 
 // APIServerAltNames builds the full list of Subject Alternative Names for the
 // kube-apiserver certificate, merging user-supplied SANs with the required defaults.
-func APIServerAltNames(cluster controlplanev1alpha1.ClusterSpec) []string {
-	apiServer := cluster.APIServer
-	controlPlaneEndpoint := cluster.ControlPlaneExternalEndpoint
+// The in-cluster FQDN <name>.<namespace>.svc.cluster.local is always included so
+// that pods inside the management cluster can reach the API server through its Service.
+func APIServerAltNames(runtime controlplanev1alpha1.Runtime) []string {
+	apiServer := runtime.Spec.Cluster.APIServer
+	controlPlaneEndpoint := runtime.Spec.Cluster.ControlPlaneExternalEndpoint
 	sans := append([]string{}, apiServer.Sans...)
 	sans = append(sans,
 		"127.0.0.1",
@@ -104,6 +106,7 @@ func APIServerAltNames(cluster controlplanev1alpha1.ClusterSpec) []string {
 		"kubernetes.default.cluster",
 		"server.kubernetes.local",
 		"api-server.kubernetes.local",
+		fmt.Sprintf("%s.%s.svc.cluster.local", runtime.Name, runtime.Namespace),
 	)
 	if h := controlPlaneEndpoint.APIServer.Host; h != "" {
 		sans = append(sans, h)
@@ -145,7 +148,7 @@ func GeneratePKIAuthSecret(runtime *controlplanev1alpha1.Runtime, layout Control
 		Name:      "kubernetes",
 		O:         "kubernetes",
 		CN:        "kube-apiserver",
-		Hostnames: APIServerAltNames(runtime.Spec.Cluster),
+		Hostnames: APIServerAltNames(*runtime),
 	}, CertificateDuration)
 	if err != nil {
 		return nil, err
@@ -224,7 +227,7 @@ func GeneratePKIAuthSecret(runtime *controlplanev1alpha1.Runtime, layout Control
 			Labels:    labels,
 			Annotations: map[string]string{
 				"controlplane.tardigrade.runtime.io/deletion-protection": "false",
-				pkiAPIServerHashAnnotation:                               sansHash(APIServerAltNames(runtime.Spec.Cluster)),
+				pkiAPIServerHashAnnotation:                               sansHash(APIServerAltNames(*runtime)),
 				pkiPlaneTunnelHashAnnotation:                             sansHash(planeTunnelAltNames(runtime.Spec.Cluster.ControlPlaneExternalEndpoint.PlaneTunnel.Host)),
 			},
 		},

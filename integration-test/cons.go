@@ -9,11 +9,11 @@ import (
 
 const (
 	kindClusterName                 = "integration-test"
-	heirExternalAddress       = "control-plane"
+	heirExternalAddress             = "control-plane"
 	postgresSecretName              = "postgres-credentials"
 	hostClusterKubeConfigPath       = "./kubeconfig.yaml"
 	tardigradeClusterKubeConfigPath = "./tardigrade-kubeconfig.yaml"
-	heirApiServerPort         = 30080
+	heirApiServerPort               = 30080
 )
 
 func buildRuntimeConfig() string {

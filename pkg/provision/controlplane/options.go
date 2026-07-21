@@ -5,13 +5,13 @@ import "k8s.io/client-go/kubernetes"
 type Option func(*provisionContext)
 
 type provisionContext struct {
-	name              string
-	config            string
-	kubeconfig        string
-	clusterKubeconfig string
-	namespace         string
+	name                string
+	config              string
+	kubeconfig          string
+	clusterKubeconfig   string
+	namespace           string
 	useLocalHostContext bool
-	client            kubernetes.Interface // if set, skips buildClient (used in tests)
+	client              kubernetes.Interface // if set, skips buildClient (used in tests)
 }
 
 func WithName(name string) Option {
