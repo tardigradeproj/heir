@@ -235,10 +235,54 @@ func GeneratePKIAuthSecret(runtime *controlplanev1alpha1.Runtime, layout Control
 	}, nil
 }
 
-func generateKubeconfig(username string, caCert []byte, cert *pki.Certificate) ([]byte, error) {
+func GenerateClientKubeconfigAuthSecret(ca pki.Certificate, runtime *controlplanev1alpha1.Runtime, layout ControlPlaneLayout) (*corev1.Secret, error) {
+	adminCert, err := pki.SignCSR(ca, pki.CSR{
+		CN:        "kubernetes-client-admin",
+		O:         "system:masters",
+		Hostnames: []string{},
+	}, CertificateDuration)
+	if err != nil {
+		return nil, err
+	}
+	endpoint := runtime.Spec.Cluster.ControlPlaneExternalEndpoint
+	apiServerDNS := fmt.Sprintf("https://%s:%d", endpoint.APIServer.Host, endpoint.APIServer.Port)
+	adminConf, err := generateKubeconfig(runtime.Name, ca.Cert, adminCert, WithServerUrl(apiServerDNS))
+	return &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      fmt.Sprintf("%s-kubeconfig", runtime.Name),
+			Namespace: runtime.Namespace,
+			Labels: map[string]string{
+				"app.kubernetes.io/name":       runtime.Name,
+				"app.kubernetes.io/managed-by": "heir",
+			},
+			Annotations: map[string]string{},
+		},
+		Data: map[string][]byte{
+			layout.Auth.ClientKubeconfig.SecretKey: adminConf,
+		},
+	}, nil
+}
+
+type kubeconfig struct {
+	serverUrl string
+}
+type Option func(*kubeconfig)
+
+func WithServerUrl(serverUrl string) Option {
+	return func(kubeconfig *kubeconfig) {
+		kubeconfig.serverUrl = serverUrl
+	}
+}
+func generateKubeconfig(username string, caCert []byte, cert *pki.Certificate, opts ...Option) ([]byte, error) {
+	k := &kubeconfig{
+		serverUrl: "https://127.0.0.1:6443",
+	}
+	for _, opt := range opts {
+		opt(k)
+	}
 	kubeconfig := clientcmdapi.NewConfig()
 	kubeconfig.Clusters[username] = &clientcmdapi.Cluster{
-		Server:                   "https://127.0.0.1:6443",
+		Server:                   k.serverUrl,
 		CertificateAuthorityData: caCert,
 	}
 	kubeconfig.AuthInfos[username] = &clientcmdapi.AuthInfo{

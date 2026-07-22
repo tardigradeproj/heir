@@ -35,8 +35,10 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	controlplanev1alpha1 "github.com/tardigradeproj/heir/api/v1alpha1"
+	"github.com/tardigradeproj/heir/pkg/pki"
 	"github.com/tardigradeproj/heir/pkg/provision/worker/typ"
 	heirruntime "github.com/tardigradeproj/heir/pkg/runtime"
+	"github.com/tardigradeproj/heir/pkg/util"
 )
 
 const (
@@ -100,6 +102,10 @@ func (r *RuntimeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	if err := r.setupPKIAuthConfiguration(ctx, controlPlaneRuntime, log); err != nil {
 		log.Error(err, "failed to reconcile PKI auth configuration")
 		return r.setDegraded(ctx, controlPlaneRuntime, "PKIAuthSetupFailed", err.Error())
+	}
+	if err := r.setupClientKubeconfig(ctx, controlPlaneRuntime, log); err != nil {
+		log.Error(err, "failed to reconcile client kubeconfig")
+		return r.setDegraded(ctx, controlPlaneRuntime, "ClientKubeconfigFailed", err.Error())
 	}
 	configHash, err := r.setupControlPlaneConfiguration(ctx, controlPlaneRuntime)
 	if err != nil {
@@ -322,6 +328,7 @@ func (r *RuntimeReconciler) setupControlPlaneConfiguration(
 		return existingHash, nil
 	}
 	existing.Data = desired.Data
+	existing.Annotations[heirruntime.ControlPlaneConfigHashAnnotation] = desiredHash
 	if err := r.Update(ctx, existing); err != nil {
 		r.Recorder.Eventf(controlPlaneRuntime, existing, corev1.EventTypeWarning, "ConfigMapUpdateFailed", "UpdateConfigMap",
 			"failed to update config map %q: %v", existing.Name, err)
@@ -396,6 +403,109 @@ func (r *RuntimeReconciler) setupPKIAuthConfiguration(
 	}
 	r.Recorder.Eventf(runtime, existing, corev1.EventTypeNormal, "PKICertRotated", "RotatePKICerts",
 		"APIServer and/or Plane Tunnel certificates rotated due to SAN change")
+	return nil
+}
+
+// setupClientKubeconfig reconciles the <name>-kubeconfig Secret that holds a standalone
+// admin kubeconfig for reaching the API server from outside the cluster.
+//
+// On first creation a fresh client certificate is signed against the root CA stored in
+// the main PKI secret. On subsequent reconciliations the existing secret is left
+// untouched as long as its client certificate is still valid (unexpired and verifiable
+// against the current CA) and its kubeconfig still targets the runtime's configured API
+// server endpoint; only when that validation fails is the secret regenerated.
+func (r *RuntimeReconciler) setupClientKubeconfig(
+	ctx context.Context,
+	runtime *controlplanev1alpha1.Runtime,
+	log logr.Logger,
+) error {
+	pkiSecret := &corev1.Secret{}
+	if err := r.Get(ctx, types.NamespacedName{Name: runtime.Name, Namespace: runtime.Namespace}, pkiSecret); err != nil {
+		return fmt.Errorf("failed to get PKI secret for client kubeconfig: %w", err)
+	}
+	ca := pki.Certificate{
+		Cert: pkiSecret.Data[layout.PKI.CACert.SecretKey],
+		Key:  pkiSecret.Data[layout.PKI.CAKey.SecretKey],
+	}
+	newClientKubeconfigSecret, err := heirruntime.GenerateClientKubeconfigAuthSecret(ca, runtime, layout)
+	if err != nil {
+		r.Recorder.Eventf(runtime, nil, corev1.EventTypeWarning, "ClientKubeconfigSecretCreateFailed", "CreateClientKubeconfigSecretDefinition",
+			"failed to generate client kubeconfig secret material: %v", err)
+		return err
+	}
+	existing := &corev1.Secret{}
+	err = r.Get(ctx, types.NamespacedName{
+		Name:      fmt.Sprintf("%s-kubeconfig", runtime.Name),
+		Namespace: runtime.Namespace,
+	}, existing)
+	if err != nil && apierrors.IsNotFound(err) {
+
+		if err := ctrl.SetControllerReference(runtime, newClientKubeconfigSecret, r.Scheme); err != nil {
+			return err
+		}
+		if err := r.Create(ctx, newClientKubeconfigSecret); err != nil {
+			if apierrors.IsAlreadyExists(err) {
+				return nil
+			}
+			r.Recorder.Eventf(runtime, nil, corev1.EventTypeWarning, "ClientKubeconfigSecretCreateFailed", "CreateClientKubeconfigSecret",
+				"failed to create client kubeconfig secret %q: %v", newClientKubeconfigSecret.Name, err)
+			return err
+		}
+		r.Recorder.Eventf(runtime, newClientKubeconfigSecret, corev1.EventTypeNormal, "ClientKubeconfigSecretCreated", "CreateClientKubeconfigSecret",
+			"client kubeconfig secret %q created with admin certificate", newClientKubeconfigSecret.Name)
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !metav1.IsControlledBy(existing, runtime) {
+		r.Recorder.Eventf(runtime, existing, corev1.EventTypeWarning, "ClientKubeconfigSecret", "ClientKubeconfigOwnership",
+			"client kubeconfig secret %q already exists but is not owned by Heir Runtime", existing.Name)
+		return fmt.Errorf("secret %s/%s exists but is not owned by Heir Runtime; refusing to adopt", existing.Namespace, existing.Name)
+	}
+
+	if err := validateClientKubeconfigSecret(existing, ca, runtime, layout); err == nil {
+		log.Info("client kubeconfig is up to date; skipping update")
+		return nil
+	} else {
+		log.Info("client kubeconfig invalid; regenerating", "reason", err.Error())
+	}
+	existing.Data = newClientKubeconfigSecret.Data
+	if err := r.Update(ctx, existing); err != nil {
+		r.Recorder.Eventf(runtime, existing, corev1.EventTypeWarning, "ClientKubeconfigSecretUpdateFailed", "UpdateClientKubeconfigSecret",
+			"failed to update client kubeconfig secret %q: %v", existing.Name, err)
+		return err
+	}
+	r.Recorder.Eventf(runtime, existing, corev1.EventTypeNormal, "ClientKubeconfigSecretRotated", "UpdateClientKubeconfigSecret",
+		"client kubeconfig secret %q regenerated because the stored certificate or kubeconfig was no longer valid", existing.Name)
+	return nil
+}
+
+// validateClientKubeconfigSecret returns nil when secret already contains a kubeconfig
+// that parses correctly, targets the runtime's current API server endpoint, and carries
+// a client certificate that is unexpired and verifiable against ca. Any other case
+// returns an error describing why the secret must be regenerated.
+func validateClientKubeconfigSecret(
+	secret *corev1.Secret,
+	ca pki.Certificate,
+	controlPlaneRuntime *controlplanev1alpha1.Runtime,
+	layout heirruntime.ControlPlaneLayout,
+) error {
+	raw, ok := secret.Data[layout.Auth.ClientKubeconfig.SecretKey]
+	if !ok || len(raw) == 0 {
+		return fmt.Errorf("kubeconfig key %q missing from secret", layout.Auth.ClientKubeconfig.SecretKey)
+	}
+
+	endpoint := controlPlaneRuntime.Spec.Cluster.ControlPlaneExternalEndpoint
+	wantServer := fmt.Sprintf("https://%s:%d", endpoint.APIServer.Host, endpoint.APIServer.Port)
+
+	if _, err := util.ParseAndVerifyKubeconfig(
+		raw,
+		util.WithServerValidation(wantServer),
+		util.WithClientCertificateValidation(ca),
+	); err != nil {
+		return fmt.Errorf("client kubeconfig is invalid: %w", err)
+	}
 	return nil
 }
 

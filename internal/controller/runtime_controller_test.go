@@ -120,6 +120,7 @@ var _ = Describe("Runtime Controller", func() {
 			// explicitly to prevent stale owner references from breaking subsequent tests.
 			ns := namespacedName.Namespace
 			_ = k8sClient.Delete(ctx, &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns}})
+			_ = k8sClient.Delete(ctx, &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("%s-kubeconfig", resourceName), Namespace: ns}})
 			_ = k8sClient.Delete(ctx, &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns}})
 			_ = k8sClient.Delete(ctx, &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns}})
 			_ = k8sClient.Delete(ctx, &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns}})

@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	controlPlaneConfigHashAnnotation = "controlplane.tardigrade.runtime.io/control-plane-hash"
+	ControlPlaneConfigHashAnnotation = "controlplane.tardigrade.runtime.io/control-plane-hash"
 )
 
 // GenerateControlPlaneConfig builds the <name>-config ConfigMap that holds the s6-overlay run
@@ -144,7 +144,7 @@ func GenerateControlPlaneConfig(runtime *controlplanev1alpha1.Runtime, layout Co
 			Labels:    labels,
 			Annotations: map[string]string{
 				"controlplane.tardigrade.runtime.io/deletion-protection": "false",
-				controlPlaneConfigHashAnnotation:                         desiredHash,
+				ControlPlaneConfigHashAnnotation:                         desiredHash,
 			},
 		},
 		Data: data,

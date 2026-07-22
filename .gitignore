@@ -33,7 +33,7 @@ db/*
 *.kubeconfig
 
 # Local PKI — certificates and keys generated for development
-pki/
+/pki/
 
 artifacts/*
 !artifacts/embed*.go
