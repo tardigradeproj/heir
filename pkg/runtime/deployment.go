@@ -20,7 +20,7 @@ func GenerateDeployment(runtime *controlplanev1alpha1.Runtime, layout ControlPla
 
 	podLabels := mergeMaps(labels, deploySpec.AdditionalMetadata.Labels)
 	podAnnotations := mergeMaps(
-		map[string]string{"heir.tardigrade.runtime.io/s6-overlay-config-hash": configHash},
+		map[string]string{"heir.tardigrade.runtime.io/config-hash": configHash},
 		deploySpec.AdditionalMetadata.Annotations,
 	)
 

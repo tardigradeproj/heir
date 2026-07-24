@@ -1,8 +1,11 @@
 package runtime
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	controlplanev1alpha1 "github.com/tardigradeproj/heir/api/v1alpha1"
@@ -11,6 +14,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientcmd "k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
+)
+
+const (
+	// pkiAPIServerHashAnnotation tracks the hash of SAN inputs for the API server certificate.
+	pkiAPIServerHashAnnotation = "controlplane.tardigrade.runtime.io/pki-apiserver-hash"
+	// pkiPlaneTunnelHashAnnotation tracks the hash of SAN inputs for the plane tunnel certificate.
+	pkiPlaneTunnelHashAnnotation = "controlplane.tardigrade.runtime.io/pki-planetunnel-hash"
 )
 
 // CertificateDuration is the default lifetime for all generated certificates.
@@ -22,12 +32,69 @@ func planeTunnelAltNames(host string) []string {
 	}
 	return []string{host}
 }
+func sansHash(cluster []string) string {
+	h := sha256.Sum256([]byte(strings.Join(cluster, ",")))
+	return hex.EncodeToString(h[:])
+}
+
+// RegeneratePKILeafCerts inspects the per-cert hash annotations on secret and
+// re-signs only the certificates whose SAN inputs have changed since the last
+// reconciliation. The CA cert and key are never replaced. Returns true if at
+// least one certificate was regenerated and the secret should be updated.
+func RegeneratePKILeafCerts(secret *corev1.Secret, runtime *controlplanev1alpha1.Runtime, layout ControlPlaneLayout) (bool, error) {
+	cluster := runtime.Spec.Cluster
+	if secret.Annotations == nil {
+		secret.Annotations = make(map[string]string)
+	}
+
+	ca := pki.Certificate{
+		Cert: secret.Data[layout.PKI.CACert.SecretKey],
+		Key:  secret.Data[layout.PKI.CAKey.SecretKey],
+	}
+
+	updated := false
+	apiServerAltNames := APIServerAltNames(*runtime)
+	if wantHash := sansHash(apiServerAltNames); secret.Annotations[pkiAPIServerHashAnnotation] != wantHash {
+		cert, err := pki.SignCSR(ca, pki.CSR{
+			Name:      "kubernetes",
+			O:         "kubernetes",
+			CN:        "kube-apiserver",
+			Hostnames: apiServerAltNames,
+		}, CertificateDuration)
+		if err != nil {
+			return false, fmt.Errorf("failed to re-sign API server cert: %w", err)
+		}
+		secret.Data[layout.PKI.APIServerCert.SecretKey] = cert.Cert
+		secret.Data[layout.PKI.APIServerKey.SecretKey] = cert.Key
+		secret.Annotations[pkiAPIServerHashAnnotation] = wantHash
+		updated = true
+	}
+	planeTunnelAltnames := planeTunnelAltNames(cluster.ControlPlaneExternalEndpoint.PlaneTunnel.Host)
+	if wantHash := sansHash(planeTunnelAltnames); secret.Annotations[pkiPlaneTunnelHashAnnotation] != wantHash {
+		cert, err := pki.SignCSR(ca, pki.CSR{
+			Name:      "plane-tunnel",
+			O:         "system:plane-tunnel",
+			Hostnames: planeTunnelAltnames,
+		}, CertificateDuration)
+		if err != nil {
+			return false, fmt.Errorf("failed to re-sign plane tunnel cert: %w", err)
+		}
+		secret.Data[layout.PKI.PlaneTunnelCert.SecretKey] = cert.Cert
+		secret.Data[layout.PKI.PlaneTunnelKey.SecretKey] = cert.Key
+		secret.Annotations[pkiPlaneTunnelHashAnnotation] = wantHash
+		updated = true
+	}
+
+	return updated, nil
+}
 
 // APIServerAltNames builds the full list of Subject Alternative Names for the
 // kube-apiserver certificate, merging user-supplied SANs with the required defaults.
-func APIServerAltNames(cluster controlplanev1alpha1.ClusterSpec) []string {
-	apiServer := cluster.APIServer
-	controlPlaneEndpoint := cluster.ControlPlaneExternalEndpoint
+// The in-cluster FQDN <name>.<namespace>.svc.cluster.local is always included so
+// that pods inside the management cluster can reach the API server through its Service.
+func APIServerAltNames(runtime controlplanev1alpha1.Runtime) []string {
+	apiServer := runtime.Spec.Cluster.APIServer
+	controlPlaneEndpoint := runtime.Spec.Cluster.ControlPlaneExternalEndpoint
 	sans := append([]string{}, apiServer.Sans...)
 	sans = append(sans,
 		"127.0.0.1",
@@ -39,6 +106,7 @@ func APIServerAltNames(cluster controlplanev1alpha1.ClusterSpec) []string {
 		"kubernetes.default.cluster",
 		"server.kubernetes.local",
 		"api-server.kubernetes.local",
+		fmt.Sprintf("%s.%s.svc.cluster.local", runtime.Name, runtime.Namespace),
 	)
 	if h := controlPlaneEndpoint.APIServer.Host; h != "" {
 		sans = append(sans, h)
@@ -80,7 +148,7 @@ func GeneratePKIAuthSecret(runtime *controlplanev1alpha1.Runtime, layout Control
 		Name:      "kubernetes",
 		O:         "kubernetes",
 		CN:        "kube-apiserver",
-		Hostnames: APIServerAltNames(runtime.Spec.Cluster),
+		Hostnames: APIServerAltNames(*runtime),
 	}, CertificateDuration)
 	if err != nil {
 		return nil, err
@@ -159,16 +227,62 @@ func GeneratePKIAuthSecret(runtime *controlplanev1alpha1.Runtime, layout Control
 			Labels:    labels,
 			Annotations: map[string]string{
 				"controlplane.tardigrade.runtime.io/deletion-protection": "false",
+				pkiAPIServerHashAnnotation:                               sansHash(APIServerAltNames(*runtime)),
+				pkiPlaneTunnelHashAnnotation:                             sansHash(planeTunnelAltNames(runtime.Spec.Cluster.ControlPlaneExternalEndpoint.PlaneTunnel.Host)),
 			},
 		},
 		Data: data,
 	}, nil
 }
 
-func generateKubeconfig(username string, caCert []byte, cert *pki.Certificate) ([]byte, error) {
+func GenerateClientKubeconfigAuthSecret(ca pki.Certificate, runtime *controlplanev1alpha1.Runtime, layout ControlPlaneLayout) (*corev1.Secret, error) {
+	adminCert, err := pki.SignCSR(ca, pki.CSR{
+		CN:        "kubernetes-client-admin",
+		O:         "system:masters",
+		Hostnames: []string{},
+	}, CertificateDuration)
+	if err != nil {
+		return nil, err
+	}
+	endpoint := runtime.Spec.Cluster.ControlPlaneExternalEndpoint
+	apiServerDNS := fmt.Sprintf("https://%s:%d", endpoint.APIServer.Host, endpoint.APIServer.Port)
+	adminConf, err := generateKubeconfig(runtime.Name, ca.Cert, adminCert, WithServerUrl(apiServerDNS))
+	return &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      fmt.Sprintf("%s-kubeconfig", runtime.Name),
+			Namespace: runtime.Namespace,
+			Labels: map[string]string{
+				"app.kubernetes.io/name":       runtime.Name,
+				"app.kubernetes.io/managed-by": "heir",
+			},
+			Annotations: map[string]string{},
+		},
+		Data: map[string][]byte{
+			layout.Auth.ClientKubeconfig.SecretKey: adminConf,
+		},
+	}, nil
+}
+
+type kubeconfig struct {
+	serverUrl string
+}
+type Option func(*kubeconfig)
+
+func WithServerUrl(serverUrl string) Option {
+	return func(kubeconfig *kubeconfig) {
+		kubeconfig.serverUrl = serverUrl
+	}
+}
+func generateKubeconfig(username string, caCert []byte, cert *pki.Certificate, opts ...Option) ([]byte, error) {
+	k := &kubeconfig{
+		serverUrl: "https://127.0.0.1:6443",
+	}
+	for _, opt := range opts {
+		opt(k)
+	}
 	kubeconfig := clientcmdapi.NewConfig()
 	kubeconfig.Clusters[username] = &clientcmdapi.Cluster{
-		Server:                   "https://127.0.0.1:6443",
+		Server:                   k.serverUrl,
 		CertificateAuthorityData: caCert,
 	}
 	kubeconfig.AuthInfos[username] = &clientcmdapi.AuthInfo{

@@ -30,31 +30,31 @@ type ClusterSpec struct {
 	// ControlPlaneExternalEndpoint describes the per-component host and port through which
 	// worker nodes reach the API server and plane tunnel.
 	// +kubebuilder:default={}
-	ControlPlaneExternalEndpoint ControlPlaneExternalEndpointSpec `json:"controlPlaneExternalEndpoint"`
+	ControlPlaneExternalEndpoint ControlPlaneExternalEndpointSpec `json:"controlPlaneExternalEndpoint,omitempty"`
 	// APIServer holds flags and SANs passed to the tenant kube-apiserver.
 	// +kubebuilder:default={}
-	APIServer APIServerSpec `json:"apiServer"`
+	APIServer APIServerSpec `json:"apiServer,omitempty"`
 	// ControllerManager holds extra flags passed to the tenant kube-controller-manager.
 	// +kubebuilder:default={}
-	ControllerManager ControllerManagerSpec `json:"controllerManager"`
+	ControllerManager ControllerManagerSpec `json:"controllerManager,omitempty"`
 	// Scheduler holds extra flags passed to the tenant kube-scheduler.
 	// +kubebuilder:default={}
-	Scheduler SchedulerSpec `json:"scheduler"`
+	Scheduler SchedulerSpec `json:"scheduler,omitempty"`
 	// Network configures pod CIDR, service CIDR, CNI plugin, kube-proxy, and CoreDNS
 	// for the tenant cluster.
 	// +kubebuilder:default={}
-	Network NetworkSpec `json:"network"`
+	Network NetworkSpec `json:"network,omitempty"`
 	// Storage configures the backend used by the tenant API server in place of etcd.
 	// +kubebuilder:default={"type": "kine"}
-	Storage StorageSpec `json:"storage"`
+	Storage StorageSpec `json:"storage,omitempty"`
 	// Kubelet holds extra flags and configuration patches applied to kubelet
 	// on worker nodes that join this tenant cluster.
 	// +kubebuilder:default={}
-	Kubelet KubeletSpec `json:"kubelet"`
+	Kubelet KubeletSpec `json:"kubelet,omitempty"`
 	// ExtraResources is a list of arbitrary Kubernetes objects applied to the
 	// tenant cluster once its API server becomes available.
 	// +kubebuilder:default={}
-	ExtraResources ExtraResourcesSpec `json:"extraResources"`
+	ExtraResources ExtraResourcesSpec `json:"extraResources,omitempty"`
 }
 
 // PlaneTunnelSpec configures the plane tunnel TCP multiplexer, which tunnels traffic
@@ -96,10 +96,10 @@ type KubeletSpec struct {
 type ControlPlaneExternalEndpointSpec struct {
 	// APIServer defines the host and port that expose the Kubernetes API server.
 	//+kubebuilder:default={port:30080}
-	APIServer ComponentEndpoint `json:"apiServer"`
+	APIServer ComponentEndpoint `json:"apiServer,omitempty"`
 	// PlaneTunnel defines the host and port that expose the PlaneTunnel proxy server.
 	//+kubebuilder:default={port:30081}
-	PlaneTunnel ComponentEndpoint `json:"planeTunnel"`
+	PlaneTunnel ComponentEndpoint `json:"planeTunnel,omitempty"`
 }
 
 // ComponentEndpoint holds the host and port of a single control-plane component endpoint.
@@ -155,10 +155,10 @@ type NetworkSpec struct {
 	CNI CNISpec `json:"cni,omitempty"`
 	// KubeProxy configures kube-proxy in the tenant cluster.
 	// +kubebuilder:default={}
-	KubeProxy KubeProxySpec `json:"kubeProxy"`
+	KubeProxy KubeProxySpec `json:"kubeProxy,omitempty"`
 	// Coredns configures CoreDNS in the tenant cluster.
 	// +kubebuilder:default={}
-	Coredns CorednsSpec `json:"coredns"`
+	Coredns CorednsSpec `json:"coredns,omitempty"`
 }
 
 // CNISpec selects the Container Network Interface plugin to install in the tenant cluster.
@@ -174,10 +174,10 @@ type StorageSpec struct {
 	// Type selects the storage backend. Currently only kine is supported.
 	// +kubebuilder:validation:Enum=kine
 	//+kubebuilder:default="kine"
-	Type string `json:"type"`
+	Type string `json:"type,omitempty"`
 	// Kine holds configuration for the kine storage adapter, which provides
 	// an etcd-compatible interface backed by a relational database.
-	Kine *KineSpec `json:"kine"`
+	Kine *KineSpec `json:"kine,omitempty"`
 }
 
 // KineSpec configures the kine storage backend.
@@ -213,7 +213,6 @@ type RuntimeSpec struct {
 // including the container image, Deployment, and Service configuration.
 type ControlPlaneSpec struct {
 	// Heir specifies the Heir distribution image to run as the heir control plane.
-	// +required
 	Heir HeirSpec `json:"heir,omitempty"`
 	// Deployment configures the Deployment resource created for the heir control plane pods.
 	Deployment DeploymentSpec `json:"deployment,omitempty"`
@@ -254,11 +253,11 @@ type PlaneTunnelServiceSpec struct {
 	// ServiceType controls how the Service is exposed.
 	//+kubebuilder:validation:Enum=NodePort;ClusterIP;LoadBalancer;ExternalName
 	//+kubebuilder:default="NodePort"
-	ServiceType corev1.ServiceType `json:"serviceType"`
+	ServiceType corev1.ServiceType `json:"serviceType,omitempty"`
 	// NodePort is the NodePort assigned to the plane tunnel port.
 	// Only used when serviceType is NodePort.
 	//+kubebuilder:default=30081
-	NodePort int32 `json:"nodePort"`
+	NodePort int32 `json:"nodePort,omitempty"`
 }
 
 // AdditionalPort defines an extra port to add to a Service.

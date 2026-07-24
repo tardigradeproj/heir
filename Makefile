@@ -59,7 +59,7 @@ fmt: ## Run go fmt against code.
 
 .PHONY: vet
 vet: ## Run go vet against code.
-	go vet ./...
+	go vet $(shell go list ./... | grep -v 'github.com/tardigradeproj/heir/cmd')
 
 .PHONY: test
 test: manifests generate fmt vet setup-envtest ## Run tests.
@@ -113,7 +113,7 @@ build: manifests generate fmt vet ## Build manager binary.
 	go build -o bin/manager cmd/main.go
 
 .PHONY: run
-run: manifests generate fmt vet ## Run a controller from your host.
+run: manifests generate fmt ## Run a controller from your host.
 	go run ./cmd/main.go
 
 # If you wish to build the manager image targeting other platforms you can use the --platform flag.

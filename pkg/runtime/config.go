@@ -4,6 +4,8 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 
@@ -14,6 +16,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+const (
+	ControlPlaneConfigHashAnnotation = "controlplane.tardigrade.runtime.io/control-plane-hash"
+)
+
 // GenerateControlPlaneConfig builds the <name>-config ConfigMap that holds the s6-overlay run
 // scripts for every supervised process, and returns the ConfigMap together with the hex-encoded
 // SHA-256 hash of its data. No API calls are made; the caller is responsible for setting the
@@ -21,7 +27,7 @@ import (
 func GenerateControlPlaneConfig(runtime *controlplanev1alpha1.Runtime, layout ControlPlaneLayout) (*corev1.ConfigMap, string, error) {
 	workerProfile := typ.NewWorkerContextWithDefaults()
 	net := runtime.Spec.Cluster.Network
-	kubeproxy, err := component.CreateKubeProxyManifest(runtime)
+	kubeProxyManifest, err := component.CreateKubeProxyManifest(runtime)
 	if err != nil {
 		return nil, "", err
 	}
@@ -74,7 +80,7 @@ func GenerateControlPlaneConfig(runtime *controlplanev1alpha1.Runtime, layout Co
 		"tls-private-key-file":             layout.PKI.APIServerKey.MountPath,
 		"v":                                "2",
 	}
-	apiserverScript := RenderRunScript("/usr/local/bin/kube-apiserver",
+	apiServerScript := RenderRunScript("/usr/local/bin/kube-apiserver",
 		MergeArgs(apiServerParameters, runtime.Spec.Cluster.APIServer.ExtraArgs),
 	)
 
@@ -107,14 +113,14 @@ func GenerateControlPlaneConfig(runtime *controlplanev1alpha1.Runtime, layout Co
 	)
 
 	data := map[string]string{
-		layout.Config.APIServer.SecretKey:           apiserverScript,
+		layout.Config.APIServer.SecretKey:           apiServerScript,
 		layout.Config.ControllerManager.SecretKey:   controllerManagerScript,
 		layout.Config.Scheduler.SecretKey:           schedulerScript,
 		layout.Config.EgressSelector.SecretKey:      string(egressSelectorConfiguration),
 		layout.StaticManifest.Bootstrap.SecretKey:   string(tlsbootstrap),
 		layout.StaticManifest.NodeProfile.SecretKey: string(nodeProfile),
 		layout.StaticManifest.Coredns.SecretKey:     string(coredns),
-		layout.StaticManifest.KubeProxy.SecretKey:   string(kubeproxy),
+		layout.StaticManifest.KubeProxy.SecretKey:   string(kubeProxyManifest),
 	}
 	if runtime.Spec.Cluster.Network.CNI.Supplier == "flannel" {
 		flannelConfig, err := component.CreateFlannelCNIManifest(runtime)
@@ -133,6 +139,11 @@ func GenerateControlPlaneConfig(runtime *controlplanev1alpha1.Runtime, layout Co
 		"app.kubernetes.io/name":       runtime.Name,
 		"app.kubernetes.io/managed-by": "heir",
 	}
+	mp := make(map[string]string)
+	keys := slices.Sorted(maps.Keys(data))
+	for _, key := range keys {
+		mp[key] = data[key]
+	}
 	cm := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      runtime.Name,
@@ -140,9 +151,10 @@ func GenerateControlPlaneConfig(runtime *controlplanev1alpha1.Runtime, layout Co
 			Labels:    labels,
 			Annotations: map[string]string{
 				"controlplane.tardigrade.runtime.io/deletion-protection": "false",
+				ControlPlaneConfigHashAnnotation:                         desiredHash,
 			},
 		},
-		Data: data,
+		Data: mp,
 	}
 
 	return cm, desiredHash, nil

@@ -86,9 +86,9 @@ func TestRenderRunScript(t *testing.T) {
 			name:   "multiple args are sorted and last has no trailing backslash",
 			binary: "/usr/local/bin/kube-controller-manager",
 			args: map[string]string{
-				"v":             "2",
-				"bind-address":  "0.0.0.0",
-				"cluster-cidr":  "10.244.0.0/16",
+				"v":            "2",
+				"bind-address": "0.0.0.0",
+				"cluster-cidr": "10.244.0.0/16",
 			},
 			expected: "#!/bin/sh\n" +
 				"exec /usr/local/bin/kube-controller-manager \\\n" +

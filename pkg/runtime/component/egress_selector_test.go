@@ -43,7 +43,7 @@ type tlsConfig struct {
 
 func baseEgressSelectorConfig() EgressSelectorConfig {
 	return EgressSelectorConfig{
-		EgressURL:      "https://tunnel-server-mycluster-egress.default.svc.cluster.local:9443",
+		EgressURL:      "https://mycluster-tunnel-egress.default.svc.cluster.local:9443",
 		CACertPath:     "/etc/kubernetes/pki/ca.crt",
 		ClientCertPath: "/etc/kubernetes/pki/apiserver-plane-tunnel.crt",
 		ClientKeyPath:  "/etc/kubernetes/pki/apiserver-plane-tunnel.key",
@@ -83,21 +83,21 @@ func TestCreateEgressSelectorConfiguration(t *testing.T) {
 		{
 			name: "egress URL is propagated to tcp transport",
 			cfg: EgressSelectorConfig{
-				EgressURL:      "https://tunnel-server-foo-egress.prod.svc.cluster.local:9443",
+				EgressURL:      "https://foo-tunnel-egress.prod.svc.cluster.local:9443",
 				CACertPath:     "/etc/kubernetes/pki/ca.crt",
 				ClientCertPath: "/etc/kubernetes/pki/apiserver-plane-tunnel.crt",
 				ClientKeyPath:  "/etc/kubernetes/pki/apiserver-plane-tunnel.key",
 			},
 			validate: func(t *testing.T, doc egressSelectorDoc) {
 				require.Len(t, doc.EgressSelections, 1)
-				assert.Equal(t, "https://tunnel-server-foo-egress.prod.svc.cluster.local:9443",
+				assert.Equal(t, "https://foo-tunnel-egress.prod.svc.cluster.local:9443",
 					doc.EgressSelections[0].Connection.Transport.TCP.URL)
 			},
 		},
 		{
 			name: "CA bundle path is set in TLS config",
 			cfg: EgressSelectorConfig{
-				EgressURL:      "https://tunnel-server-mycluster-egress.default.svc.cluster.local:9443",
+				EgressURL:      "https://mycluster-tunnel-egress.default.svc.cluster.local:9443",
 				CACertPath:     "/custom/pki/ca.crt",
 				ClientCertPath: "/etc/kubernetes/pki/apiserver-plane-tunnel.crt",
 				ClientKeyPath:  "/etc/kubernetes/pki/apiserver-plane-tunnel.key",
@@ -111,7 +111,7 @@ func TestCreateEgressSelectorConfiguration(t *testing.T) {
 		{
 			name: "client cert path is set in TLS config",
 			cfg: EgressSelectorConfig{
-				EgressURL:      "https://tunnel-server-mycluster-egress.default.svc.cluster.local:9443",
+				EgressURL:      "https://mycluster-tunnel-egress.default.svc.cluster.local:9443",
 				CACertPath:     "/etc/kubernetes/pki/ca.crt",
 				ClientCertPath: "/custom/pki/apiserver-plane-tunnel.crt",
 				ClientKeyPath:  "/etc/kubernetes/pki/apiserver-plane-tunnel.key",
@@ -125,7 +125,7 @@ func TestCreateEgressSelectorConfiguration(t *testing.T) {
 		{
 			name: "client key path is set in TLS config",
 			cfg: EgressSelectorConfig{
-				EgressURL:      "https://tunnel-server-mycluster-egress.default.svc.cluster.local:9443",
+				EgressURL:      "https://mycluster-tunnel-egress.default.svc.cluster.local:9443",
 				CACertPath:     "/etc/kubernetes/pki/ca.crt",
 				ClientCertPath: "/etc/kubernetes/pki/apiserver-plane-tunnel.crt",
 				ClientKeyPath:  "/custom/pki/apiserver-plane-tunnel.key",
