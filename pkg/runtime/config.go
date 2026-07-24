@@ -4,6 +4,8 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 
@@ -137,6 +139,11 @@ func GenerateControlPlaneConfig(runtime *controlplanev1alpha1.Runtime, layout Co
 		"app.kubernetes.io/name":       runtime.Name,
 		"app.kubernetes.io/managed-by": "heir",
 	}
+	mp := make(map[string]string)
+	keys := slices.Sorted(maps.Keys(data))
+	for _, key := range keys {
+		mp[key] = data[key]
+	}
 	cm := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      runtime.Name,
@@ -147,7 +154,7 @@ func GenerateControlPlaneConfig(runtime *controlplanev1alpha1.Runtime, layout Co
 				ControlPlaneConfigHashAnnotation:                         desiredHash,
 			},
 		},
-		Data: data,
+		Data: mp,
 	}
 
 	return cm, desiredHash, nil
