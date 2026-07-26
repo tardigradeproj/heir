@@ -11,6 +11,7 @@ require (
 	github.com/containerd/containerd v1.7.31
 	github.com/coreos/go-systemd/v22 v22.7.0
 	github.com/evanphx/json-patch/v5 v5.9.11
+	github.com/go-logr/logr v1.4.3
 	github.com/go-task/slim-sprig/v3 v3.0.0
 	github.com/google/uuid v1.6.0
 	github.com/k3s-io/kine v1.14.2
@@ -72,7 +73,6 @@ require (
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
-	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-logr/zapr v1.3.0 // indirect
 	github.com/go-openapi/jsonpointer v0.21.2 // indirect

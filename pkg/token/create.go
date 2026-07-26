@@ -25,6 +25,17 @@ type Token struct {
 	Secret string
 }
 
+type bootstrapTokenOptions struct {
+	labels map[string]string
+}
+type Option func(*bootstrapTokenOptions)
+
+func WithLabels(labels map[string]string) Option {
+	return func(o *bootstrapTokenOptions) {
+		o.labels = labels
+	}
+}
+
 func (t Token) String() string {
 	return t.ID + "." + t.Secret
 }
@@ -34,10 +45,6 @@ func (t Token) String() string {
 // The kubeconfig contains cluster  for each external address found in the node profile configmap,
 // so that the worker's API server proxy is seeded with all known upstream addresses.
 func CreateBootstrapToken(ctx context.Context, kubeconfig, contextName string, expiry time.Duration) (string, error) {
-	t, err := Generate()
-	if err != nil {
-		return "", err
-	}
 	clientConfig := k8s.BuildClientConfig(kubeconfig, contextName)
 	_, caData, err := extractClusterInfo(clientConfig, contextName)
 	if err != nil {
@@ -52,27 +59,58 @@ func CreateBootstrapToken(ctx context.Context, kubeconfig, contextName string, e
 		return "", fmt.Errorf("failed to create kubernetes client: %w", err)
 	}
 
-	apiServerAddress, err := readAPIServerAddressFromNodeProfileConfigMap(ctx, client)
+	apiServerAddress, err := ReadAPIServerAddressFromNodeProfileConfigMap(ctx, client)
 	if err != nil {
 		return "", fmt.Errorf("failed to read external address from node profile configmap: %w", err)
 	}
 
-	secret := NewSecret(t, expiry)
-	if _, err := client.CoreV1().Secrets(secret.Namespace).Create(ctx, secret, metav1.CreateOptions{}); err != nil {
-		return "", fmt.Errorf("failed to create bootstrap token secret: %w", err)
-	}
-
-	bootstrapKubeconfig, err := buildBootstrapKubeconfig(t, caData, apiServerAddress)
+	_, bootstrapKubeconfig, err := IssueBootstrapToken(ctx, client, caData, apiServerAddress, expiry)
 	if err != nil {
-		return "", fmt.Errorf("failed to build bootstrap kubeconfig: %w", err)
+		return "", err
 	}
 
 	return base64.StdEncoding.EncodeToString(bootstrapKubeconfig), nil
 }
 
-// readAPIServerAddressFromNodeProfileConfigMap fetches the node profile configmap from
+// IssueBootstrapToken generates a bootstrap token, persists it as a Secret in
+// kube-system on client's cluster, and builds a bootstrap kubeconfig (caData +
+// apiServerAddress + the token).
+func IssueBootstrapToken(ctx context.Context,
+	client kubernetes.Interface,
+	caData []byte,
+	apiServerAddress string,
+	expiry time.Duration,
+	option ...Option,
+) (Token, []byte, error) {
+	bootstrapTokenOptions := &bootstrapTokenOptions{labels: map[string]string{}}
+	for _, o := range option {
+		o(bootstrapTokenOptions)
+	}
+
+	t, err := Generate()
+	if err != nil {
+		return Token{}, nil, err
+	}
+
+	secret := NewSecret(t, expiry)
+	for k, v := range bootstrapTokenOptions.labels {
+		secret.ObjectMeta.Labels[k] = v
+	}
+	if _, err := client.CoreV1().Secrets(secret.Namespace).Create(ctx, secret, metav1.CreateOptions{}); err != nil {
+		return Token{}, nil, fmt.Errorf("failed to create bootstrap token secret: %w", err)
+	}
+
+	bootstrapKubeconfig, err := buildBootstrapKubeconfig(t, caData, apiServerAddress)
+	if err != nil {
+		return Token{}, nil, fmt.Errorf("failed to build bootstrap kubeconfig: %w", err)
+	}
+
+	return t, bootstrapKubeconfig, nil
+}
+
+// ReadAPIServerAddressFromNodeProfileConfigMap fetches the node profile configmap from
 // kube-system and returns the external API server address as a URL string.
-func readAPIServerAddressFromNodeProfileConfigMap(ctx context.Context, client kubernetes.Interface) (string, error) {
+func ReadAPIServerAddressFromNodeProfileConfigMap(ctx context.Context, client kubernetes.Interface) (string, error) {
 	wrkDefaults := typ.NewWorkerContextWithDefaults()
 	cm, err := client.CoreV1().ConfigMaps(metav1.NamespaceSystem).Get(ctx, wrkDefaults.WorkerProfileConfigMapName, metav1.GetOptions{})
 	if err != nil {
@@ -161,6 +199,7 @@ func NewSecret(t Token, expiry time.Duration) *corev1.Secret {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "bootstrap-token-" + t.ID,
 			Namespace: metav1.NamespaceSystem,
+			Labels:    map[string]string{},
 		},
 		Type: corev1.SecretTypeBootstrapToken,
 		StringData: map[string]string{

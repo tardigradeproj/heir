@@ -8,10 +8,20 @@ rules:
   - ""
   resources:
   - configmaps
-  - secrets
   - services
   verbs:
   - create
+  - get
+  - list
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - create
+  - delete
   - get
   - list
   - update
@@ -30,6 +40,7 @@ rules:
   - controlplane.tardigrade.runtime.io
   resources:
   - runtimes
+  - workerjointokens
   verbs:
   - create
   - delete
@@ -42,12 +53,14 @@ rules:
   - controlplane.tardigrade.runtime.io
   resources:
   - runtimes/finalizers
+  - workerjointokens/finalizers
   verbs:
   - update
 - apiGroups:
   - controlplane.tardigrade.runtime.io
   resources:
   - runtimes/status
+  - workerjointokens/status
   verbs:
   - get
   - patch

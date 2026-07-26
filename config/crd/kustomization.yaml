@@ -3,6 +3,7 @@
 # It should be run by config/default
 resources:
 - bases/controlplane.tardigrade.runtime.io_runtimes.yaml
+- bases/controlplane.tardigrade.runtime.io_workerjointokens.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patches:
