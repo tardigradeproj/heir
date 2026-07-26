@@ -35,8 +35,12 @@ type WorkerJoinTokenSpec struct {
 	// from the moment it is issued. Immutable after creation: this resource is
 	// intentionally one-shot, not auto-renewing, so the only way to mint a token with
 	// a different TTL is to delete and recreate the object.
+	//
+	// The immutability rule compares parsed durations, not raw strings: metav1.Duration
+	// round-trips "3h" as "3h0m0s" on any read-modify-write (e.g. the controller adding
+	// its finalizer), which would spuriously fail a plain self == oldSelf string check.
 	// +kubebuilder:default="3h"
-	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="ttl is immutable"
+	// +kubebuilder:validation:XValidation:rule="duration(self) == duration(oldSelf)",message="ttl is immutable"
 	TTL metav1.Duration `json:"ttl,omitempty"`
 }
 
@@ -80,6 +84,11 @@ type WorkerJoinTokenStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Runtime",type="string",JSONPath=".spec.runtimeRef.name"
+// +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status"
+// +kubebuilder:printcolumn:name="Reason",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].reason"
+// +kubebuilder:printcolumn:name="Expires",type="date",JSONPath=".status.expiresAt"
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // WorkerJoinToken is the Schema for the workerjointokens API
 type WorkerJoinToken struct {

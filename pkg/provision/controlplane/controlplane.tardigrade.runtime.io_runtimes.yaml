@@ -2705,11 +2705,29 @@ spec:
           status:
             description: Status defines the observed state of Runtime
             properties:
-              certificatesExpireAt:
-                description: CertificatesExpireAt is the time at which the PKI certificates
-                  stored in the -pki Secret will expire.
-                format: date-time
-                type: string
+              certificates:
+                description: Certificates reports the expiry of each PKI certificate
+                  stored in the -pki Secret.
+                items:
+                  description: CertificateStatus reports the expiry of a single PKI
+                    certificate stored in the -pki Secret.
+                  properties:
+                    expiresAt:
+                      description: ExpiresAt is when this certificate expires.
+                      format: date-time
+                      type: string
+                    name:
+                      description: Name identifies the certificate, e.g. "apiserver",
+                        "planetunnel", "etcd".
+                      type: string
+                  required:
+                  - expiresAt
+                  - name
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - name
+                x-kubernetes-list-type: map
               conditions:
                 description: |-
                   Conditions reflect the current status of the Runtime.
@@ -2775,6 +2793,13 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the most recent generation observed by the controller while
+                  reconciling this Runtime. Compare against metadata.generation to tell whether the
+                  conditions above reflect the latest spec or a stale reconcile.
+                format: int64
+                type: integer
             type: object
         required:
         - spec

@@ -324,6 +324,14 @@ type RegistrySettings struct {
 	PullPolicy corev1.PullPolicy `json:"pullPolicy,omitempty"`
 }
 
+// CertificateStatus reports the expiry of a single PKI certificate stored in the -pki Secret.
+type CertificateStatus struct {
+	// Name identifies the certificate, e.g. "apiserver", "planetunnel", "etcd".
+	Name string `json:"name"`
+	// ExpiresAt is when this certificate expires.
+	ExpiresAt metav1.Time `json:"expiresAt"`
+}
+
 // RuntimeStatus defines the observed state of Runtime.
 type RuntimeStatus struct {
 	// Conditions reflect the current status of the Runtime.
@@ -335,8 +343,16 @@ type RuntimeStatus struct {
 	// +listMapKey=type
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
-	// CertificatesExpireAt is the time at which the PKI certificates stored in the -pki Secret will expire.
-	CertificatesExpireAt *metav1.Time `json:"certificatesExpireAt,omitempty"`
+	// ObservedGeneration is the most recent generation observed by the controller while
+	// reconciling this Runtime. Compare against metadata.generation to tell whether the
+	// conditions above reflect the latest spec or a stale reconcile.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+	// Certificates reports the expiry of each PKI certificate stored in the -pki Secret.
+	// +listType=map
+	// +listMapKey=name
+	// +optional
+	Certificates []CertificateStatus `json:"certificates,omitempty"`
 }
 
 // +kubebuilder:object:root=true

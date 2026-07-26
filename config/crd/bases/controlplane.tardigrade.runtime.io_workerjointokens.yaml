@@ -14,7 +14,23 @@ spec:
     singular: workerjointoken
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .spec.runtimeRef.name
+      name: Runtime
+      type: string
+    - jsonPath: .status.conditions[?(@.type=='Ready')].status
+      name: Ready
+      type: string
+    - jsonPath: .status.conditions[?(@.type=='Ready')].reason
+      name: Reason
+      type: string
+    - jsonPath: .status.expiresAt
+      name: Expires
+      type: date
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: WorkerJoinToken is the Schema for the workerjointokens API
@@ -67,10 +83,14 @@ spec:
                   from the moment it is issued. Immutable after creation: this resource is
                   intentionally one-shot, not auto-renewing, so the only way to mint a token with
                   a different TTL is to delete and recreate the object.
+
+                  The immutability rule compares parsed durations, not raw strings: metav1.Duration
+                  round-trips "3h" as "3h0m0s" on any read-modify-write (e.g. the controller adding
+                  its finalizer), which would spuriously fail a plain self == oldSelf string check.
                 type: string
                 x-kubernetes-validations:
                 - message: ttl is immutable
-                  rule: self == oldSelf
+                  rule: duration(self) == duration(oldSelf)
             required:
             - runtimeRef
             type: object

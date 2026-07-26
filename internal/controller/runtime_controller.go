@@ -99,7 +99,8 @@ func (r *RuntimeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	// Run each reconciliation step; on any error mark the resource Degraded and requeue.
-	if err := r.setupPKIAuthConfiguration(ctx, controlPlaneRuntime, log); err != nil {
+	pkiSecret, err := r.setupPKIAuthConfiguration(ctx, controlPlaneRuntime, log)
+	if err != nil {
 		log.Error(err, "failed to reconcile PKI auth configuration")
 		return r.setDegraded(ctx, controlPlaneRuntime, "PKIAuthSetupFailed", err.Error())
 	}
@@ -135,6 +136,14 @@ func (r *RuntimeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		log.Error(err, "failed to re-fetch runtime before final status update")
 		return ctrl.Result{}, err
 	}
+
+	certStatuses, err := certificateStatuses(pkiSecret)
+	if err != nil {
+		log.Error(err, "failed to compute certificate expiry status")
+		return ctrl.Result{}, err
+	}
+	controlPlaneRuntime.Status.Certificates = certStatuses
+	controlPlaneRuntime.Status.ObservedGeneration = controlPlaneRuntime.Generation
 	meta.SetStatusCondition(&controlPlaneRuntime.Status.Conditions, metav1.Condition{
 		Type:    typeAvailableRuntime,
 		Status:  metav1.ConditionTrue,
@@ -155,6 +164,7 @@ func (r *RuntimeReconciler) setDegraded(
 	obj *controlplanev1alpha1.Runtime,
 	reason, message string,
 ) (ctrl.Result, error) {
+	obj.Status.ObservedGeneration = obj.Generation
 	meta.SetStatusCondition(&obj.Status.Conditions, metav1.Condition{
 		Type:    typeAvailableRuntime,
 		Status:  metav1.ConditionFalse,
@@ -163,6 +173,38 @@ func (r *RuntimeReconciler) setDegraded(
 	})
 	_ = r.Status().Update(ctx, obj) // best-effort; original error drives the requeue
 	return ctrl.Result{}, fmt.Errorf("%s: %s", reason, message)
+}
+
+// certificateStatuses reads each known PKI certificate out of secret and reports its
+// expiry. Certificates not yet present in the secret (e.g. mid-creation) are skipped
+// rather than treated as an error.
+func certificateStatuses(secret *corev1.Secret) ([]controlplanev1alpha1.CertificateStatus, error) {
+	entries := []struct {
+		Name      string
+		SecretKey string
+	}{
+		{"ca", layout.PKI.CACert.SecretKey},
+		{"apiServer", layout.PKI.APIServerCert.SecretKey},
+		{"serviceAccount", layout.PKI.ServiceAccountCert.SecretKey},
+		{"planeTunnelServer", layout.PKI.PlaneTunnelCert.SecretKey},
+		{"egressSelector", layout.PKI.ApiServerPlaneTunnelCert.SecretKey},
+	}
+	statuses := make([]controlplanev1alpha1.CertificateStatus, 0, len(entries))
+	for _, e := range entries {
+		certPEM, ok := secret.Data[e.SecretKey]
+		if !ok || len(certPEM) == 0 {
+			continue
+		}
+		expiresAt, err := pki.ParseCertificateExpiry(certPEM)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse %s certificate: %w", e.Name, err)
+		}
+		statuses = append(statuses, controlplanev1alpha1.CertificateStatus{
+			Name:      e.Name,
+			ExpiresAt: metav1.NewTime(expiresAt),
+		})
+	}
+	return statuses, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -349,7 +391,7 @@ func (r *RuntimeReconciler) setupPKIAuthConfiguration(
 	ctx context.Context,
 	runtime *controlplanev1alpha1.Runtime,
 	log logr.Logger,
-) error {
+) (*corev1.Secret, error) {
 	existing := &corev1.Secret{}
 	err := r.Get(ctx, types.NamespacedName{
 		Name:      runtime.Name,
@@ -361,49 +403,50 @@ func (r *RuntimeReconciler) setupPKIAuthConfiguration(
 		if err != nil {
 			r.Recorder.Eventf(runtime, nil, corev1.EventTypeWarning, "PKIGenerationFailed", "GeneratePKI",
 				"failed to generate PKI material: %v", err)
-			return err
+			return nil, err
 		}
 		if err := ctrl.SetControllerReference(runtime, secret, r.Scheme); err != nil {
-			return err
+			return nil, err
 		}
 		if err := r.Create(ctx, secret); err != nil {
 			if apierrors.IsAlreadyExists(err) {
-				return nil
+				log.Info("PKI secret already exists")
+				return secret, nil
 			}
 			r.Recorder.Eventf(runtime, nil, corev1.EventTypeWarning, "PKISecretCreateFailed", "CreatePKISecret",
 				"failed to create PKI secret %q: %v", secret.Name, err)
-			return err
+			return nil, err
 		}
 		r.Recorder.Eventf(runtime, secret, corev1.EventTypeNormal, "PKISecretCreated", "CreatePKISecret",
 			"PKI secret %q created with CA and all component certificates", secret.Name)
-		return nil
+		return secret, nil
 	}
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if !metav1.IsControlledBy(existing, runtime) {
 		r.Recorder.Eventf(runtime, existing, corev1.EventTypeWarning, "PKISecret", "PKISecretOwnership",
 			"secret is not owned by Heir Runtime: %v", err)
-		return fmt.Errorf("secret %s/%s exists but is not owned by Heir Runtime; refusing to adopt", existing.Namespace, existing.Name)
+		return nil, fmt.Errorf("secret %s/%s exists but is not owned by Heir Runtime; refusing to adopt", existing.Namespace, existing.Name)
 	}
 	updated, err := heirruntime.RegeneratePKILeafCerts(existing, runtime, layout)
 	if err != nil {
 		r.Recorder.Eventf(runtime, existing, corev1.EventTypeWarning, "PKICertRegenerationFailed", "RotatePKICerts",
 			"failed to regenerate APIServer and/or Plane Tunnel: %v", err)
-		return fmt.Errorf("failed to regenerate PKI leaf certs: %w", err)
+		return nil, fmt.Errorf("failed to regenerate PKI leaf certs: %w", err)
 	}
 	if !updated {
 		log.Info("PKI auth configuration is up to date; skipping update")
-		return nil
+		return existing, nil
 	}
 	if err := r.Update(ctx, existing); err != nil {
 		r.Recorder.Eventf(runtime, existing, corev1.EventTypeWarning, "PKISecretUpdateFailed", "RotatePKICerts",
 			"failed to persist rotated certs in secret: %v", err)
-		return err
+		return nil, err
 	}
 	r.Recorder.Eventf(runtime, existing, corev1.EventTypeNormal, "PKICertRotated", "RotatePKICerts",
 		"APIServer and/or Plane Tunnel certificates rotated due to SAN change")
-	return nil
+	return existing, nil
 }
 
 // setupClientKubeconfig reconciles the <name>-kubeconfig Secret that holds a standalone

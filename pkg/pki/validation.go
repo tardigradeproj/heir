@@ -113,6 +113,18 @@ func ParseAndVerifyCertificate(certPEM []byte, ca Certificate, opts ...VerifyOpt
 	return cert, nil
 }
 
+// ParseCertificateExpiry decodes a PEM-encoded certificate and returns its NotAfter
+// time. Unlike ParseAndVerifyCertificate it performs no chain, subject, or validity
+// checks — it is intended for status reporting where callers want the expiry of a
+// certificate regardless of whether it is still valid.
+func ParseCertificateExpiry(certPEM []byte) (time.Time, error) {
+	cert, err := parseCertificatePEM(certPEM)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return cert.NotAfter, nil
+}
+
 func parseCertificatePEM(certPEM []byte) (*x509.Certificate, error) {
 	block, _ := pem.Decode(certPEM)
 	if block == nil {
