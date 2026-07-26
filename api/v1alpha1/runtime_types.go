@@ -104,7 +104,10 @@ type ControlPlaneExternalEndpointSpec struct {
 
 // ComponentEndpoint holds the host and port of a single control-plane component endpoint.
 type ComponentEndpoint struct {
-	// Host is the IP address or hostname of the endpoint.
+	// Host is the IP address or hostname of the endpoint. It must be a bare domain
+	// name or IPv4 address — no URL scheme (e.g. "https://") and no port suffix, since
+	// the port is configured separately via the Port field below.
+	// +kubebuilder:validation:XValidation:rule="self == '' || self.matches('^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?([.][a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$')",message="host must be a valid hostname or IP address, without a URL scheme or port"
 	Host string `json:"host,omitempty"`
 	// Port is the TCP port number on the remote endpoint.
 	Port int32 `json:"port"`

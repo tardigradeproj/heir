@@ -189,13 +189,38 @@ func certificateStatuses(secret *corev1.Secret) ([]controlplanev1alpha1.Certific
 		{"planeTunnelServer", layout.PKI.PlaneTunnelCert.SecretKey},
 		{"egressSelector", layout.PKI.ApiServerPlaneTunnelCert.SecretKey},
 	}
-	statuses := make([]controlplanev1alpha1.CertificateStatus, 0, len(entries))
+	kubeconfigEntries := []struct {
+		Name      string
+		SecretKey string
+	}{
+		{"controllerManager", layout.Auth.ControllerManagerConf.SecretKey},
+		{"scheduler", layout.Auth.SchedulerConf.SecretKey},
+	}
+	statuses := make([]controlplanev1alpha1.CertificateStatus, 0, len(entries)+len(kubeconfigEntries))
 	for _, e := range entries {
 		certPEM, ok := secret.Data[e.SecretKey]
 		if !ok || len(certPEM) == 0 {
 			continue
 		}
 		expiresAt, err := pki.ParseCertificateExpiry(certPEM)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse %s certificate: %w", e.Name, err)
+		}
+		statuses = append(statuses, controlplanev1alpha1.CertificateStatus{
+			Name:      e.Name,
+			ExpiresAt: metav1.NewTime(expiresAt),
+		})
+	}
+	for _, e := range kubeconfigEntries {
+		raw, ok := secret.Data[e.SecretKey]
+		if !ok || len(raw) == 0 {
+			continue
+		}
+		kc, err := util.ParseAndVerifyKubeconfig(raw)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse %s kubeconfig: %w", e.Name, err)
+		}
+		expiresAt, err := pki.ParseCertificateExpiry(kc.AuthInfo.ClientCertificateData)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse %s certificate: %w", e.Name, err)
 		}

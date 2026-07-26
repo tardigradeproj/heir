@@ -78,9 +78,15 @@ spec:
                           the Kubernetes API server.
                         properties:
                           host:
-                            description: Host is the IP address or hostname of the
-                              endpoint.
+                            description: |-
+                              Host is the IP address or hostname of the endpoint. It must be a bare domain
+                              name or IPv4 address — no URL scheme (e.g. "https://") and no port suffix, since
+                              the port is configured separately via the Port field below.
                             type: string
+                            x-kubernetes-validations:
+                            - message: host must be a valid hostname or IP address,
+                                without a URL scheme or port
+                              rule: self == '' || self.matches('^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?([.][a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$')
                           port:
                             description: Port is the TCP port number on the remote
                               endpoint.
@@ -96,9 +102,15 @@ spec:
                           the PlaneTunnel proxy server.
                         properties:
                           host:
-                            description: Host is the IP address or hostname of the
-                              endpoint.
+                            description: |-
+                              Host is the IP address or hostname of the endpoint. It must be a bare domain
+                              name or IPv4 address — no URL scheme (e.g. "https://") and no port suffix, since
+                              the port is configured separately via the Port field below.
                             type: string
+                            x-kubernetes-validations:
+                            - message: host must be a valid hostname or IP address,
+                                without a URL scheme or port
+                              rule: self == '' || self.matches('^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?([.][a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$')
                           port:
                             description: Port is the TCP port number on the remote
                               endpoint.
