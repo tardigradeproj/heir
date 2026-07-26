@@ -150,6 +150,13 @@ spec:
                   on the tenant cluster.
                 format: date-time
                 type: string
+              secretChecksum:
+                description: |-
+                  SecretChecksum is the sha256 checksum of the "kubeconfig" value the controller
+                  wrote into SecretRef. Compared against the Secret's live content on every
+                  reconcile so drift (edits or deletion of the Secret) is detected and repaired by
+                  minting a replacement token, not just papered over.
+                type: string
               secretRef:
                 description: |-
                   SecretRef names the Secret, in this object's namespace, holding the
