@@ -171,3 +171,8 @@ copy-masteragent: ## Build masteragent on vagrant and copy binary back to host
 .PHONY: test-distro
 test-distro:
 	go test $$(go list ./... | grep -v -e 'internal/controller' -e 'cmd')
+
+
+.PHONY: build-bins
+build-bins:
+	goreleaser release --snapshot --clean

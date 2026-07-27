@@ -57,8 +57,9 @@ containerdConfigPatches:
 EOF
 
 # Generate bastion kubeconfig — same content but server host set to 'control-plane'
-# so containers inside the kind network can reach the API server directly.
+# so containers inside the kind network can reach the API server directly.ex
 bastion_kubeconfig_path="${script_dir}/../integration-test/bastion-kubeconfig.yaml"
+export KUBECONFIG=$bastion_kubeconfig_path
 cp "${kubeconfig_path}" "${bastion_kubeconfig_path}"
 api_port=$(kubectl --kubeconfig="${bastion_kubeconfig_path}" config view --raw \
   -o jsonpath='{.clusters[0].cluster.server}' | grep -oE '[0-9]+$')
@@ -113,6 +114,10 @@ docker push "localhost:${reg_port}/postgres:16"
 
 docker tag ghcr.io/tardigradeproj/heir-tunnel:latest-arm64 "localhost:${reg_port}/heir-tunnel:latest-arm64"
 docker push "localhost:${reg_port}/heir-tunnel:latest-arm64"
+
+docker tag controller:latest "localhost:${reg_port}/controller:latest"
+docker push "localhost:${reg_port}/controller:latest"
+
 # 8. Provision PostgreSQL (secret, deployment, service) and wait until healthy
 kubectl --kubeconfig="${kubeconfig_path}" create secret generic postgres-credentials \
   --from-literal=password=kine-password \

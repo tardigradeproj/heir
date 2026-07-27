@@ -19,7 +19,6 @@ package controller
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 
@@ -124,11 +123,11 @@ func (r *WorkerJoinTokenReconciler) secretDrifted(ctx context.Context, joinToken
 		}
 		return false, err
 	}
-	return secretChecksum(secret.Data["kubeconfig"]) != joinToken.Status.SecretChecksum, nil
+	return secretChecksum(secret.Data["jointoken"]) != joinToken.Status.SecretChecksum, nil
 }
 
-// secretChecksum returns the hex-encoded sha256 checksum of a join-kubeconfig Secret's
-// "kubeconfig" value, used to detect drift between reconciles.
+// secretChecksum returns the hex-encoded sha256 checksum of a join-token Secret's
+// "jointoken" value, used to detect drift between reconciles.
 func secretChecksum(kubeconfig []byte) string {
 	sum := sha256.Sum256(kubeconfig)
 	return hex.EncodeToString(sum[:])
@@ -171,8 +170,8 @@ func (r *WorkerJoinTokenReconciler) tenantClientFor(
 }
 
 // mint issues a fresh bootstrap token on the tenant cluster, publishes the resulting
-// kubeconfig as a Secret in the management cluster, and best-effort revokes whatever
-// token this WorkerJoinToken previously minted.
+// kubeconfig as the "jointoken" key of a <name>-jointoken Secret in the management
+// cluster, and best-effort revokes whatever token this WorkerJoinToken previously minted.
 func (r *WorkerJoinTokenReconciler) mint(
 	ctx context.Context,
 	joinToken *controlplanev1alpha1.WorkerJoinToken,
@@ -198,16 +197,16 @@ func (r *WorkerJoinTokenReconciler) mint(
 		return r.setDegraded(ctx, joinToken, "TokenIssuanceFailed", fmt.Sprintf("failed to mint bootstrap token: %v", err))
 	}
 
-	secretName := joinToken.Name + "-join-kubeconfig"
+	secretName := joinToken.Name + "-jointoken"
 	joinSecret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: joinToken.Namespace}}
 	if _, err := controllerutil.CreateOrUpdate(ctx, r.Client, joinSecret, func() error {
 		if joinSecret.Data == nil {
 			joinSecret.Data = map[string][]byte{}
 		}
-		joinSecret.Data["kubeconfig"] = []byte(base64.StdEncoding.EncodeToString(kubeconfigBytes))
+		joinSecret.Data["jointoken"] = kubeconfigBytes
 		return ctrl.SetControllerReference(joinToken, joinSecret, r.Scheme)
 	}); err != nil {
-		return r.setDegraded(ctx, joinToken, "SecretWriteFailed", fmt.Sprintf("failed to write join kubeconfig secret %q: %v", secretName, err))
+		return r.setDegraded(ctx, joinToken, "SecretWriteFailed", fmt.Sprintf("failed to write join token secret %q: %v", secretName, err))
 	}
 
 	if previousTokenID != "" {
@@ -220,6 +219,7 @@ func (r *WorkerJoinTokenReconciler) mint(
 	joinToken.Status.TokenID = tok.ID
 	joinToken.Status.ExpiresAt = &expiresAt
 	joinToken.Status.SecretRef = &corev1.LocalObjectReference{Name: secretName}
+	joinToken.Status.SecretChecksum = secretChecksum(joinSecret.Data["jointoken"])
 	meta.SetStatusCondition(&joinToken.Status.Conditions, metav1.Condition{
 		Type:    typeReadyWorkerJoinToken,
 		Status:  metav1.ConditionTrue,

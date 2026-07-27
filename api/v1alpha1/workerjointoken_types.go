@@ -87,7 +87,7 @@ type WorkerJoinTokenStatus struct {
 // +kubebuilder:printcolumn:name="Runtime",type="string",JSONPath=".spec.runtimeRef.name"
 // +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status"
 // +kubebuilder:printcolumn:name="Reason",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].reason"
-// +kubebuilder:printcolumn:name="Expires",type="date",JSONPath=".status.expiresAt"
+// +kubebuilder:printcolumn:name="Expires",type="string",JSONPath=".status.expiresAt"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // WorkerJoinToken is the Schema for the workerjointokens API

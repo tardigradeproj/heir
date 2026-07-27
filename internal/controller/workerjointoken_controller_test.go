@@ -229,10 +229,17 @@ var _ = Describe("WorkerJoinToken Controller", func() {
 	})
 
 	Context("secretDrifted", func() {
-		const secretName = "drift-test-join-kubeconfig"
+		const secretName = "drift-test-jointoken"
 
-		ctx := context.Background()
-		reconciler := &WorkerJoinTokenReconciler{Client: k8sClient}
+		var (
+			ctx        context.Context
+			reconciler *WorkerJoinTokenReconciler
+		)
+
+		BeforeEach(func() {
+			ctx = context.Background()
+			reconciler = &WorkerJoinTokenReconciler{Client: k8sClient}
+		})
 
 		AfterEach(func() {
 			_ = k8sClient.Delete(ctx, &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: "default"}})
@@ -262,10 +269,10 @@ var _ = Describe("WorkerJoinToken Controller", func() {
 			Expect(drifted).To(BeTrue())
 		})
 
-		It("reports drift when the secret's kubeconfig content has been tampered with", func() {
+		It("reports drift when the secret's jointoken content has been tampered with", func() {
 			Expect(k8sClient.Create(ctx, &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: "default"},
-				Data:       map[string][]byte{"kubeconfig": []byte("tampered-content")},
+				Data:       map[string][]byte{"jointoken": []byte("tampered-content")},
 			})).To(Succeed())
 
 			joinToken := &controlplanev1alpha1.WorkerJoinToken{
@@ -281,11 +288,11 @@ var _ = Describe("WorkerJoinToken Controller", func() {
 			Expect(drifted).To(BeTrue())
 		})
 
-		It("reports no drift when the secret's kubeconfig content matches the recorded checksum", func() {
+		It("reports no drift when the secret's jointoken content matches the recorded checksum", func() {
 			content := []byte("still-correct-content")
 			Expect(k8sClient.Create(ctx, &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: "default"},
-				Data:       map[string][]byte{"kubeconfig": content},
+				Data:       map[string][]byte{"jointoken": content},
 			})).To(Succeed())
 
 			joinToken := &controlplanev1alpha1.WorkerJoinToken{
