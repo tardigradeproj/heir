@@ -4,6 +4,18 @@ set -o errexit
 script_dir="$(cd "$(dirname "$0")" && pwd)"
 kubeconfig_path="${script_dir}/../integration-test/kubeconfig.yaml"
 
+# Map the host architecture to the goarch-style suffix goreleaser tags images with,
+# so this script works unmodified on both Apple Silicon and x86_64 machines.
+host_arch="$(uname -m)"
+case "${host_arch}" in
+  x86_64|amd64) arch="amd64" ;;
+  aarch64|arm64) arch="arm64" ;;
+  *)
+    echo "unsupported host architecture: ${host_arch}" >&2
+    exit 1
+    ;;
+esac
+
 # 1. Create registry container unless it already exists
 reg_name='kind-registry'
 reg_port='5001'
@@ -106,14 +118,14 @@ data:
 EOF
 
 # 7. Push postgres image to the local registry
-docker tag ghcr.io/tardigradeproj/heir:latest-arm64 "localhost:${reg_port}/heir:latest-arm64"
-docker push "localhost:${reg_port}/heir:latest-arm64"
+docker tag "ghcr.io/tardigradeproj/heir:latest-${arch}" "localhost:${reg_port}/heir:latest"
+docker push "localhost:${reg_port}/heir:latest"
 docker pull postgres:16
 docker tag postgres:16 "localhost:${reg_port}/postgres:16"
 docker push "localhost:${reg_port}/postgres:16"
 
-docker tag ghcr.io/tardigradeproj/heir-tunnel:latest-arm64 "localhost:${reg_port}/heir-tunnel:latest-arm64"
-docker push "localhost:${reg_port}/heir-tunnel:latest-arm64"
+docker tag "ghcr.io/tardigradeproj/heir-tunnel:latest-${arch}" "localhost:${reg_port}/heir-tunnel:latest"
+docker push "localhost:${reg_port}/heir-tunnel:latest"
 
 docker tag controller:latest "localhost:${reg_port}/controller:latest"
 docker push "localhost:${reg_port}/controller:latest"

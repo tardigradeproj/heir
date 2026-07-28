@@ -30,3 +30,5 @@ See the **[documentation](https://tardigradeproj.github.io/docs/)** for installa
 ## Development
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on submitting issues, pull requests, and commit conventions.
+
+To build every heir component and run the full stack locally (management cluster, controller manager, a tenant `Runtime`, and a worker node joined to it), see [docs/running-locally.md](docs/running-locally.md).

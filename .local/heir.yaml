@@ -6,7 +6,7 @@ metadata:
 spec:
   controlPlane:
     heir:
-      image: localhost:5001/heir:latest-arm64
+      image: localhost:5001/heir:latest
     deployment:
       replicas: 2
       serviceAccountName: default
@@ -15,7 +15,7 @@ spec:
       apiServerNodePort: 30080
     planeTunnel:
       server:
-        image: localhost:5001/heir-tunnel:latest-arm64
+        image: localhost:5001/heir-tunnel:latest
         deployment:
           replicas: 2
       service:

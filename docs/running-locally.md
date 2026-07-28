@@ -1,70 +1,168 @@
+# Running heir locally
 
-The project contains two make source: Makefile and Makefile.distro. Makefile contains all instruction for heir 
-operator setup, while Makefile.distro contain instruction to deal with heir dependencies, such as worker-agent, control plane images, etc...
+This guide walks through building every heir component from source and wiring them together on
+your own machine: a local management cluster (via kind), the heir controller manager, a tenant
+`Runtime`, and a worker node (via Vagrant) joined to that tenant cluster. It is the fastest way to
+exercise a change end to end before opening a PR.
 
-Pre-requisites 
+The project is driven by two Makefiles. `Makefile` covers the heir controller manager itself
+(building, testing, installing CRDs, deploying to a cluster). `Makefile.distro` covers everything
+the tenant control plane and worker nodes need at runtime, such as the embedded `kubelet`,
+`containerd`, and the `masteragent`/`tunnel` binaries, plus the container images built from them.
 
-* goreleaser
-* docker
-* kind
-* vagrant (worker node)
+## Prerequisites
 
+You will need the following tools installed and available on your `PATH`:
 
-## Download dependency artifacts and build binaries
-goreleaser is configured to download heir dependencies, before building anything, as heir embeeds processes such as containerd, kubelet, etc... on its own self.
-run: make build-bins
+1. **Go**, matching the version in `go.mod`, to build the controller manager and the `distro` CLI.
+2. **[goreleaser](https://goreleaser.com/)**, which cross-compiles every heir binary and builds
+   the tenant control plane and plane tunnel container images.
+3. **Docker**, to build the controller manager image and to run the local kind cluster and
+   registry.
+4. **[kind](https://kind.sigs.k8s.io/)**, to run the local management cluster.
+5. **kubectl**, to interact with both the management cluster and, later, the tenant cluster.
+6. **[Vagrant](https://www.vagrantup.com/)**, to run a disposable VM that plays the role of a
+   worker node, since heir worker nodes are not designed to run as containers.
 
-##  Build heir controller manager
-make build
+## 1. Download dependency artifacts and build every heir binary and image
 
-## Setup Management cluster
+heir embeds the processes it runs, such as `kubelet` and `containerd`, inside its own binaries, so 
+these need to be downloaded and built before anything else. Running the
+command below invokes goreleaser in snapshot mode, which downloads every worker and control-plane
+dependency for the current architecture, cross-compiles the `distro`, `tunnel`, and `masteragent`
+binaries, and builds and tags the tenant control plane image (`ghcr.io/tardigradeproj/heir`) and
+the plane tunnel image (`ghcr.io/tardigradeproj/heir-tunnel`) locally.
 
-./.local/setup-management-cluster
+```sh
+make build-bins
+```
 
-## Install heir controller on test cluster
+## 2. Build the controller manager container image
 
+The local management cluster setup script (next step) expects a `controller:latest` image to
+already exist locally, so that it can push it into the cluster's local registry. Running
+`make docker-build` with no arguments builds exactly that image, since `controller:latest` is the
+Makefile's default.
+
+```sh
+make docker-build
+```
+
+## 3. Stand up the local management cluster
+
+`.local/setup-management-cluster.sh` creates the environment the rest of this guide runs against.
+It starts a local Docker registry container, creates a kind cluster configured to trust that
+registry, tags and pushes the controller manager image built in step 2 along with the
+`heir`/`heir-tunnel` images built in step 1 (plus a Postgres image) into the registry, and finally
+provisions a Postgres deployment that the tenant Runtime will use as its kine storage backend.
+
+```sh
+./.local/setup-management-cluster.sh
+```
+
+The script writes kubeconfig under `integration-test/bastion-kubeconfig.yaml`, which you use from
+your host machine, and `bastion-kubeconfig.yaml`, which points at an address reachable from inside
+the kind Docker network and is what the tenant control plane itself is configured to use. For the
+rest of this guide, export the host-facing one:
+
+```sh
+export KUBECONFIG="$(pwd)/integration-test/kubeconfig.yaml"
+```
+
+## 4. Install the CRDs and deploy the controller manager
+
+`make deploy` renders the `config/default` kustomization, which bundles the CRDs, RBAC, and the
+controller manager Deployment together, and applies all of it in one shot. Passing `IMG` points the
+Deployment at the image you pushed to the local registry in step 3, rather than the default.
+
+```sh
 make deploy IMG="localhost:5001/controller:latest"
+```
 
-## provision downstream kubernetes cluster
+## 5. Provision a tenant Runtime
 
+`.local/heir.yaml` is a sample `Runtime` that references the `heir` and `heir-tunnel` images
+pushed to the local registry, exposes the API server and plane tunnel on NodePorts `30080` and
+`30081` so the Vagrant worker can reach them, and uses the Postgres instance from step 3 as its
+kine storage backend. Applying it and watching its status will tell you once the tenant control
+plane is up.
+
+```sh
 kubectl apply -f .local/heir.yaml
+kubectl get runtime my-cluster --watch
+```
 
-## create join token 
+Wait for the `Available` condition to report `True` before moving on.
 
+## 6. Issue a worker join token
+
+A `WorkerJoinToken` mints a short-lived bootstrap token and kubeconfig against a specific tenant
+`Runtime`, so that a worker node can authenticate to it during the join process.
+`.local/heir-worker-join-token.yaml` requests one for the `my-cluster` Runtime created in the
+previous step.
+
+```sh
 kubectl apply -f .local/heir-worker-join-token.yaml
+kubectl get workerjointoken new-node
+```
 
-## copy join token to vagrant
+## 7. Copy the join token onto the Vagrant worker
 
-kubectl get secret new-node-join-kubeconfig -o jsonpath={.data.kubeconfig} | vagrant ssh -c <do something to copy the content into /heir/token>
+The controller publishes the minted token as the `jointoken` key of a `<name>-jointoken` Secret in
+the management cluster. The `distro provision worker` command, run inside the VM in the next step,
+expects that value written to `/home/vagrant/heir/token`. The command below reads the Secret, and
+writes it into the running Vagrant VM in a single pipeline.
 
-## join vagrant worker
+```sh
+kubectl get secret new-node-jointoken -o jsonpath='{.data.jointoken}' \
+  | vagrant ssh -c "sudo tee /home/vagrant/heir/token > /dev/null"
+```
 
-withing the vagrant vm build heir binary:
+## 8. Build the distro binary and join the worker
 
+If this is your first time using the VM, start and provision it first with `make vagrant-up`. Then,
+from inside the VM, build the `distro` CLI with the `embedartifacts` build tag, which bakes the
+worker binaries downloaded in step 1 into the resulting binary, and run its `provision worker`
+command with the token copied over in step 7.
 
-vagrant ssh -c "cd heir && go build -tags=embedartifacts cmd/distro.go"
-vagrant ssh -c "cd heir && sudo ./distro provision worker --token=$(cat token)"
+```sh
+vagrant ssh -c "cd /home/vagrant/heir && go build -tags=embedartifacts cmd/distro.go"
+vagrant ssh -c "cd /home/vagrant/heir && sudo ./distro provision worker --token=\$(cat /home/vagrant/heir/token)"
+```
 
-Alternatively you can ssh in vagrant using:
-vagrant ssh 
-and run 
-cd heir
-go build -tags=embedartifacts cmd/distro.go
-sudo ./distro provision worker --token=$(cat token)
+If you would rather work interactively, `make vagrant-ssh` opens a shell in the VM, from where you
+can run the same two commands (`cd /home/vagrant/heir`, then the `go build` and `sudo ./distro ...` lines above)
+directly.
 
+## 9. Validate that the node joined
 
+The Runtime controller also publishes its own admin kubeconfig as a `<name>-kubeconfig` Secret.
+Fetching, decoding, and using it lets you query the tenant cluster directly and confirm the worker
+node registered successfully.
 
-## validate if node joint
-
-kubectl get secret my-cluster-kubeconfig -o jsonpath={.data.kubeconfig} | base64 -d > my-cluster-kubeconfig
-
+```sh
+kubectl get secret my-cluster-kubeconfig -o jsonpath='{.data.kubeconfig}' | base64 -d > my-cluster-kubeconfig
 kubectl --kubeconfig my-cluster-kubeconfig get nodes
-You should see:
-NAME             STATUS   ROLES    AGE   VERSION
-vagrant-ubuntu   Ready    <none>   42m   v1.35.5
+```
 
-If it does not work try to ssh in vagrant as explain previously to debug the issue.
-Supporting commands:
+A successful join looks like this, with the Vagrant node in the `Ready` state:
+
+```
+NAME             STATUS   ROLES    AGE   VERSION
+vagrant-ubuntu   Ready    <none>   42m   v1.xx.xx
+```
+
+## Troubleshooting
+
+If the node does not appear, or does not reach `Ready`, open a shell in the VM with
+`make vagrant-ssh` and inspect the heir worker service:
+
+```sh
 sudo systemctl status heir.service
 sudo journalctl -xu heir --since "1 minutes ago"
 sudo /var/lib/heir/bin/crictl --runtime-endpoint /run/heir/containerd.sock ps
+```
+
+To reset the VM's worker state and try again from step 8, run `.local/cleanup-worker.sh` inside
+the VM. It stops the heir service, tears down containerd and its containers, removes the CNI and
+iptables state left behind, and deletes every file heir wrote under `/etc`, `/var`, and `/run`.

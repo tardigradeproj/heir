@@ -45,3 +45,4 @@ integration-test/kubeconfig.yaml
 # Added by goreleaser init:
 dist/
 /tunnel
+my-cluster-kubeconfig
