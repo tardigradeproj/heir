@@ -1,0 +1,12 @@
+# Single source of truth for the versions of external dependencies that
+# Makefile.distro downloads for worker nodes and the tenant control plane.
+#
+# Bump a version here, not in Makefile.distro. Each key is read via yq by
+# Makefile.distro and can still be overridden per-invocation, e.g.:
+#   make download-worker-artifacts KUBE_VERSION=v1.36.0
+kubernetes: v1.35.7
+containerd: 2.1.0
+runc: v1.2.6
+crictl: v1.35.0
+cni: v1.9.1
+calico: 3.31.4

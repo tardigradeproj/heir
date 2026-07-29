@@ -196,7 +196,7 @@ spec:
                             type: string
                           registrySettings:
                             default:
-                              image: coredns/coredns:v1.12.1
+                              image: coredns/coredns:v1.13.1
                               registry: registry.k8s.io
                             description: |-
                               RegistrySettings configures a container image registry reference,
@@ -314,7 +314,7 @@ spec:
                             type: array
                           registrySettings:
                             default:
-                              image: kube-proxy:v1.34.0
+                              image: kube-proxy:v1.35.7
                               registry: registry.k8s.io
                             description: |-
                               RegistrySettings configures a container image registry reference,

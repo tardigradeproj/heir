@@ -116,12 +116,18 @@ build: manifests generate fmt vet ## Build manager binary.
 run: manifests generate fmt ## Run a controller from your host.
 	go run ./cmd/main.go
 
-# If you wish to build the manager image targeting other platforms you can use the --platform flag.
-# (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
-# More info: https://docs.docker.com/develop/develop-images/build_enhancements/
+# The manager binary is built here (not inside the Dockerfile) so goreleaser and a plain
+# `make docker-build` share the exact same Dockerfile: images/Dockerfile.controller-manager
+# just copies a pre-built binary from <staging-dir>/linux/<arch>/manager, the same layout
+# goreleaser's docker pipe stages for it.
+MANAGER_IMAGE_DOCKERFILE ?= images/Dockerfile.controller-manager
+MANAGER_IMAGE_STAGING_DIR ?= bin/manager-image
+
 .PHONY: docker-build
-docker-build: ## Build docker image with the manager.
-	$(CONTAINER_TOOL) build -t ${IMG} .
+docker-build: ## Build docker image with the manager, for the host architecture.
+	@mkdir -p "$(MANAGER_IMAGE_STAGING_DIR)/linux/$$(go env GOARCH)"
+	CGO_ENABLED=0 GOOS=linux GOARCH=$$(go env GOARCH) go build -o "$(MANAGER_IMAGE_STAGING_DIR)/linux/$$(go env GOARCH)/manager" cmd/main.go
+	$(CONTAINER_TOOL) build -f $(MANAGER_IMAGE_DOCKERFILE) -t ${IMG} "$(MANAGER_IMAGE_STAGING_DIR)"
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.
@@ -136,13 +142,16 @@ docker-push: ## Push docker image with the manager.
 PLATFORMS ?= linux/arm64,linux/amd64,linux/s390x,linux/ppc64le
 .PHONY: docker-buildx
 docker-buildx: ## Build and push docker image for the manager for cross-platform support
-	# copy existing Dockerfile and insert --platform=${BUILDPLATFORM} into Dockerfile.cross, and preserve the original Dockerfile
-	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross
+	@for platform in $$(echo $(PLATFORMS) | tr ',' ' '); do \
+		arch=$${platform#linux/}; \
+		mkdir -p "$(MANAGER_IMAGE_STAGING_DIR)/linux/$${arch}"; \
+		echo "Building manager for linux/$${arch}..."; \
+		CGO_ENABLED=0 GOOS=linux GOARCH=$${arch} go build -o "$(MANAGER_IMAGE_STAGING_DIR)/linux/$${arch}/manager" cmd/main.go; \
+	done
 	- $(CONTAINER_TOOL) buildx create --name heir-builder
 	$(CONTAINER_TOOL) buildx use heir-builder
-	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${IMG} -f Dockerfile.cross .
+	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${IMG} -f $(MANAGER_IMAGE_DOCKERFILE) "$(MANAGER_IMAGE_STAGING_DIR)"
 	- $(CONTAINER_TOOL) buildx rm heir-builder
-	rm Dockerfile.cross
 
 .PHONY: build-installer
 build-installer: manifests generate kustomize ## Generate a consolidated YAML with CRDs and deployment.
@@ -185,6 +194,7 @@ $(LOCALBIN):
 ## Tool Binaries
 KUBECTL ?= kubectl
 KIND ?= kind
+YQ ?= yq
 KUSTOMIZE ?= $(LOCALBIN)/kustomize
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
