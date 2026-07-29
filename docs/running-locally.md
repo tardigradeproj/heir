@@ -81,7 +81,7 @@ plane is up.
 
 ```sh
 kubectl apply -f .local/heir.yaml
-kubectl get runtime my-cluster --watch
+kubectl describe runtime my-cluster 
 ```
 
 Wait for the `Available` condition to report `True` before moving on.
@@ -145,7 +145,7 @@ on the kind network), point it at `localhost` instead, since kind also maps the 
 (`30080`) onto your host:
 
 ```sh
-kubectl --kubeconfig my-cluster-kubeconfig config set-cluster my-cluster --server=https://localhost:30080
+kubectl --kubeconfig my-cluster-kubeconfig config set-cluster my-cluster --server=https://127.0.0.1:30080
 kubectl --kubeconfig my-cluster-kubeconfig get nodes
 ```
 
