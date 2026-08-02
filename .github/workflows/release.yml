@@ -35,12 +35,26 @@ jobs:
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Setup Helm
+        if: github.event_name != 'pull_request'
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.19.0
+
+      - name: Install kubebuilder
+        if: github.event_name != 'pull_request'
+        run: go install sigs.k8s.io/kubebuilder/v4/cmd/kubebuilder@v4.13.1
+
       - name: Login to GitHub Container Registry (GHCR)
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Login to GitHub Container Registry (Helm OCI)
+        if: github.event_name != 'pull_request'
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
 
       - name: Run GoReleaser (Dry-Run Snapshot for PRs)
         if: github.event_name == 'pull_request'
@@ -57,3 +71,16 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Package and push Helm chart
+        if: github.event_name != 'pull_request'
+        env:
+          IMG: ghcr.io/tardigradeproj/heir-controller-manager:${{ github.ref_name }}
+          CHART_VERSION: ${{ github.ref_name }}
+        run: |
+          make helm IMG="$IMG"
+          mkdir -p dist/chart-out
+          helm package dist/chart -d dist/chart-out \
+            --version "${CHART_VERSION#v}" \
+            --app-version "${CHART_VERSION#v}"
+          helm push dist/chart-out/heir-*.tgz oci://ghcr.io/tardigradeproj/charts
