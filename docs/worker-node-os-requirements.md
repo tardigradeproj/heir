@@ -55,7 +55,7 @@ ls /sys/fs/cgroup/cgroup.controllers
 Note: cgroups v1 with systemd driver is also supported but cgroups v2 is the
 expected path going forward. If only v1 is available, the `SystemdCgroup = true`
 option in the containerd config and `cgroupDriver: systemd` in the kubelet
-config must still be compatible — validate that `/sys/fs/cgroup/systemd` is
+config must still be compatible, validate that `/sys/fs/cgroup/systemd` is
 mounted.
 
 ---

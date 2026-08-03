@@ -20,16 +20,17 @@ limitations under the License.
 package e2e
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
 	"github.com/tardigradeproj/heir/test/utils"
 )
 
@@ -45,16 +46,33 @@ const metricsServiceName = "heir-controller-manager-metrics-service"
 // metricsRoleBindingName is the name of the RBAC that will be created to allow get the metrics data
 const metricsRoleBindingName = "heir-metrics-binding"
 
+// runtimeNamespace is the namespace in which the provisioned Runtime custom resource lives.
+// It must not be the restricted-PodSecurity manager namespace, since the control-plane pod
+// generated for a Runtime does not set the securityContext fields "restricted" requires.
+const runtimeNamespace = "default"
+
+// runtimeName is the name of the Runtime custom resource created by the provisioning test.
+const runtimeName = "e2e-runtime"
+
 var _ = Describe("Manager", Ordered, func() {
 	var controllerPodName string
+	// kindNodeIP is the docker-network IPv4 address of the (single) Kind control-plane
+	// node, used as the externally reachable host for Runtimes provisioned in these tests.
+	var kindNodeIP string
 
 	// Before running the tests, set up the environment by creating the namespace,
 	// enforce the restricted security policy to the namespace, installing CRDs,
 	// and deploying the controller.
 	BeforeAll(func() {
+		By("reading the kind control-plane node IPv4 address")
+		var err error
+		kindNodeIP, err = utils.KindControlPlaneIPv4()
+		Expect(err).NotTo(HaveOccurred(), "Failed to read kind control-plane node IPv4 address")
+		Expect(kindNodeIP).NotTo(BeEmpty())
+
 		By("creating manager namespace")
 		cmd := exec.Command("kubectl", "create", "ns", namespace)
-		_, err := utils.Run(cmd)
+		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to create namespace")
 
 		By("labeling the namespace to enforce the restricted security policy")
@@ -69,7 +87,7 @@ var _ = Describe("Manager", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred(), "Failed to install CRDs")
 
 		By("deploying the controller-manager")
-		cmd = exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", managerImage))
+		cmd = exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", controllerManagerImage))
 		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to deploy the controller-manager")
 	})
@@ -267,16 +285,144 @@ var _ = Describe("Manager", Ordered, func() {
 		})
 
 		// +kubebuilder:scaffold:e2e-webhooks-checks
+		It("should provision runtime", func() {
+			By("creating a Runtime custom resource")
+			def := utils.RuntimeManifestDefault()
+			def.Name = runtimeName
+			def.Namespace = runtimeNamespace
+			def.ControlPlaneImage = heirImage
+			def.PlaneTunnelServerImage = heirTunnelImage
+			def.ControlPlaneExternalEndpoint = kindNodeIP
+			runtimeManifest, err := utils.BasicRuntimeManifest(*def)
+			Expect(err).NotTo(HaveOccurred(), "Failed to render Runtime manifest")
 
-		// TODO: Customize the e2e test suite with scenarios specific to your project.
-		// Consider applying sample/CR(s) and check their status and/or verifying
-		// the reconciliation by using the metrics, i.e.:
-		// metricsOutput, err := getMetricsOutput()
-		// Expect(err).NotTo(HaveOccurred(), "Failed to retrieve logs from curl pod")
-		// Expect(metricsOutput).To(ContainSubstring(
-		//    fmt.Sprintf(`controller_runtime_reconcile_total{controller="%s",result="success"} 1`,
-		//    strings.ToLower(<Kind>),
-		// ))
+			cmd := exec.Command("kubectl", "apply", "-f", "-")
+			cmd.Stdin = strings.NewReader(runtimeManifest)
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to create Runtime resource")
+
+			DeferCleanup(func() {
+				By("deleting the Runtime custom resource")
+				cmd := exec.Command("kubectl", "delete", "runtime", runtimeName,
+					"-n", runtimeNamespace, "--ignore-not-found", "--wait=false")
+				_, _ = utils.Run(cmd)
+			})
+
+			By("waiting for the Runtime to report an Available status condition")
+			verifyRuntimeAvailable := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "runtime", runtimeName,
+					"-n", runtimeNamespace,
+					"-o", `jsonpath={.status.conditions[?(@.type=="Available")].status}`,
+				)
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("True"), "Runtime not yet Available")
+			}
+			Eventually(verifyRuntimeAvailable, 3*time.Minute, 5*time.Second).Should(Succeed())
+
+			By("validating that the control-plane deployment has a ready replica")
+			verifyControlPlaneDeploymentReady := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "deployment", runtimeName,
+					"-n", runtimeNamespace, "-o", "jsonpath={.status.readyReplicas}",
+				)
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("1"), "control-plane deployment not yet ready")
+			}
+			Eventually(verifyControlPlaneDeploymentReady, 3*time.Minute, 5*time.Second).Should(Succeed())
+
+			By("validating that the control-plane service was created")
+			cmd = exec.Command("kubectl", "get", "service", runtimeName, "-n", runtimeNamespace)
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "control-plane service should exist")
+
+			By("creating a WorkerJoinToken for the provisioned runtime")
+			workerJoinTokenName := runtimeName + "-join"
+			workerJoinTokenManifest := fmt.Sprintf(`
+apiVersion: controlplane.tardigrade.runtime.io/v1alpha1
+kind: WorkerJoinToken
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  runtimeRef:
+    name: %s
+`, workerJoinTokenName, runtimeNamespace, runtimeName)
+			cmd = exec.Command("kubectl", "apply", "-f", "-")
+			cmd.Stdin = strings.NewReader(workerJoinTokenManifest)
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to create WorkerJoinToken resource")
+
+			DeferCleanup(func() {
+				By("deleting the WorkerJoinToken custom resource")
+				cmd := exec.Command("kubectl", "delete", "workerjointoken", workerJoinTokenName,
+					"-n", runtimeNamespace, "--ignore-not-found", "--wait=false")
+				_, _ = utils.Run(cmd)
+			})
+
+			By("waiting for the WorkerJoinToken to report a Ready status condition")
+			verifyWorkerJoinTokenReady := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "workerjointoken", workerJoinTokenName,
+					"-n", runtimeNamespace,
+					"-o", `jsonpath={.status.conditions[?(@.type=="Ready")].status}`,
+				)
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("True"), "WorkerJoinToken not yet Ready")
+			}
+			Eventually(verifyWorkerJoinTokenReady, 3*time.Minute, 5*time.Second).Should(Succeed())
+
+			By("fetching the minted token ID from the WorkerJoinToken status")
+			cmd = exec.Command("kubectl", "get", "workerjointoken", workerJoinTokenName,
+				"-n", runtimeNamespace, "-o", "jsonpath={.status.tokenID}",
+			)
+			tokenID, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(tokenID).NotTo(BeEmpty(), "WorkerJoinToken status should report a tokenID")
+
+			By("validating the contents of the join token secret")
+			cmd = exec.Command("kubectl", "get", "secret", workerJoinTokenName+"-jointoken",
+				"-n", runtimeNamespace, "-o", "jsonpath={.data.jointoken}",
+			)
+			encoded, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "join token secret should exist")
+			Expect(encoded).NotTo(BeEmpty(), "join token secret should have a jointoken key")
+
+			decoded, err := base64.StdEncoding.DecodeString(encoded)
+			Expect(err).NotTo(HaveOccurred(), "jointoken value should be valid base64")
+			Expect(decoded).NotTo(BeEmpty(), "jointoken value should decode to a non-empty kubeconfig")
+
+			By("provisioning a worker node")
+			workerClusterName := runtimeName + "-worker"
+			workerDir := filepath.Join(os.TempDir(), workerClusterName)
+			Expect(os.MkdirAll(workerDir, 0o700)).To(Succeed())
+
+			const workerNodeName = "worker%d"
+			_, workerCluster, err := utils.ProvisionWorkerNode(workerClusterName, workerNodeName, workerDir)
+			Expect(err).NotTo(HaveOccurred(), "Failed to provision worker node")
+
+			DeferCleanup(func() {
+				By("deleting the worker node")
+				_ = workerCluster.Delete()
+				_ = os.RemoveAll(workerDir)
+			})
+
+			// ProvisionWorkerNode always creates exactly one machine, so it's always index 0.
+			machines, err := workerCluster.Inspect(nil)
+			Expect(err).NotTo(HaveOccurred(), "Failed to inspect worker node")
+			Expect(machines).To(HaveLen(1))
+			workerContainerName := machines[0].ContainerName()
+
+			By("joining the worker node to the runtime using the minted join token")
+			verifyWorkerJoined := func(g Gomega) {
+				cmd := exec.Command("docker", "exec", workerContainerName,
+					"heir", "provision", "worker", "--token", encoded,
+				)
+				_, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+			}
+			Eventually(verifyWorkerJoined, 2*time.Minute, 5*time.Second).Should(Succeed())
+		})
 	})
 })
 
