@@ -26,6 +26,9 @@ jobs:
       - name: Verify kind installation
         run: kind version
 
+      - name: Install kubebuilder
+        run: go install sigs.k8s.io/kubebuilder/v4/cmd/kubebuilder@v4.13.1
+
       - name: Create kind cluster
         run: kind create cluster
 
@@ -43,25 +46,6 @@ jobs:
       - name: Lint Helm Chart
         run: |
           helm lint ./dist/chart
-
-# TODO: Uncomment if cert-manager is enabled
-#      - name: Install cert-manager via Helm (wait for readiness)
-#        run: |
-#          helm repo add jetstack https://charts.jetstack.io
-#          helm repo update
-#          helm install cert-manager jetstack/cert-manager \
-#            --namespace cert-manager \
-#            --create-namespace \
-#            --set crds.enabled=true \
-#            --wait \
-#            --timeout 300s
-
-# TODO: Uncomment if Prometheus is enabled
-#      - name: Install Prometheus Operator CRDs
-#        run: |
-#          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-#          helm repo update
-#          helm install prometheus-crds prometheus-community/prometheus-operator-crds
 
       - name: Deploy manager via Helm
         run: |
