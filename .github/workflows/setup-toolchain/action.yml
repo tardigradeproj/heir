@@ -1,9 +1,7 @@
 name: Setup build toolchain
 description: >
   Sets up Go, then installs the ARM64 cross-compiler, QEMU emulation, Docker
-  Buildx, Helm, and kubebuilder needed to build and release heir. Assumes the
-  repo has already been checked out (required for GitHub Actions to resolve
-  this local composite action in the first place).
+  Buildx, Helm, and kubebuilder needed to build and release heir. 
 
 runs:
   using: composite

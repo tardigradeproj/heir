@@ -1,8 +1,7 @@
 name: Setup Helm and kubebuilder
 description: >
   Installs Helm and kubebuilder, needed to generate (make helm) and package
-  the Helm chart. Assumes Go is already set up (kubebuilder is installed via
-  go install) and the repo has already been checked out.
+  the Helm chart. 
 
 runs:
   using: composite
