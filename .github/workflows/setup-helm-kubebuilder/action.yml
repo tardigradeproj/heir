@@ -13,4 +13,7 @@ runs:
 
     - name: Install kubebuilder
       shell: bash
-      run: go install sigs.k8s.io/kubebuilder/v4/cmd/kubebuilder@v4.13.1
+      run: |
+        curl -L -o kubebuilder "https://go.kubebuilder.io/dl/latest/$(go env GOOS)/$(go env GOARCH)"
+        chmod +x kubebuilder && sudo mv kubebuilder /usr/local/bin/
+
