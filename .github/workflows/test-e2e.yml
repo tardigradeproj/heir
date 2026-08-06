@@ -11,10 +11,11 @@ jobs:
       - name: Clone the code
         uses: actions/checkout@v4
 
-      - name: Setup Go
+      - name: Setup Go Environment
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          cache: true
 
       - name: Install the latest version of kind
         run: |
@@ -29,3 +30,4 @@ jobs:
         run: |
           go mod tidy
           make test-e2e
+          
