@@ -1,0 +1,17 @@
+name: Setup Helm and kubebuilder
+description: >
+  Installs Helm and kubebuilder, needed to generate (make helm) and package
+  the Helm chart. Assumes Go is already set up (kubebuilder is installed via
+  go install) and the repo has already been checked out.
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Helm
+      uses: azure/setup-helm@v4
+      with:
+        version: v3.19.0
+
+    - name: Install kubebuilder
+      shell: bash
+      run: go install sigs.k8s.io/kubebuilder/v4/cmd/kubebuilder@v4.13.1

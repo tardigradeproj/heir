@@ -26,8 +26,8 @@ jobs:
       - name: Verify kind installation
         run: kind version
 
-      - name: Install kubebuilder
-        run: go install sigs.k8s.io/kubebuilder/v4/cmd/kubebuilder@v4.13.1
+      - name: Setup Helm and kubebuilder
+        uses: ./.github/workflows/setup-helm-kubebuilder
 
       - name: Create kind cluster
         run: kind create cluster
@@ -38,10 +38,8 @@ jobs:
           make docker-build IMG=controller:latest
           kind load docker-image controller:latest
 
-      - name: setup Helm
-        run: |
-          make helm
-          make install-helm
+      - name: Generate Helm chart
+        run: make helm
 
       - name: Lint Helm Chart
         run: |

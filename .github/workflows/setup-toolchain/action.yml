@@ -1,0 +1,28 @@
+name: Setup build toolchain
+description: >
+  Sets up Go, then installs the ARM64 cross-compiler, QEMU emulation, Docker
+  Buildx, Helm, and kubebuilder needed to build and release heir. Assumes the
+  repo has already been checked out (required for GitHub Actions to resolve
+  this local composite action in the first place).
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Go Environment
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: go.mod
+        cache: true
+
+    - name: Install ARM64 cross-compiler
+      shell: bash
+      run: sudo apt-get install -y gcc-aarch64-linux-gnu
+
+    - name: Setup QEMU Emulation
+      uses: docker/setup-qemu-action@v3
+
+    - name: Setup Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Setup Helm and kubebuilder
+      uses: ./.github/workflows/setup-helm-kubebuilder

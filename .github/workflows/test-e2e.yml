@@ -11,11 +11,14 @@ jobs:
       - name: Clone the code
         uses: actions/checkout@v4
 
-      - name: Setup Go Environment
-        uses: actions/setup-go@v5
+      - name: Setup build toolchain
+        uses: ./.github/workflows/setup-toolchain
+
+      - name: Install goreleaser
+        uses: goreleaser/goreleaser-action@v6
         with:
-          go-version-file: go.mod
-          cache: true
+          version: '~> v2'
+          install-only: true
 
       - name: Install the latest version of kind
         run: |
@@ -30,4 +33,3 @@ jobs:
         run: |
           go mod tidy
           make test-e2e
-          
