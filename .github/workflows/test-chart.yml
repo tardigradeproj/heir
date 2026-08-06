@@ -35,8 +35,10 @@ jobs:
           make docker-build IMG=controller:latest
           kind load docker-image controller:latest
 
-      - name: Install Helm
-        run: make install-helm
+      - name: setup Helm
+        run: |
+          make helm
+          make install-helm
 
       - name: Lint Helm Chart
         run: |
