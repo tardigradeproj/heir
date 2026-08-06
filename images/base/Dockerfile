@@ -1,7 +1,7 @@
 FROM ubuntu:22.04
 ARG TARGETPLATFORM
 ARG TARGETARCH
-ARG S6_OVERLAY_VERSION=3.2.2.0
+ARG S6_OVERLAY_VERSION=3.2.3.2
 
 RUN ARCH=$([ "${TARGETARCH}" = "amd64" ] && echo "x86_64" || echo "aarch64") \
     && apt-get update && apt-get install -y --no-install-recommends curl xz-utils ca-certificates \
