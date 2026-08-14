@@ -119,7 +119,7 @@ dockers_v2:
       - ghcr.io/tardigradeproj/heir-controller-manager
     tags:
       - "{{ .Tag }}"
-      - "{{ if and (not .IsNightly) (not (contains .Version \"-rc\")) }}latest{{ end }}"
+      - "{{ if or .IsSnapshot (and (not .IsNightly) (not (contains .Version \"-rc\"))) }}latest{{ end }}"
     platforms:
       - linux/amd64
       - linux/arm64
@@ -131,7 +131,7 @@ dockers_v2:
       - ghcr.io/tardigradeproj/heir-tunnel
     tags:
       - "{{ .Tag }}"
-      - "{{ if and (not .IsNightly) (not (contains .Version \"-rc\")) }}latest{{ end }}"
+      - "{{ if or .IsSnapshot (and (not .IsNightly) (not (contains .Version \"-rc\"))) }}latest{{ end }}"
     platforms:
       - linux/amd64
       - linux/arm64
@@ -146,7 +146,7 @@ dockers_v2:
       - ghcr.io/tardigradeproj/heir
     tags:
       - "{{ .Tag }}"
-      - "{{ if and (not .IsNightly) (not (contains .Version \"-rc\")) }}latest{{ end }}"
+      - "{{ if or .IsSnapshot (and (not .IsNightly) (not (contains .Version \"-rc\"))) }}latest{{ end }}"
     platforms:
       - linux/amd64
       - linux/arm64

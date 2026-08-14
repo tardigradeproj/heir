@@ -167,7 +167,6 @@ spec:
 
 	decodedKubeconfig, err := base64.StdEncoding.DecodeString(encodedKubeconfig)
 	Expect(err).NotTo(HaveOccurred(), "tenant kubeconfig value should be valid base64")
-	fmt.Println("======> ", string(decodedKubeconfig))
 	tenantConfig, err := clientcmd.Load(decodedKubeconfig)
 	Expect(err).NotTo(HaveOccurred(), "tenant kubeconfig value should parse")
 
@@ -212,4 +211,35 @@ spec:
 		g.Expect(output).To(Equal("True"), "tenant node not yet Ready")
 	}
 	Eventually(verifyTenantNodeReady, 5*time.Minute, 5*time.Second).Should(Succeed())
+
+	By("reading logs from the flannel CNI pod on the tenant cluster")
+	var flannelPodName string
+	verifyFlannelPodRunning := func(g Gomega) {
+		cmd := exec.Command("kubectl", "--kubeconfig", tenantKubeconfigPath, "get", "pods",
+			"-n", "kube-flannel", "-l", "app=flannel",
+			"-o", "jsonpath={.items[0].metadata.name}",
+		)
+		output, err := utils.Run(cmd)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(output).NotTo(BeEmpty(), "expected a flannel pod to exist in the kube-flannel namespace")
+		flannelPodName = output
+
+		cmd = exec.Command("kubectl", "--kubeconfig", tenantKubeconfigPath, "get", "pod", flannelPodName,
+			"-n", "kube-flannel",
+			"-o", `jsonpath={.status.containerStatuses[?(@.name=="kube-flannel")].ready}`,
+		)
+		output, err = utils.Run(cmd)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(output).To(Equal("true"), "flannel container not yet ready")
+	}
+	Eventually(verifyFlannelPodRunning, 3*time.Minute, 5*time.Second).Should(Succeed())
+
+	cmd = exec.Command("kubectl", "--kubeconfig", tenantKubeconfigPath, "logs", flannelPodName,
+		"-n", "kube-flannel", "-c", "kube-flannel",
+	)
+	flannelLogs, err := utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred(), "failed to read logs from flannel pod %s", flannelPodName)
+	fmt.Fprintf(GinkgoWriter, "flannel logs:\n%s\n", flannelLogs)
+	Expect(flannelLogs).NotTo(BeEmpty(), "expected non-empty logs from flannel pod")
+	Expect(strings.ToLower(flannelLogs)).NotTo(ContainSubstring("panic"), "flannel logs should not contain a panic")
 }
