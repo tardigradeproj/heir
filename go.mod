@@ -22,7 +22,7 @@ require (
 	github.com/sirupsen/logrus v1.9.4
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.11.1
-	github.com/tardigradeproj/outbound v0.1.3
+	github.com/tardigradeproj/outbound v0.1.4
 	go.elastic.co/ecslogrus v1.0.0
 	gvisor.dev/gvisor v0.0.0-20260420225414-25ee8c385cdf
 	inet.af/tcpproxy v0.0.0-20231102063150-2862066fc2a9
