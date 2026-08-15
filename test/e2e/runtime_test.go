@@ -234,11 +234,16 @@ spec:
 	}
 	Eventually(verifyFlannelPodRunning, 3*time.Minute, 5*time.Second).Should(Succeed())
 
-	cmd = exec.Command("kubectl", "--kubeconfig", tenantKubeconfigPath, "logs", flannelPodName,
-		"-n", "kube-flannel", "-c", "kube-flannel",
-	)
-	flannelLogs, err := utils.Run(cmd)
-	Expect(err).NotTo(HaveOccurred(), "failed to read logs from flannel pod %s", flannelPodName)
+	var flannelLogs string
+	verifyFlannelPodLogsReadable := func(g Gomega) {
+		cmd := exec.Command("kubectl", "--kubeconfig", tenantKubeconfigPath, "logs", flannelPodName,
+			"-n", "kube-flannel", "-c", "kube-flannel",
+		)
+		output, err := utils.Run(cmd)
+		g.Expect(err).NotTo(HaveOccurred(), "failed to read logs from flannel pod %s", flannelPodName)
+		flannelLogs = output
+	}
+	Eventually(verifyFlannelPodLogsReadable, 3*time.Minute, 5*time.Second).Should(Succeed())
 	fmt.Fprintf(GinkgoWriter, "flannel logs:\n%s\n", flannelLogs)
 	Expect(flannelLogs).NotTo(BeEmpty(), "expected non-empty logs from flannel pod")
 	Expect(strings.ToLower(flannelLogs)).NotTo(ContainSubstring("panic"), "flannel logs should not contain a panic")
