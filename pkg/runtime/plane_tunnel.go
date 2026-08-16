@@ -12,15 +12,15 @@ import (
 )
 
 func PlaneTunnelName(runtimeName string) string {
-	return fmt.Sprintf("tunnel-server-%s", runtimeName)
+	return fmt.Sprintf("%s-tunnel", runtimeName)
 }
 
 func PlaneTunnelHeadlessName(runtimeName string) string {
-	return fmt.Sprintf("tunnel-server-%s-headless", runtimeName)
+	return fmt.Sprintf("%s-tunnel-headless", runtimeName)
 }
 
 func PlaneTunnelEgressName(runtimeName string) string {
-	return fmt.Sprintf("tunnel-server-%s-egress", runtimeName)
+	return fmt.Sprintf("%s-tunnel-egress", runtimeName)
 }
 
 func GeneratePlaneTunnelService(wrkCtx typ.WorkerContext, runtime *controlplanev1alpha1.Runtime) ([]corev1.Service, error) {

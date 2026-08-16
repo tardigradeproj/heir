@@ -22,7 +22,7 @@ package e2e
 import (
 	"fmt"
 	"os"
-	"os/exec"
+	"runtime"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -31,9 +31,14 @@ import (
 	"github.com/tardigradeproj/heir/test/utils"
 )
 
+var arch = runtime.GOARCH
+
 var (
 	// managerImage is the manager image to be built and loaded for testing.
-	managerImage = "example.com/heir:v0.0.1"
+	controllerManagerImage = fmt.Sprintf("ghcr.io/tardigradeproj/heir-controller-manager:latest-%s", arch)
+	heirImage              = fmt.Sprintf("ghcr.io/tardigradeproj/heir:latest-%s", arch)
+	heirTunnelImage        = fmt.Sprintf("ghcr.io/tardigradeproj/heir-tunnel:latest-%s", arch)
+
 	// shouldCleanupCertManager tracks whether CertManager was installed by this suite.
 	shouldCleanupCertManager = false
 )
@@ -49,17 +54,19 @@ func TestE2E(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
-	By("building the manager image")
-	cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", managerImage))
-	_, err := utils.Run(cmd)
-	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to build the manager image")
+	//By("building images")
+	//cmd := exec.Command("make", "build-bins")
+	//_, err := utils.Run(cmd)
+	//ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to build the manager image")
 
-	// TODO(user): If you want to change the e2e test vendor from Kind,
 	// ensure the image is built and available, then remove the following block.
-	By("loading the manager image on Kind")
-	err = utils.LoadImageToKindClusterWithName(managerImage)
+	By(fmt.Sprintf("loading the manager image on Kind. Arch: %s", arch))
+	err := utils.LoadImageToKindClusterWithName(controllerManagerImage)
 	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to load the manager image into Kind")
-
+	err = utils.LoadImageToKindClusterWithName(heirImage)
+	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to load the heir image into Kind")
+	err = utils.LoadImageToKindClusterWithName(heirTunnelImage)
+	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to load the plane tunnel image into Kind")
 	setupCertManager()
 })
 

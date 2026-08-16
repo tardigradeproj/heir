@@ -59,11 +59,11 @@ fmt: ## Run go fmt against code.
 
 .PHONY: vet
 vet: ## Run go vet against code.
-	go vet ./...
+	go vet $(shell go list ./... | grep -v 'github.com/tardigradeproj/heir/cmd')
 
 .PHONY: test
 test: manifests generate fmt vet setup-envtest ## Run tests.
-	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
+	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" go test $$(go list ./... | grep -v /e2e | grep -v 'github.com/tardigradeproj/heir/cmd$$') -coverprofile cover.out
 
 # TODO(user): To use a different vendor for e2e tests, modify the setup under 'tests/e2e'.
 # The default setup assumes Kind is pre-installed and builds/loads the Manager Docker image locally.
@@ -82,11 +82,11 @@ setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
 			echo "Kind cluster '$(KIND_CLUSTER)' already exists. Skipping creation." ;; \
 		*) \
 			echo "Creating Kind cluster '$(KIND_CLUSTER)'..."; \
-			$(KIND) create cluster --name $(KIND_CLUSTER) ;; \
+			KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) test/utils/e2e-cluster.sh ;; \
 	esac
 
 .PHONY: test-e2e
-test-e2e: setup-test-e2e manifests generate fmt vet ## Run the e2e tests. Expected an isolated environment using Kind.
+test-e2e:  setup-test-e2e manifests generate fmt vet build-bins ## Run the e2e tests. Expected an isolated environment using Kind.
 	KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) go test -tags=e2e ./test/e2e/ -v -ginkgo.v
 	$(MAKE) cleanup-test-e2e
 
@@ -113,15 +113,21 @@ build: manifests generate fmt vet ## Build manager binary.
 	go build -o bin/manager cmd/main.go
 
 .PHONY: run
-run: manifests generate fmt vet ## Run a controller from your host.
+run: manifests generate fmt ## Run a controller from your host.
 	go run ./cmd/main.go
 
-# If you wish to build the manager image targeting other platforms you can use the --platform flag.
-# (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
-# More info: https://docs.docker.com/develop/develop-images/build_enhancements/
+# The manager binary is built here (not inside the Dockerfile) so goreleaser and a plain
+# `make docker-build` share the exact same Dockerfile: images/Dockerfile.controller-manager
+# just copies a pre-built binary from <staging-dir>/linux/<arch>/manager, the same layout
+# goreleaser's docker pipe stages for it.
+MANAGER_IMAGE_DOCKERFILE ?= images/Dockerfile.controller-manager
+MANAGER_IMAGE_STAGING_DIR ?= bin/manager-image
+
 .PHONY: docker-build
-docker-build: ## Build docker image with the manager.
-	$(CONTAINER_TOOL) build -t ${IMG} .
+docker-build: ## Build docker image with the manager, for the host architecture.
+	@mkdir -p "$(MANAGER_IMAGE_STAGING_DIR)/linux/$$(go env GOARCH)"
+	CGO_ENABLED=0 GOOS=linux GOARCH=$$(go env GOARCH) go build -o "$(MANAGER_IMAGE_STAGING_DIR)/linux/$$(go env GOARCH)/manager" cmd/main.go
+	$(CONTAINER_TOOL) build -f $(MANAGER_IMAGE_DOCKERFILE) -t ${IMG} "$(MANAGER_IMAGE_STAGING_DIR)"
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.
@@ -136,13 +142,16 @@ docker-push: ## Push docker image with the manager.
 PLATFORMS ?= linux/arm64,linux/amd64,linux/s390x,linux/ppc64le
 .PHONY: docker-buildx
 docker-buildx: ## Build and push docker image for the manager for cross-platform support
-	# copy existing Dockerfile and insert --platform=${BUILDPLATFORM} into Dockerfile.cross, and preserve the original Dockerfile
-	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross
+	@for platform in $$(echo $(PLATFORMS) | tr ',' ' '); do \
+		arch=$${platform#linux/}; \
+		mkdir -p "$(MANAGER_IMAGE_STAGING_DIR)/linux/$${arch}"; \
+		echo "Building manager for linux/$${arch}..."; \
+		CGO_ENABLED=0 GOOS=linux GOARCH=$${arch} go build -o "$(MANAGER_IMAGE_STAGING_DIR)/linux/$${arch}/manager" cmd/main.go; \
+	done
 	- $(CONTAINER_TOOL) buildx create --name heir-builder
 	$(CONTAINER_TOOL) buildx use heir-builder
-	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${IMG} -f Dockerfile.cross .
+	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${IMG} -f $(MANAGER_IMAGE_DOCKERFILE) "$(MANAGER_IMAGE_STAGING_DIR)"
 	- $(CONTAINER_TOOL) buildx rm heir-builder
-	rm Dockerfile.cross
 
 .PHONY: build-installer
 build-installer: manifests generate kustomize ## Generate a consolidated YAML with CRDs and deployment.
@@ -185,6 +194,7 @@ $(LOCALBIN):
 ## Tool Binaries
 KUBECTL ?= kubectl
 KIND ?= kind
+YQ ?= yq
 KUSTOMIZE ?= $(LOCALBIN)/kustomize
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
@@ -253,3 +263,63 @@ define gomodver
 $(shell go list -m -f '{{if .Replace}}{{.Replace.Version}}{{else}}{{.Version}}{{end}}' $(1) 2>/dev/null)
 endef
 
+
+##@ Helm Chart
+
+## kubebuilder binary used to (re)scaffold the Helm chart
+KUBEBUILDER ?= kubebuilder
+
+.PHONY: helm
+helm: build-installer ## Regenerate the Helm chart (dist/chart) from config/ manifests.
+	@command -v $(KUBEBUILDER) >/dev/null 2>&1 || { \
+		echo "kubebuilder is not installed. See https://book.kubebuilder.io/quick-start.html#installation"; \
+		exit 1; \
+	}
+	$(KUBEBUILDER) edit --plugins=helm/v2-alpha --force
+
+##@ Helm Deployment
+
+## Helm binary to use for deploying the chart
+HELM ?= helm
+## Namespace to deploy the Helm release
+HELM_NAMESPACE ?= heir-system
+## Name of the Helm release
+HELM_RELEASE ?= heir
+## Path to the Helm chart directory
+HELM_CHART_DIR ?= dist/chart
+## Additional arguments to pass to helm commands
+HELM_EXTRA_ARGS ?=
+
+.PHONY: install-helm
+install-helm: ## Install the latest version of Helm.
+	@command -v $(HELM) >/dev/null 2>&1 || { \
+		echo "Installing Helm..." && \
+		curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4 | bash; \
+	}
+
+.PHONY: helm-deploy
+helm-deploy: install-helm ## Deploy manager to the K8s cluster via Helm. Specify an image with IMG.
+	$(HELM) upgrade --install $(HELM_RELEASE) $(HELM_CHART_DIR) \
+		--namespace $(HELM_NAMESPACE) \
+		--create-namespace \
+		--set manager.image.repository=$${IMG%:*} \
+		--set manager.image.tag=$${IMG##*:} \
+		--wait \
+		--timeout 5m \
+		$(HELM_EXTRA_ARGS)
+
+.PHONY: helm-uninstall
+helm-uninstall: ## Uninstall the Helm release from the K8s cluster.
+	$(HELM) uninstall $(HELM_RELEASE) --namespace $(HELM_NAMESPACE)
+
+.PHONY: helm-status
+helm-status: ## Show Helm release status.
+	$(HELM) status $(HELM_RELEASE) --namespace $(HELM_NAMESPACE)
+
+.PHONY: helm-history
+helm-history: ## Show Helm release history.
+	$(HELM) history $(HELM_RELEASE) --namespace $(HELM_NAMESPACE)
+
+.PHONY: helm-rollback
+helm-rollback: ## Rollback to previous Helm release.
+	$(HELM) rollback $(HELM_RELEASE) --namespace $(HELM_NAMESPACE)

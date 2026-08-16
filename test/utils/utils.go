@@ -22,8 +22,13 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
+	"text/template"
 
+	"github.com/k0sproject/bootloose/pkg/cluster"
+	"github.com/k0sproject/bootloose/pkg/config"
 	. "github.com/onsi/ginkgo/v2" // nolint:revive,staticcheck
 )
 
@@ -133,13 +138,18 @@ func IsCertManagerCRDsInstalled() bool {
 	return false
 }
 
+// kindClusterName returns the KIND_CLUSTER environment override, or defaultKindCluster
+// when unset.
+func kindClusterName() string {
+	if v, ok := os.LookupEnv("KIND_CLUSTER"); ok {
+		return v
+	}
+	return defaultKindCluster
+}
+
 // LoadImageToKindClusterWithName loads a local docker image to the kind cluster
 func LoadImageToKindClusterWithName(name string) error {
-	cluster := defaultKindCluster
-	if v, ok := os.LookupEnv("KIND_CLUSTER"); ok {
-		cluster = v
-	}
-	kindOptions := []string{"load", "docker-image", name, "--name", cluster}
+	kindOptions := []string{"load", "docker-image", name, "--name", kindClusterName()}
 	kindBinary := defaultKindBinary
 	if v, ok := os.LookupEnv("KIND"); ok {
 		kindBinary = v
@@ -147,6 +157,26 @@ func LoadImageToKindClusterWithName(name string) error {
 	cmd := exec.Command(kindBinary, kindOptions...)
 	_, err := Run(cmd)
 	return err
+}
+
+// KindControlPlaneIPv4 returns the IPv4 address of the Kind cluster's control-plane
+// node container, as seen on the docker "kind" network. Only valid for single-node
+// clusters, where that node's container is named "<cluster>-control-plane".
+func KindControlPlaneIPv4() (string, error) {
+	containerName := kindClusterName() + "-control-plane"
+	cmd := exec.Command("docker", "inspect",
+		"-f", `{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}`,
+		containerName,
+	)
+	output, err := Run(cmd)
+	if err != nil {
+		return "", err
+	}
+	ip := strings.TrimSpace(output)
+	if ip == "" {
+		return "", fmt.Errorf("no IPv4 address found for kind container %q", containerName)
+	}
+	return ip, nil
 }
 
 // GetNonEmptyLines converts given command output string into individual objects
@@ -223,4 +253,154 @@ func UncommentCode(filename, target, prefix string) error {
 	}
 
 	return nil
+}
+
+// linuxHeirBinaryPath returns the absolute path to the goreleaser-built "heir" distro
+// binary for the host architecture. It is anchored on GetProjectDir rather than a
+// CWD-relative path, since Run changes the process's working directory as a side
+// effect, making plain relative paths resolve differently depending on call order.
+func linuxHeirBinaryPath() (string, error) {
+	projectDir, err := GetProjectDir()
+	if err != nil {
+		return "", err
+	}
+	rel := "dist/distro_linux_amd64_v1/heir"
+	if runtime.GOARCH == "arm64" {
+		rel = "dist/distro_linux_arm64_v8.0/heir"
+	}
+	return filepath.Join(projectDir, rel), nil
+}
+func ProvisionWorkerNode(name string, nodeName string, workerDir string) (*config.Config, *cluster.Cluster, error) {
+	workerBinaryPath, err := linuxHeirBinaryPath()
+	if err != nil {
+		return nil, nil, err
+	}
+	workerCfg := config.Config{
+		Cluster: config.Cluster{
+			Name:       name,
+			PrivateKey: filepath.Join(workerDir, "id_rsa"),
+		},
+		Machines: []config.MachineReplicas{
+			{
+				Count: 1,
+				Spec: &config.Machine{
+					Image:      "quay.io/k0sproject/bootloose-ubuntu24.04",
+					Name:       nodeName,
+					Privileged: true,
+					PortMappings: []config.PortMapping{
+						{ContainerPort: 22},
+					},
+					Networks: []string{"kind"},
+					Volumes: []config.Volume{
+						{
+							Type:        "bind",
+							Source:      workerBinaryPath,
+							Destination: "/usr/local/bin/heir",
+						},
+						{
+							// Named volume so containerd's root (/var/lib/heir/containerd)
+							// sits on ext4, not Docker's overlayfs — prevents the
+							// "failed to mount rootfs: invalid argument" error.
+							Type:        "volume",
+							Destination: "/var/lib/heir",
+						},
+						{
+							Type:        "bind",
+							Source:      "/usr/lib/modules",
+							Destination: "/usr/lib/modules",
+							ReadOnly:    true,
+						},
+						{
+							Type:        "bind",
+							Source:      "/lib/modules",
+							Destination: "/lib/modules",
+							ReadOnly:    true,
+						},
+					},
+				},
+			},
+		},
+	}
+	workerCluster, err := cluster.New(workerCfg)
+	if err != nil {
+		return nil, nil, err
+	}
+	err = workerCluster.Create()
+	if err != nil {
+		return nil, nil, err
+	}
+	return &workerCfg, workerCluster, nil
+}
+
+type RuntimeManifest struct {
+	Name                         string
+	Namespace                    string
+	Replicas                     int
+	ControlPlaneImage            string
+	PlaneTunnelServerImage       string
+	ApiServerNodePort            int
+	PlaneTunnelNodePort          int
+	ControlPlaneExternalEndpoint string
+}
+
+func RuntimeManifestDefault() *RuntimeManifest {
+	return &RuntimeManifest{
+		Namespace:                    "default",
+		Replicas:                     1,
+		ApiServerNodePort:            30080,
+		PlaneTunnelNodePort:          30081,
+		ControlPlaneExternalEndpoint: "kind",
+	}
+}
+
+func BasicRuntimeManifest(s RuntimeManifest) (string, error) {
+	tmplStr := `
+apiVersion: controlplane.tardigrade.runtime.io/v1alpha1
+kind: Runtime
+metadata:
+  name: {{.Name}}
+  namespace: {{.Namespace}}
+spec:
+  controlPlane:
+    heir:
+      image: {{.ControlPlaneImage}}
+    deployment:
+      replicas: {{.Replicas}}
+      serviceAccountName: default
+    service:
+      serviceType: NodePort
+      apiServerNodePort: {{.ApiServerNodePort}}
+    planeTunnel:
+      server:
+        image: {{.PlaneTunnelServerImage}}
+        deployment:
+          replicas: 2
+      service:
+        serviceType: NodePort
+        nodePort: {{.PlaneTunnelNodePort}}
+  cluster:
+    apiServer:
+      sans: ["master0", "kind"]
+      extraArgs:
+        advertise-address: "10.0.2.2"
+    controllerManager:
+      extraArgs: {}
+    scheduler:
+      extraArgs: {}
+    controlPlaneExternalEndpoint:
+      apiServer:
+        host: {{.ControlPlaneExternalEndpoint}}
+        port: {{.ApiServerNodePort}}
+      planeTunnel:
+        host: {{.ControlPlaneExternalEndpoint}}
+        port: {{.PlaneTunnelNodePort}}
+    storage:
+      type: kine
+`
+	tmpl := template.Must(template.New("todoTmpl").Parse(tmplStr))
+	var tplOutput bytes.Buffer
+	if err := tmpl.Execute(&tplOutput, s); err != nil {
+		return "", err
+	}
+	return tplOutput.String(), nil
 }

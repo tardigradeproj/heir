@@ -29,7 +29,6 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
 	"github.com/tardigradeproj/heir/test/utils"
 )
 
@@ -45,6 +44,25 @@ const metricsServiceName = "heir-controller-manager-metrics-service"
 // metricsRoleBindingName is the name of the RBAC that will be created to allow get the metrics data
 const metricsRoleBindingName = "heir-metrics-binding"
 
+// runtimeNamespace is the namespace in which the provisioned Runtime custom resource lives.
+// It must not be the restricted-PodSecurity manager namespace, since the control-plane pod
+// generated for a Runtime does not set the securityContext fields "restricted" requires.
+const runtimeNamespace = "default"
+
+// runtimeName is the name of the Runtime custom resource created by the provisioning test.
+const runtimeName = "e2e-runtime"
+
+// workerClusterName is the bootloose cluster name for the worker node provisioned by
+// the runtime-provisioning test. Its sole machine's container is named
+// "<workerClusterName>-worker0", per bootloose's own <cluster>-<machine> convention.
+const workerClusterName = runtimeName + "-worker"
+const workerContainerName = workerClusterName + "-worker0"
+
+// kindNodeIP is the docker-network IPv4 address of the (single) Kind control-plane
+// node, used as the externally reachable host for Runtimes provisioned in these tests.
+// Set once in BeforeAll below; read from runtime_test.go's provisionRuntimeSpec.
+var kindNodeIP string
+
 var _ = Describe("Manager", Ordered, func() {
 	var controllerPodName string
 
@@ -52,9 +70,15 @@ var _ = Describe("Manager", Ordered, func() {
 	// enforce the restricted security policy to the namespace, installing CRDs,
 	// and deploying the controller.
 	BeforeAll(func() {
+		By("reading the kind control-plane node IPv4 address")
+		var err error
+		kindNodeIP, err = utils.KindControlPlaneIPv4()
+		Expect(err).NotTo(HaveOccurred(), "Failed to read kind control-plane node IPv4 address")
+		Expect(kindNodeIP).NotTo(BeEmpty())
+
 		By("creating manager namespace")
 		cmd := exec.Command("kubectl", "create", "ns", namespace)
-		_, err := utils.Run(cmd)
+		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to create namespace")
 
 		By("labeling the namespace to enforce the restricted security policy")
@@ -69,7 +93,7 @@ var _ = Describe("Manager", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred(), "Failed to install CRDs")
 
 		By("deploying the controller-manager")
-		cmd = exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", managerImage))
+		cmd = exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", controllerManagerImage))
 		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to deploy the controller-manager")
 	})
@@ -97,6 +121,19 @@ var _ = Describe("Manager", Ordered, func() {
 	// After each test, check for failures and collect logs, events,
 	// and pod descriptions for debugging.
 	AfterEach(func() {
+		By("cleaning up runtime-provisioning resources")
+		cmd := exec.Command("kubectl", "delete", "workerjointoken", runtimeName+"-join",
+			"-n", runtimeNamespace, "--ignore-not-found", "--timeout=60s")
+		_, _ = utils.Run(cmd)
+
+		cmd = exec.Command("kubectl", "delete", "runtime", runtimeName,
+			"-n", runtimeNamespace, "--ignore-not-found", "--wait=false")
+		_, _ = utils.Run(cmd)
+
+		cmd = exec.Command("docker", "rm", "-f", workerContainerName)
+		_, _ = utils.Run(cmd)
+		_ = os.RemoveAll(filepath.Join(os.TempDir(), workerClusterName))
+
 		specReport := CurrentSpecReport()
 		if specReport.Failed() {
 			By("Fetching controller manager pod logs")
@@ -267,16 +304,8 @@ var _ = Describe("Manager", Ordered, func() {
 		})
 
 		// +kubebuilder:scaffold:e2e-webhooks-checks
-
-		// TODO: Customize the e2e test suite with scenarios specific to your project.
-		// Consider applying sample/CR(s) and check their status and/or verifying
-		// the reconciliation by using the metrics, i.e.:
-		// metricsOutput, err := getMetricsOutput()
-		// Expect(err).NotTo(HaveOccurred(), "Failed to retrieve logs from curl pod")
-		// Expect(metricsOutput).To(ContainSubstring(
-		//    fmt.Sprintf(`controller_runtime_reconcile_total{controller="%s",result="success"} 1`,
-		//    strings.ToLower(<Kind>),
-		// ))
+		// provisionRuntimeSpec is defined in runtime_test.go.
+		It("should provision runtime", provisionRuntimeSpec)
 	})
 })
 

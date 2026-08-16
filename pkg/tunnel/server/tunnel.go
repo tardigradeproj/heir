@@ -120,7 +120,7 @@ func (b *TunnelServer) handle(ctx context.Context, log *logrus.Entry, conn net.C
 		log.WithError(err).Warn("failed to register connection tunnel")
 	}
 	log.WithFields(logrus.Fields{
-		"tunnel.id":    tunnelId,
+		"tunnel.id":  tunnelId,
 		obs.NodeName: nodeName,
 	}).Info("connection tunnel successfully registered")
 	cleaner.Release()

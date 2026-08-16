@@ -21,6 +21,7 @@ import (
 	"flag"
 	"os"
 
+	"github.com/tardigradeproj/heir/pkg/provision/worker/typ"
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -179,10 +180,20 @@ func main() {
 	}
 
 	if err := (&controller.RuntimeReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorder("runtime"),
+		WrkCtx:   typ.NewWorkerContextWithDefaults(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Runtime")
+		os.Exit(1)
+	}
+	if err := (&controller.WorkerJoinTokenReconciler{
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorder("workerjointoken"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "Failed to create controller", "controller", "WorkerJoinToken")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder

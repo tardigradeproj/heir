@@ -13,6 +13,13 @@ If you're interested in contributing documentation, please note the following:
 
 - Pull requests for documentation are submitted to the [heir documentation source](https://github.com/tardigradeproj/docs).
 
+## Running the project locally
+
+Before opening a PR, you should be able to exercise your change end to end rather than relying on
+unit tests alone. See [docs/running-locally.md](docs/running-locally.md) for a full walkthrough of
+building every heir component and standing up a local management cluster, controller manager,
+tenant `Runtime`, and worker node.
+
 ## AI Guidance
 
 Using AI tools to help write your PR is acceptable, but as the author, you are responsible for understanding every change. If you used AI tools in preparing 

@@ -102,7 +102,7 @@ func (b *Broker) Register(ctx context.Context, nodeName string, cnn net.Conn) (s
 	}()
 	logEntry.WithFields(log.Fields{
 		"nr.connections": len(set.conns),
-		obs.ConnID:    id,
+		obs.ConnID:       id,
 	}).
 		Info("tunnel successfully registered")
 	return id, nil

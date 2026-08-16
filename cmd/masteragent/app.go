@@ -13,7 +13,7 @@ import (
 	"github.com/tardigradeproj/heir/pkg/masteragent"
 )
 
-const etcdVersion = "3.6.6"
+const etcdVersion = "3.6.14"
 
 // envBinding maps a flag name to its environment variable override.
 type envBinding struct {

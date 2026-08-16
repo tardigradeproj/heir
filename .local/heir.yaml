@@ -1,0 +1,45 @@
+apiVersion: controlplane.tardigrade.runtime.io/v1alpha1
+kind: Runtime
+metadata:
+  name: my-cluster
+  namespace: default
+spec:
+  controlPlane:
+    heir:
+      image: localhost:5001/heir:latest
+    deployment:
+      replicas: 2
+      serviceAccountName: default
+    service:
+      serviceType: NodePort
+      apiServerNodePort: 30080
+    planeTunnel:
+      server:
+        image: localhost:5001/heir-tunnel:latest
+        deployment:
+          replicas: 2
+      service:
+        serviceType: NodePort
+        nodePort: 30081
+  cluster:
+    apiServer:
+      sans: ["master0", "10.0.2.2"]
+      extraArgs:
+        advertise-address: "10.0.2.2"
+    controllerManager:
+      extraArgs: {}
+    scheduler:
+      extraArgs: {}
+    controlPlaneExternalEndpoint:
+      apiServer:
+        host: "10.0.2.2"
+        port: 30080
+      planeTunnel:
+        host: "10.0.2.2"
+        port: 30081
+    storage:
+      type: kine
+      kine:
+        dataSourceRef:
+          name: "postgres-credentials"
+          key: dsn

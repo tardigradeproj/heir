@@ -18,12 +18,12 @@ import (
 func TestAPIServerAltNames(t *testing.T) {
 	tests := []struct {
 		name     string
-		cluster  controlplanev1alpha1.ClusterSpec
+		runtime  controlplanev1alpha1.Runtime
 		expected []string
 	}{
 		{
 			name:    "defaults only when no extra SANs provided",
-			cluster: controlplanev1alpha1.ClusterSpec{},
+			runtime: *pkiAuthRuntime("my-cluster", "default", controlplanev1alpha1.ClusterSpec{}),
 			expected: []string{
 				"0.0.0.0",
 				"10.96.0.1",
@@ -33,16 +33,17 @@ func TestAPIServerAltNames(t *testing.T) {
 				"kubernetes.default",
 				"kubernetes.default.cluster",
 				"kubernetes.default.svc",
+				"my-cluster.default.svc.cluster.local",
 				"server.kubernetes.local",
 			},
 		},
 		{
 			name: "extra SANs are merged with defaults",
-			cluster: controlplanev1alpha1.ClusterSpec{
+			runtime: *pkiAuthRuntime("my-cluster", "default", controlplanev1alpha1.ClusterSpec{
 				APIServer: controlplanev1alpha1.APIServerSpec{
 					Sans: []string{"my-cluster.example.com", "10.0.0.1"},
 				},
-			},
+			}),
 			expected: []string{
 				"0.0.0.0",
 				"10.0.0.1",
@@ -53,17 +54,18 @@ func TestAPIServerAltNames(t *testing.T) {
 				"kubernetes.default",
 				"kubernetes.default.cluster",
 				"kubernetes.default.svc",
+				"my-cluster.default.svc.cluster.local",
 				"my-cluster.example.com",
 				"server.kubernetes.local",
 			},
 		},
 		{
 			name: "controlPlaneExternalEndpoint host is added as SAN",
-			cluster: controlplanev1alpha1.ClusterSpec{
+			runtime: *pkiAuthRuntime("my-cluster", "default", controlplanev1alpha1.ClusterSpec{
 				ControlPlaneExternalEndpoint: controlplanev1alpha1.ControlPlaneExternalEndpointSpec{
 					APIServer: controlplanev1alpha1.ComponentEndpoint{Host: "my-cluster.example.com"},
 				},
-			},
+			}),
 			expected: []string{
 				"0.0.0.0",
 				"10.96.0.1",
@@ -73,20 +75,21 @@ func TestAPIServerAltNames(t *testing.T) {
 				"kubernetes.default",
 				"kubernetes.default.cluster",
 				"kubernetes.default.svc",
+				"my-cluster.default.svc.cluster.local",
 				"my-cluster.example.com",
 				"server.kubernetes.local",
 			},
 		},
 		{
 			name: "duplicate SANs are deduplicated",
-			cluster: controlplanev1alpha1.ClusterSpec{
+			runtime: *pkiAuthRuntime("my-cluster", "default", controlplanev1alpha1.ClusterSpec{
 				APIServer: controlplanev1alpha1.APIServerSpec{
 					Sans: []string{"kubernetes", "127.0.0.1"},
 				},
 				ControlPlaneExternalEndpoint: controlplanev1alpha1.ControlPlaneExternalEndpointSpec{
 					APIServer: controlplanev1alpha1.ComponentEndpoint{Host: "kubernetes"},
 				},
-			},
+			}),
 			expected: []string{
 				"0.0.0.0",
 				"10.96.0.1",
@@ -96,16 +99,17 @@ func TestAPIServerAltNames(t *testing.T) {
 				"kubernetes.default",
 				"kubernetes.default.cluster",
 				"kubernetes.default.svc",
+				"my-cluster.default.svc.cluster.local",
 				"server.kubernetes.local",
 			},
 		},
 		{
 			name: "empty SANs are removed",
-			cluster: controlplanev1alpha1.ClusterSpec{
+			runtime: *pkiAuthRuntime("my-cluster", "default", controlplanev1alpha1.ClusterSpec{
 				APIServer: controlplanev1alpha1.APIServerSpec{
 					Sans: []string{"", "valid.example.com", ""},
 				},
-			},
+			}),
 			expected: []string{
 				"0.0.0.0",
 				"10.96.0.1",
@@ -115,15 +119,32 @@ func TestAPIServerAltNames(t *testing.T) {
 				"kubernetes.default",
 				"kubernetes.default.cluster",
 				"kubernetes.default.svc",
+				"my-cluster.default.svc.cluster.local",
 				"server.kubernetes.local",
 				"valid.example.com",
+			},
+		},
+		{
+			name:    "in-cluster FQDN uses runtime name and namespace",
+			runtime: *pkiAuthRuntime("prod-ctrl", "tenant-system", controlplanev1alpha1.ClusterSpec{}),
+			expected: []string{
+				"0.0.0.0",
+				"10.96.0.1",
+				"127.0.0.1",
+				"api-server.kubernetes.local",
+				"kubernetes",
+				"kubernetes.default",
+				"kubernetes.default.cluster",
+				"kubernetes.default.svc",
+				"prod-ctrl.tenant-system.svc.cluster.local",
+				"server.kubernetes.local",
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := APIServerAltNames(tt.cluster)
+			got := APIServerAltNames(tt.runtime)
 			assert.Equal(t, tt.expected, got)
 		})
 	}
@@ -227,7 +248,7 @@ func TestGeneratePKIAuthSecret(t *testing.T) {
 			},
 		},
 		{
-			name: "controlPlaneExternalEndpoint host is included as apiserver cert SAN",
+			name: "controlPlaneExternalEndpoint host and in-cluster FQDN are included as apiserver cert SANs",
 			runtime: pkiAuthRuntime("my-cluster", "default", controlplanev1alpha1.ClusterSpec{
 				ControlPlaneExternalEndpoint: controlplanev1alpha1.ControlPlaneExternalEndpointSpec{
 					APIServer: controlplanev1alpha1.ComponentEndpoint{Host: "my-cluster.example.com"},
@@ -244,6 +265,7 @@ func TestGeneratePKIAuthSecret(t *testing.T) {
 					sans = append(sans, ip.String())
 				}
 				assert.Contains(t, sans, "my-cluster.example.com")
+				assert.Contains(t, sans, "my-cluster.default.svc.cluster.local")
 			},
 		},
 		{

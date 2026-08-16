@@ -11,7 +11,7 @@ import (
 // EgressSelectorConfiguration for the kube-apiserver.
 type EgressSelectorConfig struct {
 	// EgressURL is the HTTPS address of the plane-tunnel egress-selector service,
-	// e.g. https://tunnel-server-mycluster-egress.default.svc.cluster.local:9443
+	// e.g. https://mycluster-tunnel-egress.default.svc.cluster.local:9443
 	EgressURL      string
 	CACertPath     string
 	ClientCertPath string

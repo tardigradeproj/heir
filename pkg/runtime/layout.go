@@ -27,6 +27,7 @@ type AuthLayout struct {
 	AdminConf             MountEntry
 	ControllerManagerConf MountEntry
 	SchedulerConf         MountEntry
+	ClientKubeconfig      MountEntry
 }
 
 // StaticManifest describes the manifests to be applied at the moment the cluster is initialized
@@ -75,6 +76,7 @@ func NewControlPlaneLayout() ControlPlaneLayout {
 		},
 		Auth: AuthLayout{
 			AdminConf:             MountEntry{SecretKey: "admin.conf", MountPath: "/etc/kubernetes/admin.conf"},
+			ClientKubeconfig:      MountEntry{SecretKey: "kubeconfig", MountPath: "/etc/kubernetes/kubeconfig"},
 			ControllerManagerConf: MountEntry{SecretKey: "kube-controller-manager.conf", MountPath: "/etc/kubernetes/kube-controller-manager.conf"},
 			SchedulerConf:         MountEntry{SecretKey: "kube-scheduler.conf", MountPath: "/etc/kubernetes/kube-scheduler.conf"},
 		},

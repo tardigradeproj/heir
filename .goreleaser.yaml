@@ -1,10 +1,3 @@
-# This is an example .goreleaser.yml file with some sensible defaults.
-# Make sure to check the documentation at https://goreleaser.com
-
-# The lines below are called `modelines`. See `:help modeline`
-# Feel free to remove those if you don't want/need to use them.
-# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
-# vim: set ts=2 sw=2 tw=0 fo=cnqoj
 project_name: tardigrade
 version: 2
 
@@ -42,6 +35,16 @@ builds:
       - -X github.com/tardigradeproj/heir/pkg/buildinfo.Version={{.Version}}
       - -X github.com/tardigradeproj/heir/pkg/buildinfo.CommitID={{.Commit}}
       - -X github.com/tardigradeproj/heir/pkg/buildinfo.BuildTime={{.Date}}
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - arm64
+      - amd64
+  - main: cmd/main.go
+    id: manager
+    binary: manager
     env:
       - CGO_ENABLED=0
     goos:
@@ -108,6 +111,18 @@ archives:
         formats: [zip]
 
 dockers_v2:
+  - id: controller-manager
+    dockerfile: images/Dockerfile.controller-manager
+    ids:
+      - manager
+    images:
+      - ghcr.io/tardigradeproj/heir-controller-manager
+    tags:
+      - "{{ .Tag }}"
+      - "{{ if or .IsSnapshot (and (not .IsNightly) (not (contains .Version \"-rc\"))) }}latest{{ end }}"
+    platforms:
+      - linux/amd64
+      - linux/arm64
   - id: tunnel
     dockerfile: images/Dockerfile.tunnel
     ids:
@@ -116,7 +131,7 @@ dockers_v2:
       - ghcr.io/tardigradeproj/heir-tunnel
     tags:
       - "{{ .Tag }}"
-      - "{{ if not .IsNightly }}latest{{ end }}"
+      - "{{ if or .IsSnapshot (and (not .IsNightly) (not (contains .Version \"-rc\"))) }}latest{{ end }}"
     platforms:
       - linux/amd64
       - linux/arm64
@@ -131,7 +146,7 @@ dockers_v2:
       - ghcr.io/tardigradeproj/heir
     tags:
       - "{{ .Tag }}"
-      - "{{ if not .IsNightly }}latest{{ end }}"
+      - "{{ if or .IsSnapshot (and (not .IsNightly) (not (contains .Version \"-rc\"))) }}latest{{ end }}"
     platforms:
       - linux/amd64
       - linux/arm64
@@ -146,6 +161,10 @@ changelog:
       - "^test:"
 
 release:
+  # your tags always carry a "-heirvX.Y.Z" suffix (e.g. v1.35.5-heirv0.0.2), so
+  # semver's built-in prerelease detection ("auto") would flag every release.
+  # only treat a build as a prerelease when it carries an explicit -rc marker.
+  prerelease: "{{ if contains .Version \"-rc\" }}true{{ else }}false{{ end }}"
   footer: >-
 
     ---

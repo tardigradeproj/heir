@@ -6,12 +6,17 @@ IMAGE_TAG      ?= latest
 
 ARCH               ?= arm64
 OS                 ?= linux
-KUBE_VERSION       ?= v1.35.5
-CONTAINERD_VERSION ?= 2.1.0
-RUNC_VERSION       ?= v1.2.6
-CRICTL_VERSION     ?= v1.33.0
-CNI_VERSION        ?= v1.9.1
-CALICO_VERSION     ?= 3.31.4
+
+# Versions of external dependencies are pinned in a single file rather than here;
+# see .dependencies-version.yaml. Each can still be overridden per-invocation, e.g.
+# `make download-worker-artifacts KUBE_VERSION=v1.36.0`.
+DEPENDENCIES_VERSIONS_FILE ?= $(shell pwd)/.dependencies-version.yaml
+KUBE_VERSION       ?= $(shell $(YQ) '.kubernetes' "$(DEPENDENCIES_VERSIONS_FILE)")
+CONTAINERD_VERSION ?= $(shell $(YQ) '.containerd' "$(DEPENDENCIES_VERSIONS_FILE)")
+RUNC_VERSION       ?= $(shell $(YQ) '.runc' "$(DEPENDENCIES_VERSIONS_FILE)")
+CRICTL_VERSION     ?= $(shell $(YQ) '.crictl' "$(DEPENDENCIES_VERSIONS_FILE)")
+CNI_VERSION        ?= $(shell $(YQ) '.cni' "$(DEPENDENCIES_VERSIONS_FILE)")
+CALICO_VERSION     ?= $(shell $(YQ) '.calico' "$(DEPENDENCIES_VERSIONS_FILE)")
 ARTIFACTS_DIR      ?= $(shell pwd)/artifacts
 WORKER_DIR         ?= $(ARTIFACTS_DIR)/worker/$(ARCH)
 CONTROLPLANE_DIR   ?= $(ARTIFACTS_DIR)/controlplane/$(ARCH)
@@ -171,3 +176,8 @@ copy-masteragent: ## Build masteragent on vagrant and copy binary back to host
 .PHONY: test-distro
 test-distro:
 	go test $$(go list ./... | grep -v -e 'internal/controller' -e 'cmd')
+
+
+.PHONY: build-bins
+build-bins:
+	goreleaser release --snapshot --clean

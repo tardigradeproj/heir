@@ -4,6 +4,18 @@ set -o errexit
 script_dir="$(cd "$(dirname "$0")" && pwd)"
 kubeconfig_path="${script_dir}/../integration-test/kubeconfig.yaml"
 
+# Map the host architecture to the goarch-style suffix goreleaser tags images with,
+# so this script works unmodified on both Apple Silicon and x86_64 machines.
+host_arch="$(uname -m)"
+case "${host_arch}" in
+  x86_64|amd64) arch="amd64" ;;
+  aarch64|arm64) arch="arm64" ;;
+  *)
+    echo "unsupported host architecture: ${host_arch}" >&2
+    exit 1
+    ;;
+esac
+
 # 1. Create registry container unless it already exists
 reg_name='kind-registry'
 reg_port='5001'
@@ -57,8 +69,9 @@ containerdConfigPatches:
 EOF
 
 # Generate bastion kubeconfig — same content but server host set to 'control-plane'
-# so containers inside the kind network can reach the API server directly.
+# so containers inside the kind network can reach the API server directly.ex
 bastion_kubeconfig_path="${script_dir}/../integration-test/bastion-kubeconfig.yaml"
+export KUBECONFIG=$bastion_kubeconfig_path
 cp "${kubeconfig_path}" "${bastion_kubeconfig_path}"
 api_port=$(kubectl --kubeconfig="${bastion_kubeconfig_path}" config view --raw \
   -o jsonpath='{.clusters[0].cluster.server}' | grep -oE '[0-9]+$')
@@ -105,14 +118,18 @@ data:
 EOF
 
 # 7. Push postgres image to the local registry
-docker tag ghcr.io/tardigradeproj/heir:latest-arm64 "localhost:${reg_port}/heir:latest-arm64"
-docker push "localhost:${reg_port}/heir:latest-arm64"
+docker tag "ghcr.io/tardigradeproj/heir:latest-${arch}" "localhost:${reg_port}/heir:latest"
+docker push "localhost:${reg_port}/heir:latest"
 docker pull postgres:16
 docker tag postgres:16 "localhost:${reg_port}/postgres:16"
 docker push "localhost:${reg_port}/postgres:16"
 
-docker tag ghcr.io/tardigradeproj/heir-tunnel:latest-arm64 "localhost:${reg_port}/heir-tunnel:latest-arm64"
-docker push "localhost:${reg_port}/heir-tunnel:latest-arm64"
+docker tag "ghcr.io/tardigradeproj/heir-tunnel:latest-${arch}" "localhost:${reg_port}/heir-tunnel:latest"
+docker push "localhost:${reg_port}/heir-tunnel:latest"
+
+docker tag "ghcr.io/tardigradeproj/heir-controller-manager:latest-${arch}" "localhost:${reg_port}/heir-controller-manager:latest"
+docker push "localhost:${reg_port}/heir-controller-manager:latest"
+
 # 8. Provision PostgreSQL (secret, deployment, service) and wait until healthy
 kubectl --kubeconfig="${kubeconfig_path}" create secret generic postgres-credentials \
   --from-literal=password=kine-password \
