@@ -7,10 +7,35 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+type deploymentOpts struct {
+	annotations map[string]string
+}
+
+// DeployOpts customizes pod-template metadata when generating a Deployment.
+type DeployOpts func(*deploymentOpts)
+
+// WithAnnotation sets a single pod-template annotation.
+func WithAnnotation(k, v string) DeployOpts {
+	return func(opts *deploymentOpts) {
+		if opts.annotations == nil {
+			opts.annotations = map[string]string{}
+		}
+		opts.annotations[k] = v
+	}
+}
+
 // GenerateDeployment builds the control-plane Deployment for the given Runtime and config hash.
 // No API calls are made; the caller is responsible for setting the owner reference and persisting
 // the result.
-func GenerateDeployment(runtime *controlplanev1alpha1.Runtime, layout ControlPlaneLayout, configHash string) (*appsv1.Deployment, error) {
+func GenerateDeployment(runtime *controlplanev1alpha1.Runtime,
+	layout ControlPlaneLayout,
+	opts ...DeployOpts,
+) (*appsv1.Deployment, error) {
+	deployOps := deploymentOpts{}
+	for _, opt := range opts {
+		opt(&deployOps)
+	}
+
 	deploySpec := runtime.Spec.ControlPlane.Deployment
 	heir := runtime.Spec.ControlPlane.Heir
 	labels := map[string]string{
@@ -20,7 +45,7 @@ func GenerateDeployment(runtime *controlplanev1alpha1.Runtime, layout ControlPla
 
 	podLabels := mergeMaps(labels, deploySpec.AdditionalMetadata.Labels)
 	podAnnotations := mergeMaps(
-		map[string]string{"heir.tardigrade.runtime.io/config-hash": configHash},
+		deployOps.annotations,
 		deploySpec.AdditionalMetadata.Annotations,
 	)
 

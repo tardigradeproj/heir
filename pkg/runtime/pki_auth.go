@@ -17,10 +17,10 @@ import (
 )
 
 const (
-	// pkiAPIServerHashAnnotation tracks the hash of SAN inputs for the API server certificate.
-	pkiAPIServerHashAnnotation = "controlplane.tardigrade.runtime.io/pki-apiserver-hash"
-	// pkiPlaneTunnelHashAnnotation tracks the hash of SAN inputs for the plane tunnel certificate.
-	pkiPlaneTunnelHashAnnotation = "controlplane.tardigrade.runtime.io/pki-planetunnel-hash"
+	// PKIAPIServerHashAnnotation tracks the hash of SAN inputs for the API server certificate.
+	PKIAPIServerHashAnnotation = "controlplane.tardigrade.runtime.io/pki-apiserver-hash"
+	// PKIPlaneTunnelHashAnnotation tracks the hash of SAN inputs for the plane tunnel certificate.
+	PKIPlaneTunnelHashAnnotation = "controlplane.tardigrade.runtime.io/pki-planetunnel-hash"
 )
 
 // CertificateDuration is the default lifetime for all generated certificates.
@@ -54,7 +54,7 @@ func RegeneratePKILeafCerts(secret *corev1.Secret, runtime *controlplanev1alpha1
 
 	updated := false
 	apiServerAltNames := APIServerAltNames(*runtime)
-	if wantHash := sansHash(apiServerAltNames); secret.Annotations[pkiAPIServerHashAnnotation] != wantHash {
+	if wantHash := sansHash(apiServerAltNames); secret.Annotations[PKIAPIServerHashAnnotation] != wantHash {
 		cert, err := pki.SignCSR(ca, pki.CSR{
 			Name:      "kubernetes",
 			O:         "kubernetes",
@@ -66,11 +66,11 @@ func RegeneratePKILeafCerts(secret *corev1.Secret, runtime *controlplanev1alpha1
 		}
 		secret.Data[layout.PKI.APIServerCert.SecretKey] = cert.Cert
 		secret.Data[layout.PKI.APIServerKey.SecretKey] = cert.Key
-		secret.Annotations[pkiAPIServerHashAnnotation] = wantHash
+		secret.Annotations[PKIAPIServerHashAnnotation] = wantHash
 		updated = true
 	}
 	planeTunnelAltnames := planeTunnelAltNames(cluster.ControlPlaneExternalEndpoint.PlaneTunnel.Host)
-	if wantHash := sansHash(planeTunnelAltnames); secret.Annotations[pkiPlaneTunnelHashAnnotation] != wantHash {
+	if wantHash := sansHash(planeTunnelAltnames); secret.Annotations[PKIPlaneTunnelHashAnnotation] != wantHash {
 		cert, err := pki.SignCSR(ca, pki.CSR{
 			Name:      "plane-tunnel",
 			O:         "system:plane-tunnel",
@@ -81,7 +81,7 @@ func RegeneratePKILeafCerts(secret *corev1.Secret, runtime *controlplanev1alpha1
 		}
 		secret.Data[layout.PKI.PlaneTunnelCert.SecretKey] = cert.Cert
 		secret.Data[layout.PKI.PlaneTunnelKey.SecretKey] = cert.Key
-		secret.Annotations[pkiPlaneTunnelHashAnnotation] = wantHash
+		secret.Annotations[PKIPlaneTunnelHashAnnotation] = wantHash
 		updated = true
 	}
 
@@ -227,8 +227,8 @@ func GeneratePKIAuthSecret(runtime *controlplanev1alpha1.Runtime, layout Control
 			Labels:    labels,
 			Annotations: map[string]string{
 				"controlplane.tardigrade.runtime.io/deletion-protection": "false",
-				pkiAPIServerHashAnnotation:                               sansHash(APIServerAltNames(*runtime)),
-				pkiPlaneTunnelHashAnnotation:                             sansHash(planeTunnelAltNames(runtime.Spec.Cluster.ControlPlaneExternalEndpoint.PlaneTunnel.Host)),
+				PKIAPIServerHashAnnotation:                               sansHash(APIServerAltNames(*runtime)),
+				PKIPlaneTunnelHashAnnotation:                             sansHash(planeTunnelAltNames(runtime.Spec.Cluster.ControlPlaneExternalEndpoint.PlaneTunnel.Host)),
 			},
 		},
 		Data: data,

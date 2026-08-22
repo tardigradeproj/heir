@@ -102,10 +102,22 @@ func GeneratePlaneTunnelService(wrkCtx typ.WorkerContext, runtime *controlplanev
 	return []corev1.Service{headless, tunnel, egressSelector}, nil
 }
 
-func GeneratePlaneTunnelDeployment(wrkCtx typ.WorkerContext, runtime *controlplanev1alpha1.Runtime, layout ControlPlaneLayout) *appsv1.Deployment {
+func GeneratePlaneTunnelDeployment(wrkCtx typ.WorkerContext,
+	runtime *controlplanev1alpha1.Runtime,
+	layout ControlPlaneLayout,
+	opts ...DeployOpts,
+) *appsv1.Deployment {
+	deployOps := deploymentOpts{}
+	for _, opt := range opts {
+		opt(&deployOps)
+	}
+
 	spec := runtime.Spec.ControlPlane.PlaneTunnel.Server
 	deploySpec := spec.Deployment
-
+	podAnnotations := mergeMaps(
+		deployOps.annotations,
+		deploySpec.AdditionalMetadata.Annotations,
+	)
 	labels := map[string]string{
 		"app.kubernetes.io/name":       PlaneTunnelName(runtime.Name),
 		"app.kubernetes.io/managed-by": "heir",
@@ -166,7 +178,7 @@ func GeneratePlaneTunnelDeployment(wrkCtx typ.WorkerContext, runtime *controlpla
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels:      podLabels,
-					Annotations: deploySpec.AdditionalMetadata.Annotations,
+					Annotations: podAnnotations,
 				},
 				Spec: corev1.PodSpec{
 					ServiceAccountName: deploySpec.ServiceAccountName,
