@@ -7,6 +7,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// ConfigHashAnnotation is the pod-template annotation that tracks the hash of the
+// control-plane ConfigMap data, so a config change rolls out the Deployment.
+const ConfigHashAnnotation = "heir.tardigrade.runtime.io/config-hash"
+
 type deploymentOpts struct {
 	annotations map[string]string
 }

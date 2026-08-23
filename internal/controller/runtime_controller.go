@@ -114,7 +114,7 @@ func (r *RuntimeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return r.setDegraded(ctx, controlPlaneRuntime, "ControlPlaneConfigFailed", err.Error())
 	}
 	if err := r.setupDeployment(ctx, controlPlaneRuntime,
-		heirruntime.WithAnnotation("heir.tardigrade.runtime.io/config-hash", configHash),
+		heirruntime.WithAnnotation(heirruntime.ConfigHashAnnotation, configHash),
 		heirruntime.WithAnnotation(heirruntime.PKIAPIServerHashAnnotation, pkiSecret.Annotations[heirruntime.PKIAPIServerHashAnnotation]),
 	); err != nil {
 		log.Error(err, "failed to reconcile deployment")
