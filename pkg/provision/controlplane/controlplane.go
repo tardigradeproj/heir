@@ -179,7 +179,9 @@ func setupService(ctx context.Context, cleaner *cleanup.Cleanup, client kubernet
 }
 
 func setupDeployment(ctx context.Context, cleaner *cleanup.Cleanup, client kubernetes.Interface, runtime *v1alpha1.Runtime, layout heirruntime.ControlPlaneLayout, configHash string) error {
-	deploy, err := heirruntime.GenerateDeployment(runtime, layout, configHash)
+	deploy, err := heirruntime.GenerateDeployment(runtime, layout,
+		heirruntime.WithAnnotation(heirruntime.ConfigHashAnnotation, configHash),
+	)
 	if err != nil {
 		return err
 	}

@@ -259,7 +259,7 @@ var _ = Describe("Runtime Controller", func() {
 
 			deploy := &appsv1.Deployment{}
 			Expect(k8sClient.Get(ctx, namespacedName, deploy)).To(Succeed())
-			originalConfigHash := deploy.Spec.Template.Annotations["heir.tardigrade.runtime.io/config-hash"]
+			originalPKIHash := deploy.Spec.Template.Annotations[heirruntime.PKIAPIServerHashAnnotation]
 
 			runtime := &controlplanev1alpha1.Runtime{}
 			Expect(k8sClient.Get(ctx, namespacedName, runtime)).To(Succeed())
@@ -278,8 +278,8 @@ var _ = Describe("Runtime Controller", func() {
 
 			By("verifying the deployment is rolled to pick up the new certificate")
 			Expect(k8sClient.Get(ctx, namespacedName, deploy)).To(Succeed())
-			Expect(deploy.Spec.Template.Annotations["heir.tardigrade.runtime.io/s6-overlay-config-hash"]).
-				NotTo(Equal(originalConfigHash), "pod-template hash must change so pods are restarted")
+			Expect(deploy.Spec.Template.Annotations[heirruntime.PKIAPIServerHashAnnotation]).
+				NotTo(Equal(originalPKIHash), "pod-template PKI hash must change so pods are restarted to pick up the new cert")
 		})
 	})
 })

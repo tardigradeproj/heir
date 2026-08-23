@@ -113,7 +113,10 @@ func (r *RuntimeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		log.Error(err, "failed to reconcile control plane configuration")
 		return r.setDegraded(ctx, controlPlaneRuntime, "ControlPlaneConfigFailed", err.Error())
 	}
-	if err := r.setupDeployment(ctx, controlPlaneRuntime, configHash); err != nil {
+	if err := r.setupDeployment(ctx, controlPlaneRuntime,
+		heirruntime.WithAnnotation(heirruntime.ConfigHashAnnotation, configHash),
+		heirruntime.WithAnnotation(heirruntime.PKIAPIServerHashAnnotation, pkiSecret.Annotations[heirruntime.PKIAPIServerHashAnnotation]),
+	); err != nil {
 		log.Error(err, "failed to reconcile deployment")
 		return r.setDegraded(ctx, controlPlaneRuntime, "DeploymentFailed", err.Error())
 	}
@@ -125,7 +128,9 @@ func (r *RuntimeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		log.Error(err, "failed to reconcile plane tunnel service")
 		return r.setDegraded(ctx, controlPlaneRuntime, "PlaneTunnelServiceSyncFailed", err.Error())
 	}
-	if err := r.setupPlaneTunnelDeployment(ctx, controlPlaneRuntime); err != nil {
+	if err := r.setupPlaneTunnelDeployment(ctx, controlPlaneRuntime,
+		heirruntime.WithAnnotation(heirruntime.PKIPlaneTunnelHashAnnotation, pkiSecret.Annotations[heirruntime.PKIPlaneTunnelHashAnnotation]),
+	); err != nil {
 		log.Error(err, "failed to reconcile plane tunnel deployment")
 		return r.setDegraded(ctx, controlPlaneRuntime, "PlaneTunnelDeploymentSyncFailed", err.Error())
 	}
@@ -305,9 +310,9 @@ func (r *RuntimeReconciler) setupService(
 func (r *RuntimeReconciler) setupDeployment(
 	ctx context.Context,
 	controlPlaneRuntime *controlplanev1alpha1.Runtime,
-	configHash string,
+	option ...heirruntime.DeployOpts,
 ) error {
-	desired, err := heirruntime.GenerateDeployment(controlPlaneRuntime, layout, configHash)
+	desired, err := heirruntime.GenerateDeployment(controlPlaneRuntime, layout, option...)
 	if err != nil {
 		r.Recorder.Eventf(controlPlaneRuntime, nil, corev1.EventTypeWarning, "DeploymentGenerationFailed", "GenerateDeployment",
 			"failed to generate deployment spec: %v", err)
@@ -642,8 +647,9 @@ func (r *RuntimeReconciler) setupPlaneTunnelService(
 func (r *RuntimeReconciler) setupPlaneTunnelDeployment(
 	ctx context.Context,
 	controlPlaneRuntime *controlplanev1alpha1.Runtime,
+	option ...heirruntime.DeployOpts,
 ) error {
-	desired := heirruntime.GeneratePlaneTunnelDeployment(*r.WrkCtx, controlPlaneRuntime, layout)
+	desired := heirruntime.GeneratePlaneTunnelDeployment(*r.WrkCtx, controlPlaneRuntime, layout, option...)
 	if err := ctrl.SetControllerReference(controlPlaneRuntime, desired, r.Scheme); err != nil {
 		return err
 	}
