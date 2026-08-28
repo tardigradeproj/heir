@@ -8,7 +8,7 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/tardigradeproj/heir/api/v1alpha1"
+	"github.com/tardigradeproj/heir/api/controlplane/v1alpha1"
 	"github.com/tardigradeproj/heir/pkg/k8s"
 	workertyp "github.com/tardigradeproj/heir/pkg/provision/worker/typ"
 	pkgruntime "github.com/tardigradeproj/heir/pkg/runtime"
