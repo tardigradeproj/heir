@@ -8,7 +8,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	sigsyaml "sigs.k8s.io/yaml"
 
-	controlplanev1alpha1 "github.com/tardigradeproj/heir/api/v1alpha1"
+	controlplanev1alpha1 "github.com/tardigradeproj/heir/api/controlplane/v1alpha1"
 	"github.com/tardigradeproj/heir/pkg/provision/worker/typ"
 )
 

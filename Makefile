@@ -46,12 +46,12 @@ help: ## Display this help.
 
 .PHONY: manifests
 manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
-	"$(CONTROLLER_GEN)" rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
+	"$(CONTROLLER_GEN)" rbac:roleName=manager-role crd webhook paths="./api/controlplane/..." paths="./internal/controller/controlplane/..." output:crd:artifacts:config=config/crd/bases
 	cp config/crd/bases/controlplane.tardigrade.runtime.io_runtimes.yaml pkg/provision/controlplane/
 
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
-	"$(CONTROLLER_GEN)" object:headerFile="hack/boilerplate.go.txt" paths="./..."
+	"$(CONTROLLER_GEN)" object:headerFile="hack/boilerplate.go.txt" paths="./api/controlplane/..." paths="./internal/controller/controlplane/..."
 
 .PHONY: fmt
 fmt: ## Run go fmt against code.

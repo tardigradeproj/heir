@@ -7,7 +7,7 @@ import (
 	"os"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/tardigradeproj/heir/api/v1alpha1"
+	"github.com/tardigradeproj/heir/api/controlplane/v1alpha1"
 	"github.com/tardigradeproj/heir/pkg/provision/worker/typ"
 	heirruntime "github.com/tardigradeproj/heir/pkg/runtime"
 	"gvisor.dev/gvisor/pkg/cleanup"

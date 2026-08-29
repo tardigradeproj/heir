@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	controlplanev1alpha1 "github.com/tardigradeproj/heir/api/v1alpha1"
+	controlplanev1alpha1 "github.com/tardigradeproj/heir/api/controlplane/v1alpha1"
 	"github.com/tardigradeproj/heir/pkg/provision/worker/typ"
 	"github.com/tardigradeproj/heir/pkg/templatewriter"
 	"sigs.k8s.io/yaml"

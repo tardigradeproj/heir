@@ -11,7 +11,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/tardigradeproj/heir/api/v1alpha1"
+	"github.com/tardigradeproj/heir/api/controlplane/v1alpha1"
 	heirruntime "github.com/tardigradeproj/heir/pkg/runtime"
 	"gvisor.dev/gvisor/pkg/cleanup"
 	corev1 "k8s.io/api/core/v1"

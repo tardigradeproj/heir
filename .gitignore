@@ -46,3 +46,4 @@ integration-test/kubeconfig.yaml
 dist/
 /tunnel
 my-cluster-kubeconfig
+docs/masteragent-redesign.md

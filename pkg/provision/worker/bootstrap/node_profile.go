@@ -8,7 +8,7 @@ import (
 
 	retry "github.com/avast/retry-go"
 	log "github.com/sirupsen/logrus"
-	"github.com/tardigradeproj/heir/api/v1alpha1"
+	"github.com/tardigradeproj/heir/api/controlplane/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"

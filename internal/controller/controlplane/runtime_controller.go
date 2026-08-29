@@ -34,7 +34,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	controlplanev1alpha1 "github.com/tardigradeproj/heir/api/v1alpha1"
+	controlplanev1alpha1 "github.com/tardigradeproj/heir/api/controlplane/v1alpha1"
 	"github.com/tardigradeproj/heir/pkg/pki"
 	"github.com/tardigradeproj/heir/pkg/provision/worker/typ"
 	heirruntime "github.com/tardigradeproj/heir/pkg/runtime"

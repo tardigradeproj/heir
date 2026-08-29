@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	log "github.com/sirupsen/logrus"
-	controlplanev1alpha1 "github.com/tardigradeproj/heir/api/v1alpha1"
+	controlplanev1alpha1 "github.com/tardigradeproj/heir/api/controlplane/v1alpha1"
 	"github.com/tardigradeproj/heir/pkg/templatewriter"
 )
 

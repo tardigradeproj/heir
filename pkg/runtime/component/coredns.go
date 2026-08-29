@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"fmt"
 
-	controlplanev1alpha1 "github.com/tardigradeproj/heir/api/v1alpha1"
+	controlplanev1alpha1 "github.com/tardigradeproj/heir/api/controlplane/v1alpha1"
 	"github.com/tardigradeproj/heir/pkg/templatewriter"
 	"k8s.io/utils/ptr"
 )
