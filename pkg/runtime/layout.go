@@ -48,6 +48,10 @@ type ConfigLayout struct {
 	EgressSelector    MountEntry
 }
 
+type ClusterAgent struct {
+	RuntimeManifest MountEntry
+}
+
 // ControlPlaneLayout groups all Secret/ConfigMap keys and their container mount paths for a
 // control-plane instance. Use NewControlPlaneLayout to obtain the canonical set of values.
 type ControlPlaneLayout struct {
@@ -55,6 +59,7 @@ type ControlPlaneLayout struct {
 	Auth           AuthLayout
 	Config         ConfigLayout
 	StaticManifest StaticManifest
+	ClusterAgent   ClusterAgent
 }
 
 // NewControlPlaneLayout returns the fixed layout that describes every file that must be
@@ -62,6 +67,9 @@ type ControlPlaneLayout struct {
 // service scripts.
 func NewControlPlaneLayout() ControlPlaneLayout {
 	return ControlPlaneLayout{
+		ClusterAgent: ClusterAgent{
+			RuntimeManifest: MountEntry{SecretKey: "runtime.yaml", MountPath: "/etc/kubernetes/manifests/runtime.yaml"},
+		},
 		PKI: PKILayout{
 			CACert:                   MountEntry{SecretKey: "ca.crt", MountPath: "/etc/kubernetes/pki/ca.crt"},
 			CAKey:                    MountEntry{SecretKey: "ca.key", MountPath: "/etc/kubernetes/pki/ca.key"},

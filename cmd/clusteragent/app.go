@@ -14,20 +14,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main
+package clusteragent
 
 import (
 	"crypto/tls"
 	"flag"
+	"fmt"
 	"os"
 
-	"github.com/tardigradeproj/heir/pkg/provision/worker/typ"
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
@@ -35,10 +36,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	"sigs.k8s.io/yaml"
 
+	clusteragentv1alpha1 "github.com/tardigradeproj/heir/api/clusteragent/v1alpha1"
 	controlplanev1alpha1 "github.com/tardigradeproj/heir/api/controlplane/v1alpha1"
-	controller "github.com/tardigradeproj/heir/internal/controller/controlplane"
-	// +kubebuilder:scaffold:imports
+	clusteragentcontroller "github.com/tardigradeproj/heir/internal/controller/clusteragent"
+	runtimelayout "github.com/tardigradeproj/heir/pkg/runtime"
 )
 
 var (
@@ -48,13 +51,11 @@ var (
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-
-	utilruntime.Must(controlplanev1alpha1.AddToScheme(scheme))
-	// +kubebuilder:scaffold:scheme
+	utilruntime.Must(clusteragentv1alpha1.AddToScheme(scheme))
 }
 
 // nolint:gocyclo
-func main() {
+func Run() {
 	var metricsAddr string
 	var metricsCertPath, metricsCertName, metricsCertKey string
 	var webhookCertPath, webhookCertName, webhookCertKey string
@@ -103,10 +104,8 @@ func main() {
 		tlsOpts = append(tlsOpts, disableHTTP2)
 	}
 
-	// Initial webhook TLS options
-	webhookTLSOpts := tlsOpts
 	webhookServerOptions := webhook.Options{
-		TLSOpts: webhookTLSOpts,
+		TLSOpts: tlsOpts,
 	}
 
 	if len(webhookCertPath) > 0 {
@@ -120,10 +119,6 @@ func main() {
 
 	webhookServer := webhook.NewServer(webhookServerOptions)
 
-	// Metrics endpoint is enabled in 'config/default/kustomization.yaml'. The Metrics options configure the server.
-	// More info:
-	// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.23.1/pkg/metrics/server
-	// - https://book.kubebuilder.io/reference/metrics.html
 	metricsServerOptions := metricsserver.Options{
 		BindAddress:   metricsAddr,
 		SecureServing: secureMetrics,
@@ -131,21 +126,9 @@ func main() {
 	}
 
 	if secureMetrics {
-		// FilterProvider is used to protect the metrics endpoint with authn/authz.
-		// These configurations ensure that only authorized users and service accounts
-		// can access the metrics endpoint. The RBAC are configured in 'config/rbac/kustomization.yaml'. More info:
-		// https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.23.1/pkg/metrics/filters#WithAuthenticationAndAuthorization
 		metricsServerOptions.FilterProvider = filters.WithAuthenticationAndAuthorization
 	}
 
-	// If the certificate is not specified, controller-runtime will automatically
-	// generate self-signed certificates for the metrics server. While convenient for development and testing,
-	// this setup is not recommended for production.
-	//
-	// TODO(user): If you enable certManager, uncomment the following lines:
-	// - [METRICS-WITH-CERTS] at config/default/kustomization.yaml to generate and use certificates
-	// managed by cert-manager for the metrics server.
-	// - [PROMETHEUS-WITH-CERTS] at config/prometheus/kustomization.yaml for TLS certification.
 	if len(metricsCertPath) > 0 {
 		setupLog.Info("Initializing metrics certificate watcher using provided certificates",
 			"metrics-cert-path", metricsCertPath, "metrics-cert-name", metricsCertName, "metrics-cert-key", metricsCertKey)
@@ -161,34 +144,36 @@ func main() {
 		WebhookServer:          webhookServer,
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "385b3a92.tardigrade.runtime.io",
-		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
-		// when the Manager ends. This requires the binary to immediately end when the
-		// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly
-		// speeds up voluntary leader transitions as the new leader don't have to wait
-		// LeaseDuration time first.
-		//
-		// In the default scaffold provided, the program ends immediately after
-		// the manager stops, so would be fine to enable this option. However,
-		// if you are doing or is intended to do any operation such as perform cleanups
-		// after the manager stops then its usage might be unsafe.
-		// LeaderElectionReleaseOnCancel: true,
+		LeaderElectionID:       "clusteragent.tardigrade.runtime.io",
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
 		os.Exit(1)
 	}
 
-	if err := (&controller.RuntimeReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorder("runtime"),
-		WrkCtx:   typ.NewWorkerContextWithDefaults(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "Runtime")
+	caData, runtimeObj, err := loadClusterInfo(runtimelayout.NewControlPlaneLayout())
+	if err != nil {
+		setupLog.Error(err, "unable to load cluster info")
 		os.Exit(1)
 	}
-	// +kubebuilder:scaffold:builder
+
+	clientset, err := kubernetes.NewForConfig(mgr.GetConfig())
+	if err != nil {
+		setupLog.Error(err, "unable to create clientset")
+		os.Exit(1)
+	}
+
+	if err := (&clusteragentcontroller.WorkerJoinTokenReconciler{
+		Client:    mgr.GetClient(),
+		Scheme:    mgr.GetScheme(),
+		CA:        caData,
+		Runtime:   runtimeObj,
+		Clientset: clientset,
+		Recorder:  mgr.GetEventRecorder("clusteragent-workerjointoken"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "Failed to create controller", "controller", "WorkerJoinToken")
+		os.Exit(1)
+	}
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up health check")
@@ -204,4 +189,26 @@ func main() {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+}
+
+// loadClusterInfo reads this cluster's CA certificate and Runtime manifest from the
+// filesystem paths described by layout, which the control-plane deployment projects them
+// to. Both files must be present before the manager starts serving reconciles.
+func loadClusterInfo(layout runtimelayout.ControlPlaneLayout) ([]byte, *controlplanev1alpha1.Runtime, error) {
+	caData, err := os.ReadFile(layout.PKI.CACert.MountPath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to read CA cert from %q: %w", layout.PKI.CACert.MountPath, err)
+	}
+
+	manifest, err := os.ReadFile(layout.ClusterAgent.RuntimeManifest.MountPath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to read runtime manifest from %q: %w", layout.ClusterAgent.RuntimeManifest.MountPath, err)
+	}
+
+	runtimeObj := &controlplanev1alpha1.Runtime{}
+	if err := yaml.Unmarshal(manifest, runtimeObj); err != nil {
+		return nil, nil, fmt.Errorf("failed to parse runtime manifest %q: %w", layout.ClusterAgent.RuntimeManifest.MountPath, err)
+	}
+
+	return caData, runtimeObj, nil
 }

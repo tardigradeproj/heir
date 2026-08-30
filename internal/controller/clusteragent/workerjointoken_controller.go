@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package controller
+package clusteragent
 
 import (
 	"context"
@@ -23,6 +23,7 @@ import (
 	"fmt"
 
 	"github.com/go-logr/logr"
+	controlplanev1alpha1 "github.com/tardigradeproj/heir/api/controlplane/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -36,47 +37,48 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	controlplanev1alpha1 "github.com/tardigradeproj/heir/api/controlplane/v1alpha1"
-	"github.com/tardigradeproj/heir/pkg/k8s"
+	clusteragentv1alpha1 "github.com/tardigradeproj/heir/api/clusteragent/v1alpha1"
 	"github.com/tardigradeproj/heir/pkg/token"
 )
 
 const (
 	typeReadyWorkerJoinToken = "Ready"
 
-	workerJoinTokenFinalizer  = "controlplane.tardigrade.runtime.io/worker-join-token"
-	workerJoinTokenClusterKey = "controlplane.tardigrade.runtime.io/jointoken-ref"
+	workerJoinTokenFinalizer  = "clusteragent.tardigrade.runtime.io/worker-join-token"
+	workerJoinTokenClusterKey = "clusteragent.tardigrade.runtime.io/jointoken-ref"
 )
 
 // WorkerJoinTokenReconciler reconciles a WorkerJoinToken object
 type WorkerJoinTokenReconciler struct {
 	client.Client
-	Scheme   *runtime.Scheme
-	Recorder events.EventRecorder
+	Scheme *runtime.Scheme
+	// CA is this cluster's CA certificate, used to build the bootstrap kubeconfig.
+	CA []byte
+	// Runtime describes this cluster, used to resolve its external API server address.
+	Runtime   *controlplanev1alpha1.Runtime
+	Clientset kubernetes.Interface
+	Recorder  events.EventRecorder
 }
 
-// +kubebuilder:rbac:groups=controlplane.tardigrade.runtime.io,resources=workerjointokens,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=controlplane.tardigrade.runtime.io,resources=workerjointokens/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=controlplane.tardigrade.runtime.io,resources=workerjointokens/finalizers,verbs=update
-// +kubebuilder:rbac:groups=controlplane.tardigrade.runtime.io,resources=runtimes,verbs=get;list;watch
+// +kubebuilder:rbac:groups=clusteragent.tardigrade.runtime.io,resources=workerjointokens,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=clusteragent.tardigrade.runtime.io,resources=workerjointokens/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=clusteragent.tardigrade.runtime.io,resources=workerjointokens/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;delete
+// +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch
 // +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
 
-// Reconcile mints a bootstrap token + kubeconfig on the tenant cluster named by
-// spec.runtimeRef and publishes it as a Secret in the WorkerJoinToken's own namespace.
-// See docs/workerjointoken.md for the full design: tokens are minted once per spec.generation and never
-// auto-renewed; deleting the WorkerJoinToken revokes the token on the tenant cluster.
+// Reconcile mints a bootstrap token + kubeconfig on this cluster and publishes it as a
+// Secret in kube-system (WorkerJoinToken is cluster-scoped, so there is no natural
+// namespace of its own to use).
 func (r *WorkerJoinTokenReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
-
-	joinToken := &controlplanev1alpha1.WorkerJoinToken{}
+	joinToken := &clusteragentv1alpha1.WorkerJoinToken{}
 	if err := r.Get(ctx, req.NamespacedName, joinToken); err != nil {
 		if apierrors.IsNotFound(err) {
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
 	}
-
 	if !joinToken.DeletionTimestamp.IsZero() {
 		return r.reconcileDelete(ctx, joinToken, log)
 	}
@@ -91,11 +93,6 @@ func (r *WorkerJoinTokenReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return ctrl.Result{}, nil
 	}
 
-	tenantClient, caData, runtimeObj, err := r.tenantClientFor(ctx, joinToken)
-	if err != nil {
-		return r.setDegraded(ctx, joinToken, "RuntimeNotReady", err.Error())
-	}
-
 	needsMint := joinToken.Status.ExpiresAt == nil
 	if !needsMint {
 		drifted, err := r.secretDrifted(ctx, joinToken)
@@ -105,18 +102,18 @@ func (r *WorkerJoinTokenReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		needsMint = drifted
 	}
 	if needsMint {
-		return r.mint(ctx, joinToken, tenantClient, caData, runtimeObj, log)
+		return r.mint(ctx, joinToken, log)
 	}
 
 	return r.refreshStatus(ctx, joinToken)
 }
 
-func (r *WorkerJoinTokenReconciler) secretDrifted(ctx context.Context, joinToken *controlplanev1alpha1.WorkerJoinToken) (bool, error) {
+func (r *WorkerJoinTokenReconciler) secretDrifted(ctx context.Context, joinToken *clusteragentv1alpha1.WorkerJoinToken) (bool, error) {
 	if joinToken.Status.SecretRef == nil {
 		return true, nil
 	}
 	secret := &corev1.Secret{}
-	name := types.NamespacedName{Name: joinToken.Status.SecretRef.Name, Namespace: joinToken.Namespace}
+	name := types.NamespacedName{Name: joinToken.Status.SecretRef.Name, Namespace: metav1.NamespaceSystem}
 	if err := r.Get(ctx, name, secret); err != nil {
 		if apierrors.IsNotFound(err) {
 			return true, nil
@@ -133,60 +130,21 @@ func secretChecksum(kubeconfig []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// tenantClientFor resolves spec.runtimeRef and builds a client for the tenant cluster
-// using the admin kubeconfig
-func (r *WorkerJoinTokenReconciler) tenantClientFor(
-	ctx context.Context,
-	joinToken *controlplanev1alpha1.WorkerJoinToken,
-) (kubernetes.Interface, []byte, *controlplanev1alpha1.Runtime, error) {
-	runtimeObj := &controlplanev1alpha1.Runtime{}
-	runtimeName := types.NamespacedName{Name: joinToken.Spec.RuntimeRef.Name, Namespace: joinToken.Namespace}
-	if err := r.Get(ctx, runtimeName, runtimeObj); err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil, nil, nil, fmt.Errorf("runtime %q not found", runtimeName.Name)
-		}
-		return nil, nil, nil, err
-	}
-
-	kubeconfigSecret := &corev1.Secret{}
-	kubeconfigSecretName := types.NamespacedName{Name: fmt.Sprintf("%s-kubeconfig", runtimeObj.Name), Namespace: runtimeObj.Namespace}
-	if err := r.Get(ctx, kubeconfigSecretName, kubeconfigSecret); err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil, nil, nil, fmt.Errorf("runtime %q admin kubeconfig secret %q not found yet", runtimeObj.Name, kubeconfigSecretName.Name)
-		}
-		return nil, nil, nil, err
-	}
-	raw, ok := kubeconfigSecret.Data[layout.Auth.ClientKubeconfig.SecretKey]
-	if !ok || len(raw) == 0 {
-		return nil, nil, nil, fmt.Errorf("runtime %q admin kubeconfig secret %q has no %q key", runtimeObj.Name, kubeconfigSecretName.Name, layout.Auth.ClientKubeconfig.SecretKey)
-	}
-
-	internalHost := fmt.Sprintf("https://%s.%s.svc.cluster.local:6443", runtimeObj.Name, runtimeObj.Namespace)
-	tenantClient, caData, _, err := k8s.BuildClientFromBytes(raw, internalHost)
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to build client for runtime %q: %w", runtimeObj.Name, err)
-	}
-	return tenantClient, caData, runtimeObj, nil
-}
-
-// mint issues a fresh bootstrap token on the tenant cluster, publishes the resulting
-// kubeconfig as the "jointoken" key of a <name>-jointoken Secret in the management
-// cluster, and best-effort revokes whatever token this WorkerJoinToken previously minted.
+// mint issues a fresh bootstrap token on this cluster, publishes the resulting kubeconfig
+// as the "jointoken" key of a <name>-jointoken Secret, and best-effort revokes whatever
+// token this WorkerJoinToken previously minted.
 func (r *WorkerJoinTokenReconciler) mint(
 	ctx context.Context,
-	joinToken *controlplanev1alpha1.WorkerJoinToken,
-	tenantClient kubernetes.Interface,
-	caData []byte,
-	runtimeObj *controlplanev1alpha1.Runtime,
+	joinToken *clusteragentv1alpha1.WorkerJoinToken,
 	log logr.Logger,
 ) (ctrl.Result, error) {
-	endpoint := runtimeObj.Spec.Cluster.ControlPlaneExternalEndpoint
+	endpoint := r.Runtime.Spec.Cluster.ControlPlaneExternalEndpoint
 	apiServerAddress := fmt.Sprintf("https://%s:%d", endpoint.APIServer.Host, endpoint.APIServer.Port)
-	previousTokenID := joinToken.Status.TokenID
 
+	previousTokenID := joinToken.Status.TokenID
 	tok, kubeconfigBytes, err := token.IssueBootstrapToken(ctx,
-		tenantClient,
-		caData,
+		r.Clientset,
+		r.CA,
 		apiServerAddress,
 		joinToken.Spec.TTL.Duration,
 		token.WithLabels(map[string]string{
@@ -198,7 +156,7 @@ func (r *WorkerJoinTokenReconciler) mint(
 	}
 
 	secretName := joinToken.Name + "-jointoken"
-	joinSecret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: joinToken.Namespace}}
+	joinSecret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: metav1.NamespaceSystem}}
 	if _, err := controllerutil.CreateOrUpdate(ctx, r.Client, joinSecret, func() error {
 		if joinSecret.Data == nil {
 			joinSecret.Data = map[string][]byte{}
@@ -210,8 +168,8 @@ func (r *WorkerJoinTokenReconciler) mint(
 	}
 
 	if previousTokenID != "" {
-		if err := deleteBootstrapTokenSecret(ctx, tenantClient, previousTokenID); err != nil {
-			log.Error(err, "failed to revoke previous bootstrap token on tenant cluster; it will remain valid until its own expiry", "tokenID", previousTokenID)
+		if err := deleteBootstrapTokenSecret(ctx, r.Clientset, previousTokenID); err != nil {
+			log.Error(err, "failed to revoke previous bootstrap token; it will remain valid until its own expiry", "tokenID", previousTokenID)
 		}
 	}
 
@@ -224,7 +182,7 @@ func (r *WorkerJoinTokenReconciler) mint(
 		Type:    typeReadyWorkerJoinToken,
 		Status:  metav1.ConditionTrue,
 		Reason:  "TokenIssued",
-		Message: fmt.Sprintf("bootstrap token issued for runtime %q, expires at %s", runtimeObj.Name, expiresAt.Format(metav1.RFC3339Micro)),
+		Message: fmt.Sprintf("bootstrap token issued, expires at %s", expiresAt.Format(metav1.RFC3339Micro)),
 	})
 	if err := r.Status().Update(ctx, joinToken); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to update status after minting token: %w", err)
@@ -232,7 +190,7 @@ func (r *WorkerJoinTokenReconciler) mint(
 
 	if r.Recorder != nil {
 		r.Recorder.Eventf(joinToken, nil, corev1.EventTypeNormal, "TokenIssued", "IssueBootstrapToken",
-			"bootstrap token %s %q issued for runtime %q, expires at %s", joinToken.Name, tok.ID, runtimeObj.Name, expiresAt.Format(metav1.RFC3339Micro))
+			"bootstrap token %s %q issued, expires at %s", joinToken.Name, tok.ID, expiresAt.Format(metav1.RFC3339Micro))
 	}
 
 	return ctrl.Result{RequeueAfter: joinToken.Spec.TTL.Duration}, nil
@@ -241,7 +199,7 @@ func (r *WorkerJoinTokenReconciler) mint(
 // refreshStatus re-evaluates the Ready condition against status.expiresAt without
 // minting anything new. Once expiry has passed the condition flips to False/Expired and
 // stays that way/
-func (r *WorkerJoinTokenReconciler) refreshStatus(ctx context.Context, joinToken *controlplanev1alpha1.WorkerJoinToken) (ctrl.Result, error) {
+func (r *WorkerJoinTokenReconciler) refreshStatus(ctx context.Context, joinToken *clusteragentv1alpha1.WorkerJoinToken) (ctrl.Result, error) {
 	now := metav1.Now()
 	if joinToken.Status.ExpiresAt != nil && now.Before(joinToken.Status.ExpiresAt) {
 		meta.SetStatusCondition(&joinToken.Status.Conditions, metav1.Condition{
@@ -272,7 +230,7 @@ func (r *WorkerJoinTokenReconciler) refreshStatus(ctx context.Context, joinToken
 // controller-runtime requeues with backoff, mirroring RuntimeReconciler.setDegraded.
 func (r *WorkerJoinTokenReconciler) setDegraded(
 	ctx context.Context,
-	joinToken *controlplanev1alpha1.WorkerJoinToken,
+	joinToken *clusteragentv1alpha1.WorkerJoinToken,
 	reason, message string,
 ) (ctrl.Result, error) {
 	meta.SetStatusCondition(&joinToken.Status.Conditions, metav1.Condition{
@@ -285,12 +243,12 @@ func (r *WorkerJoinTokenReconciler) setDegraded(
 	return ctrl.Result{}, fmt.Errorf("%s: %s", reason, message)
 }
 
-// reconcileDelete revokes the currently issued token on the tenant cluster (best-effort)
-// before removing the finalizer, so deleting a WorkerJoinToken always revokes access
-// rather than waiting for the token to expire on its own.
+// reconcileDelete revokes the currently issued token (best-effort) before removing the
+// finalizer, so deleting a WorkerJoinToken always revokes access rather than waiting for
+// the token to expire on its own.
 func (r *WorkerJoinTokenReconciler) reconcileDelete(
 	ctx context.Context,
-	joinToken *controlplanev1alpha1.WorkerJoinToken,
+	joinToken *clusteragentv1alpha1.WorkerJoinToken,
 	log logr.Logger,
 ) (ctrl.Result, error) {
 	if !controllerutil.ContainsFinalizer(joinToken, workerJoinTokenFinalizer) {
@@ -298,11 +256,8 @@ func (r *WorkerJoinTokenReconciler) reconcileDelete(
 	}
 
 	if joinToken.Status.TokenID != "" {
-		tenantClient, _, _, err := r.tenantClientFor(ctx, joinToken)
-		if err != nil {
-			log.Info("could not reach tenant cluster to revoke bootstrap token; removing finalizer anyway", "reason", err.Error())
-		} else if err := deleteBootstrapTokenSecret(ctx, tenantClient, joinToken.Status.TokenID); err != nil {
-			log.Error(err, "failed to revoke bootstrap token on tenant cluster; removing finalizer anyway", "tokenID", joinToken.Status.TokenID)
+		if err := deleteBootstrapTokenSecret(ctx, r.Clientset, joinToken.Status.TokenID); err != nil {
+			log.Error(err, "failed to revoke bootstrap token; removing finalizer anyway", "tokenID", joinToken.Status.TokenID)
 		}
 	}
 
@@ -313,11 +268,11 @@ func (r *WorkerJoinTokenReconciler) reconcileDelete(
 	return ctrl.Result{}, nil
 }
 
-// deleteBootstrapTokenSecret deletes the bootstrap-token-<id> Secret from kube-system on
-// the tenant cluster, treating "already gone" as success.
-func deleteBootstrapTokenSecret(ctx context.Context, tenantClient kubernetes.Interface, tokenID string) error {
+// deleteBootstrapTokenSecret deletes the bootstrap-token-<id> Secret from kube-system,
+// treating "already gone" as success.
+func deleteBootstrapTokenSecret(ctx context.Context, clientset kubernetes.Interface, tokenID string) error {
 	name := "bootstrap-token-" + tokenID
-	err := tenantClient.CoreV1().Secrets(metav1.NamespaceSystem).Delete(ctx, name, metav1.DeleteOptions{})
+	err := clientset.CoreV1().Secrets(metav1.NamespaceSystem).Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		return fmt.Errorf("failed to delete bootstrap token secret %q: %w", name, err)
 	}
@@ -327,8 +282,8 @@ func deleteBootstrapTokenSecret(ctx context.Context, tenantClient kubernetes.Int
 // SetupWithManager sets up the controller with the Manager.
 func (r *WorkerJoinTokenReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&controlplanev1alpha1.WorkerJoinToken{}).
-		Named("workerjointoken").
+		For(&clusteragentv1alpha1.WorkerJoinToken{}).
+		Named("clusteragent-workerjointoken").
 		Owns(&corev1.Secret{}).
 		Complete(r)
 }
