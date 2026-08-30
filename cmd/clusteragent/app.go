@@ -81,6 +81,13 @@ func Run() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	var caCertPath, runtimeManifestPath string
+	flag.StringVar(&caCertPath, "ca-cert-path", os.Getenv("HEIR_CLUSTERAGENT_CA_CERT_PATH"),
+		"Path to this cluster's CA certificate (env: HEIR_CLUSTERAGENT_CA_CERT_PATH). "+
+			"Defaults to the control-plane layout's CA cert mount path.")
+	flag.StringVar(&runtimeManifestPath, "runtime-manifest-path", os.Getenv("HEIR_CLUSTERAGENT_RUNTIME_MANIFEST_PATH"),
+		"Path to this cluster's Runtime manifest (env: HEIR_CLUSTERAGENT_RUNTIME_MANIFEST_PATH). "+
+			"Defaults to the control-plane layout's runtime manifest mount path.")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -151,7 +158,15 @@ func Run() {
 		os.Exit(1)
 	}
 
-	caData, runtimeObj, err := loadClusterInfo(runtimelayout.NewControlPlaneLayout())
+	layout := runtimelayout.NewControlPlaneLayout()
+	if caCertPath == "" {
+		caCertPath = layout.PKI.CACert.MountPath
+	}
+	if runtimeManifestPath == "" {
+		runtimeManifestPath = layout.ClusterAgent.RuntimeManifest.MountPath
+	}
+
+	caData, runtimeObj, err := loadClusterInfo(caCertPath, runtimeManifestPath)
 	if err != nil {
 		setupLog.Error(err, "unable to load cluster info")
 		os.Exit(1)
@@ -191,23 +206,23 @@ func Run() {
 	}
 }
 
-// loadClusterInfo reads this cluster's CA certificate and Runtime manifest from the
-// filesystem paths described by layout, which the control-plane deployment projects them
-// to. Both files must be present before the manager starts serving reconciles.
-func loadClusterInfo(layout runtimelayout.ControlPlaneLayout) ([]byte, *controlplanev1alpha1.Runtime, error) {
-	caData, err := os.ReadFile(layout.PKI.CACert.MountPath)
+// loadClusterInfo reads this cluster's CA certificate and Runtime manifest from the given
+// filesystem paths. Both files must be present before the manager starts serving
+// reconciles.
+func loadClusterInfo(caCertPath, runtimeManifestPath string) ([]byte, *controlplanev1alpha1.Runtime, error) {
+	caData, err := os.ReadFile(caCertPath)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to read CA cert from %q: %w", layout.PKI.CACert.MountPath, err)
+		return nil, nil, fmt.Errorf("failed to read CA cert from %q: %w", caCertPath, err)
 	}
 
-	manifest, err := os.ReadFile(layout.ClusterAgent.RuntimeManifest.MountPath)
+	manifest, err := os.ReadFile(runtimeManifestPath)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to read runtime manifest from %q: %w", layout.ClusterAgent.RuntimeManifest.MountPath, err)
+		return nil, nil, fmt.Errorf("failed to read runtime manifest from %q: %w", runtimeManifestPath, err)
 	}
 
 	runtimeObj := &controlplanev1alpha1.Runtime{}
 	if err := yaml.Unmarshal(manifest, runtimeObj); err != nil {
-		return nil, nil, fmt.Errorf("failed to parse runtime manifest %q: %w", layout.ClusterAgent.RuntimeManifest.MountPath, err)
+		return nil, nil, fmt.Errorf("failed to parse runtime manifest %q: %w", runtimeManifestPath, err)
 	}
 
 	return caData, runtimeObj, nil

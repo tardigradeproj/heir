@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    control-plane: clusteragent
+    app.kubernetes.io/name: heir
+    app.kubernetes.io/managed-by: kustomize
+  name: clusteragent-metrics-service
+  namespace: system
+spec:
+  ports:
+  - name: https
+    port: 8443
+    protocol: TCP
+    targetPort: 8443
+  selector:
+    control-plane: clusteragent
+    app.kubernetes.io/name: heir
