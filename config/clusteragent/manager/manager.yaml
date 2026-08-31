@@ -1,0 +1,79 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    control-plane: clusteragent
+    app.kubernetes.io/name: heir
+    app.kubernetes.io/managed-by: kustomize
+  name: system
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clusteragent
+  namespace: system
+  labels:
+    control-plane: clusteragent
+    app.kubernetes.io/name: heir
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  selector:
+    matchLabels:
+      control-plane: clusteragent
+      app.kubernetes.io/name: heir
+  replicas: 1
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: clusteragent
+      labels:
+        control-plane: clusteragent
+        app.kubernetes.io/name: heir
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - command:
+        - /clusteragent
+        args:
+          - --leader-elect
+          - --health-probe-bind-address=:8081
+        image: clusteragent:latest
+        name: clusteragent
+        ports: []
+        securityContext:
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - "ALL"
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          limits:
+            cpu: 500m
+            memory: 128Mi
+          requests:
+            cpu: 10m
+            memory: 64Mi
+        # TODO(user): clusteragent reads this cluster's CA cert and Runtime manifest from
+        # /etc/kubernetes/pki/ca.crt and /etc/kubernetes/manifests/runtime.yaml (see
+        # pkg/runtime.NewControlPlaneLayout). Mount whatever projects those files into this
+        # container (hostPath, projected Secret, etc.) before deploying — this Deployment
+        # will fail its readiness check without them.
+        volumeMounts: []
+      volumes: []
+      serviceAccountName: clusteragent
+      terminationGracePeriodSeconds: 10

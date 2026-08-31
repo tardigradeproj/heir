@@ -45,13 +45,31 @@ help: ## Display this help.
 ##@ Development
 
 .PHONY: manifests
-manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
-	"$(CONTROLLER_GEN)" rbac:roleName=manager-role crd webhook paths="./api/controlplane/..." paths="./internal/controller/controlplane/..." output:crd:artifacts:config=config/crd/bases
-	cp config/crd/bases/controlplane.tardigrade.runtime.io_runtimes.yaml pkg/provision/controlplane/
+manifests: manifests-controlplane manifests-clusteragent ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects for all components.
+
+# controlplane and clusteragent are separate controllers (different binaries, different
+# Deployments) with their own config/<component> kustomize tree, so each gets its own
+# controller-gen invocation writing into its own tree instead of a shared config/crd,
+# config/rbac output that the other invocation would stomp on.
+.PHONY: manifests-controlplane
+manifests-controlplane: controller-gen ## Generate manifests for the controlplane manager.
+	"$(CONTROLLER_GEN)" rbac:roleName=manager-role crd webhook paths="./api/controlplane/..." paths="./internal/controller/controlplane/..." output:crd:artifacts:config=config/controlplane/crd/bases output:rbac:artifacts:config=config/controlplane/rbac
+	cp config/controlplane/crd/bases/controlplane.tardigrade.runtime.io_runtimes.yaml pkg/provision/controlplane/
+
+.PHONY: manifests-clusteragent
+manifests-clusteragent: controller-gen ## Generate manifests for the clusteragent controller.
+	"$(CONTROLLER_GEN)" rbac:roleName=manager-role crd webhook paths="./api/clusteragent/..." paths="./internal/controller/clusteragent/..." output:crd:artifacts:config=config/clusteragent/crd/bases output:rbac:artifacts:config=config/clusteragent/rbac
 
 .PHONY: generate
-generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
+generate: generate-controlplane generate-clusteragent ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations for all components.
+
+.PHONY: generate-controlplane
+generate-controlplane: controller-gen ## Generate deepcopy code for the controlplane API/controllers.
 	"$(CONTROLLER_GEN)" object:headerFile="hack/boilerplate.go.txt" paths="./api/controlplane/..." paths="./internal/controller/controlplane/..."
+
+.PHONY: generate-clusteragent
+generate-clusteragent: controller-gen ## Generate deepcopy code for the clusteragent API/controllers.
+	"$(CONTROLLER_GEN)" object:headerFile="hack/boilerplate.go.txt" paths="./api/clusteragent/..." paths="./internal/controller/clusteragent/..."
 
 .PHONY: fmt
 fmt: ## Run go fmt against code.
@@ -109,12 +127,17 @@ lint-config: golangci-lint ## Verify golangci-lint linter configuration
 ##@ Build
 
 .PHONY: build
-build: manifests generate fmt vet ## Build manager binary.
+build: manifests generate fmt vet ## Build the manager and clusteragent binaries.
 	go build -o bin/manager cmd/main.go
+	go build -o bin/clusteragent cmd/clusteragent.go
 
 .PHONY: run
-run: manifests generate fmt ## Run a controller from your host.
+run: manifests generate fmt ## Run the controlplane manager from your host.
 	go run ./cmd/main.go
+
+.PHONY: run-clusteragent
+run-clusteragent: manifests generate fmt ## Run the clusteragent controller from your host.
+	go run ./cmd/clusteragent.go
 
 # The manager binary is built here (not inside the Dockerfile) so goreleaser and a plain
 # `make docker-build` share the exact same Dockerfile: images/Dockerfile.controller-manager
@@ -153,11 +176,19 @@ docker-buildx: ## Build and push docker image for the manager for cross-platform
 	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${IMG} -f $(MANAGER_IMAGE_DOCKERFILE) "$(MANAGER_IMAGE_STAGING_DIR)"
 	- $(CONTAINER_TOOL) buildx rm heir-builder
 
+CLUSTERAGENT_IMG ?= clusteragent:latest
+
 .PHONY: build-installer
-build-installer: manifests generate kustomize ## Generate a consolidated YAML with CRDs and deployment.
+build-installer: manifests generate kustomize ## Generate a consolidated YAML with CRDs and deployment for the controlplane manager.
 	mkdir -p dist
-	cd config/manager && "$(KUSTOMIZE)" edit set image controller=${IMG}
-	"$(KUSTOMIZE)" build config/default > dist/install.yaml
+	cd config/controlplane/manager && "$(KUSTOMIZE)" edit set image controller=${IMG}
+	"$(KUSTOMIZE)" build config/controlplane/default > dist/install.yaml
+
+.PHONY: build-installer-clusteragent
+build-installer-clusteragent: manifests generate kustomize ## Generate a consolidated YAML with CRDs and deployment for the clusteragent.
+	mkdir -p dist
+	cd config/clusteragent/manager && "$(KUSTOMIZE)" edit set image clusteragent=${CLUSTERAGENT_IMG}
+	"$(KUSTOMIZE)" build config/clusteragent/default > dist/install-clusteragent.yaml
 
 ##@ Deployment
 
@@ -166,23 +197,42 @@ ifndef ignore-not-found
 endif
 
 .PHONY: install
-install: manifests kustomize ## Install CRDs into the K8s cluster specified in ~/.kube/config.
-	@out="$$( "$(KUSTOMIZE)" build config/crd 2>/dev/null || true )"; \
+install: manifests kustomize ## Install the controlplane CRDs into the K8s cluster specified in ~/.kube/config.
+	@out="$$( "$(KUSTOMIZE)" build config/controlplane/crd 2>/dev/null || true )"; \
 	if [ -n "$$out" ]; then echo "$$out" | "$(KUBECTL)" apply -f -; else echo "No CRDs to install; skipping."; fi
 
 .PHONY: uninstall
-uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
-	@out="$$( "$(KUSTOMIZE)" build config/crd 2>/dev/null || true )"; \
+uninstall: manifests kustomize ## Uninstall the controlplane CRDs from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
+	@out="$$( "$(KUSTOMIZE)" build config/controlplane/crd 2>/dev/null || true )"; \
 	if [ -n "$$out" ]; then echo "$$out" | "$(KUBECTL)" delete --ignore-not-found=$(ignore-not-found) -f -; else echo "No CRDs to delete; skipping."; fi
 
 .PHONY: deploy
-deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
-	cd config/manager && "$(KUSTOMIZE)" edit set image controller=${IMG}
-	"$(KUSTOMIZE)" build config/default | "$(KUBECTL)" apply -f -
+deploy: manifests kustomize ## Deploy the controlplane manager to the K8s cluster specified in ~/.kube/config.
+	cd config/controlplane/manager && "$(KUSTOMIZE)" edit set image controller=${IMG}
+	"$(KUSTOMIZE)" build config/controlplane/default | "$(KUBECTL)" apply -f -
 
 .PHONY: undeploy
-undeploy: kustomize ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
-	"$(KUSTOMIZE)" build config/default | "$(KUBECTL)" delete --ignore-not-found=$(ignore-not-found) -f -
+undeploy: kustomize ## Undeploy the controlplane manager from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
+	"$(KUSTOMIZE)" build config/controlplane/default | "$(KUBECTL)" delete --ignore-not-found=$(ignore-not-found) -f -
+
+.PHONY: install-clusteragent
+install-clusteragent: manifests kustomize ## Install the clusteragent CRDs into the K8s cluster specified in ~/.kube/config.
+	@out="$$( "$(KUSTOMIZE)" build config/clusteragent/crd 2>/dev/null || true )"; \
+	if [ -n "$$out" ]; then echo "$$out" | "$(KUBECTL)" apply -f -; else echo "No CRDs to install; skipping."; fi
+
+.PHONY: uninstall-clusteragent
+uninstall-clusteragent: manifests kustomize ## Uninstall the clusteragent CRDs from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
+	@out="$$( "$(KUSTOMIZE)" build config/clusteragent/crd 2>/dev/null || true )"; \
+	if [ -n "$$out" ]; then echo "$$out" | "$(KUBECTL)" delete --ignore-not-found=$(ignore-not-found) -f -; else echo "No CRDs to delete; skipping."; fi
+
+.PHONY: deploy-clusteragent
+deploy-clusteragent: manifests kustomize ## Deploy the clusteragent to the K8s cluster specified in ~/.kube/config.
+	cd config/clusteragent/manager && "$(KUSTOMIZE)" edit set image clusteragent=${CLUSTERAGENT_IMG}
+	"$(KUSTOMIZE)" build config/clusteragent/default | "$(KUBECTL)" apply -f -
+
+.PHONY: undeploy-clusteragent
+undeploy-clusteragent: kustomize ## Undeploy the clusteragent from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
+	"$(KUSTOMIZE)" build config/clusteragent/default | "$(KUBECTL)" delete --ignore-not-found=$(ignore-not-found) -f -
 
 ##@ Dependencies
 
