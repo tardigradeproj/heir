@@ -217,6 +217,8 @@ type RuntimeSpec struct {
 type ControlPlaneSpec struct {
 	// Heir specifies the Heir distribution image to run as the heir control plane.
 	Heir HeirSpec `json:"heir,omitempty"`
+	// ClusterAgent specifies Heir ClusterAgent Image
+	ClusterAgent ClusterAgentSpec `json:"clusterAgent,omitempty"`
 	// Deployment configures the Deployment resource created for the heir control plane pods.
 	Deployment DeploymentSpec `json:"deployment,omitempty"`
 	// Service configures the Service resource that exposes the tenant control plane.
@@ -230,6 +232,11 @@ type ControlPlaneSpec struct {
 type HeirSpec struct {
 	// Image is the fully qualified container image reference (including tag or digest)
 	// for the Heir control plane, e.g. ghcr.io/tardigradeproj/heir:v1.2.3.
+	Image string `json:"image,omitempty"`
+}
+type ClusterAgentSpec struct {
+	// Image is the fully qualified container image reference (including tag or digest)
+	// for the Heir control plane, e.g. ghcr.io/tardigradeproj/clusteragent:v1.2.3.
 	Image string `json:"image,omitempty"`
 }
 

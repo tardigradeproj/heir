@@ -85,8 +85,9 @@ var _ = Describe("Runtime Controller", func() {
 					},
 					Spec: controlplanev1alpha1.RuntimeSpec{
 						ControlPlane: controlplanev1alpha1.ControlPlaneSpec{
-							Heir:    controlplanev1alpha1.HeirSpec{Image: "registry.example.com/heir:latest"},
-							Service: controlplanev1alpha1.ServiceSpec{ServiceType: corev1.ServiceTypeClusterIP},
+							Heir:         controlplanev1alpha1.HeirSpec{Image: "registry.example.com/heir:latest"},
+							ClusterAgent: controlplanev1alpha1.ClusterAgentSpec{Image: "registry.example.com/clusteragent:latest"},
+							Service:      controlplanev1alpha1.ServiceSpec{ServiceType: corev1.ServiceTypeClusterIP},
 						},
 						Cluster: controlplanev1alpha1.ClusterSpec{
 							ControlPlaneExternalEndpoint: controlplanev1alpha1.ControlPlaneExternalEndpointSpec{
@@ -121,9 +122,11 @@ var _ = Describe("Runtime Controller", func() {
 			ns := namespacedName.Namespace
 			_ = k8sClient.Delete(ctx, &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns}})
 			_ = k8sClient.Delete(ctx, &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("%s-kubeconfig", resourceName), Namespace: ns}})
+			_ = k8sClient.Delete(ctx, &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: heirruntime.ClusterAgentRuntimeSecretName(resourceName), Namespace: ns}})
 			_ = k8sClient.Delete(ctx, &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns}})
 			_ = k8sClient.Delete(ctx, &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns}})
 			_ = k8sClient.Delete(ctx, &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns}})
+			_ = k8sClient.Delete(ctx, &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("%s-cluster-agent", resourceName), Namespace: ns}})
 			_ = k8sClient.Delete(ctx, &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: heirruntime.PlaneTunnelName(resourceName), Namespace: ns}})
 			_ = k8sClient.Delete(ctx, &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: heirruntime.PlaneTunnelName(resourceName), Namespace: ns}})
 			_ = k8sClient.Delete(ctx, &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: heirruntime.PlaneTunnelHeadlessName(resourceName), Namespace: ns}})

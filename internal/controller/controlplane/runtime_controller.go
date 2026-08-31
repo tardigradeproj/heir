@@ -108,6 +108,17 @@ func (r *RuntimeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		log.Error(err, "failed to reconcile client kubeconfig")
 		return r.setDegraded(ctx, controlPlaneRuntime, "ClientKubeconfigFailed", err.Error())
 	}
+	clusterAgentRuntimeHash, err := r.setupClusterAgentRuntimeSecret(ctx, controlPlaneRuntime)
+	if err != nil {
+		log.Error(err, "failed to reconcile cluster agent runtime secret")
+		return r.setDegraded(ctx, controlPlaneRuntime, "ClusterAgentRuntimeSecretFailed", err.Error())
+	}
+	if err := r.setupClusterAgentDeployment(ctx, controlPlaneRuntime,
+		heirruntime.WithAnnotation(heirruntime.ClusterAgentRuntimeHashAnnotation, *clusterAgentRuntimeHash),
+	); err != nil {
+		log.Error(err, "failed to reconcile cluster agent deployment")
+		return r.setDegraded(ctx, controlPlaneRuntime, "ClusterAgentDeploymentFailed", err.Error())
+	}
 	configHash, err := r.setupControlPlaneConfiguration(ctx, controlPlaneRuntime)
 	if err != nil {
 		log.Error(err, "failed to reconcile control plane configuration")
@@ -551,6 +562,111 @@ func (r *RuntimeReconciler) setupClientKubeconfig(
 	}
 	r.Recorder.Eventf(runtime, existing, corev1.EventTypeNormal, "ClientKubeconfigSecretRotated", "UpdateClientKubeconfigSecret",
 		"client kubeconfig secret %q regenerated because the stored certificate or kubeconfig was no longer valid", existing.Name)
+	return nil
+}
+
+// setupClusterAgentRuntimeSecret reconciles the Secret holding the Runtime manifest that
+// clusteragent mounts to learn about its own cluster (see
+// heirruntime.GenerateClusterAgentDeployment). It creates the Secret when absent and
+// updates it whenever the generated content diverges from what's stored.
+func (r *RuntimeReconciler) setupClusterAgentRuntimeSecret(
+	ctx context.Context,
+	controlPlaneRuntime *controlplanev1alpha1.Runtime,
+) (*string, error) {
+	desired, err := heirruntime.GenerateClusterAgentRuntimeSecret(controlPlaneRuntime, layout)
+	if err != nil {
+		r.Recorder.Eventf(controlPlaneRuntime, nil, corev1.EventTypeWarning, "ClusterAgentRuntimeSecretGenerationFailed", "GenerateClusterAgentRuntimeSecret",
+			"failed to generate cluster agent runtime secret: %v", err)
+		return nil, err
+	}
+	hash := util.HashSecretData(desired.Data)
+	if err := ctrl.SetControllerReference(controlPlaneRuntime, desired, r.Scheme); err != nil {
+		return nil, err
+	}
+
+	existing := &corev1.Secret{}
+	err = r.Get(ctx, types.NamespacedName{Name: desired.Name, Namespace: desired.Namespace}, existing)
+	if err != nil && apierrors.IsNotFound(err) {
+		if err := r.Create(ctx, desired); err != nil {
+			if apierrors.IsAlreadyExists(err) {
+				return &hash, nil
+			}
+			r.Recorder.Eventf(controlPlaneRuntime, nil, corev1.EventTypeWarning, "ClusterAgentRuntimeSecretCreateFailed", "CreateClusterAgentRuntimeSecret",
+				"failed to create cluster agent runtime secret %q: %v", desired.Name, err)
+			return nil, err
+		}
+		r.Recorder.Eventf(controlPlaneRuntime, desired, corev1.EventTypeNormal, "ClusterAgentRuntimeSecretCreated", "CreateClusterAgentRuntimeSecret",
+			"cluster agent runtime secret %q created", desired.Name)
+		return &hash, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !metav1.IsControlledBy(existing, controlPlaneRuntime) {
+		r.Recorder.Eventf(controlPlaneRuntime, existing, corev1.EventTypeWarning, "ClusterAgentRuntimeSecret", "ClusterAgentRuntimeSecretOwnership",
+			"cluster agent runtime secret %q already exists but is not owned by Heir Runtime", existing.Name)
+		return nil, fmt.Errorf("secret %s/%s exists but is not owned by Heir Runtime; refusing to adopt", existing.Namespace, existing.Name)
+	}
+	if equality.Semantic.DeepEqual(existing.Data, desired.Data) &&
+		equality.Semantic.DeepEqual(existing.Labels, desired.Labels) {
+		return &hash, nil
+	}
+	existing.Data = desired.Data
+	existing.Labels = desired.Labels
+	if err := r.Update(ctx, existing); err != nil {
+		r.Recorder.Eventf(controlPlaneRuntime, existing, corev1.EventTypeWarning, "ClusterAgentRuntimeSecretUpdateFailed", "UpdateClusterAgentRuntimeSecret",
+			"failed to update cluster agent runtime secret %q: %v", existing.Name, err)
+		return nil, err
+	}
+	r.Recorder.Eventf(controlPlaneRuntime, existing, corev1.EventTypeNormal, "ClusterAgentRuntimeSecretUpdated", "UpdateClusterAgentRuntimeSecret",
+		"cluster agent runtime secret %q updated", existing.Name)
+	return &hash, nil
+}
+
+// setupClusterAgentDeployment reconciles the Deployment that runs the clusteragent
+// container. It creates the Deployment when absent and updates it whenever the desired
+// state diverges from the live state.
+func (r *RuntimeReconciler) setupClusterAgentDeployment(
+	ctx context.Context,
+	controlPlaneRuntime *controlplanev1alpha1.Runtime,
+	option ...heirruntime.DeployOpts,
+) error {
+	desired, err := heirruntime.GenerateClusterAgentDeployment(controlPlaneRuntime, layout, option...)
+	if err != nil {
+		r.Recorder.Eventf(controlPlaneRuntime, nil, corev1.EventTypeWarning, "ClusterAgentDeploymentGenerationFailed", "GenerateClusterAgentDeployment",
+			"failed to generate cluster agent deployment spec: %v", err)
+		return err
+	}
+	if err := ctrl.SetControllerReference(controlPlaneRuntime, desired, r.Scheme); err != nil {
+		return err
+	}
+
+	existing := &appsv1.Deployment{}
+	err = r.Get(ctx, types.NamespacedName{Name: desired.Name, Namespace: desired.Namespace}, existing)
+	if err != nil && apierrors.IsNotFound(err) {
+		if err := r.Create(ctx, desired); err != nil {
+			r.Recorder.Eventf(controlPlaneRuntime, nil, corev1.EventTypeWarning, "ClusterAgentDeploymentCreateFailed", "CreateClusterAgentDeployment",
+				"failed to create cluster agent deployment %q: %v", desired.Name, err)
+			return err
+		}
+		r.Recorder.Eventf(controlPlaneRuntime, desired, corev1.EventTypeNormal, "ClusterAgentDeploymentCreated", "CreateClusterAgentDeployment",
+			"cluster agent deployment %q created", desired.Name)
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if equality.Semantic.DeepEqual(existing.Spec, desired.Spec) &&
+		equality.Semantic.DeepEqual(existing.Labels, desired.Labels) {
+		return nil
+	}
+	existing.Spec = desired.Spec
+	existing.Labels = desired.Labels
+	if err := r.Update(ctx, existing); err != nil {
+		r.Recorder.Eventf(controlPlaneRuntime, existing, corev1.EventTypeWarning, "ClusterAgentDeploymentUpdateFailed", "UpdateClusterAgentDeployment",
+			"failed to update cluster agent deployment %q: %v", existing.Name, err)
+		return err
+	}
 	return nil
 }
 
