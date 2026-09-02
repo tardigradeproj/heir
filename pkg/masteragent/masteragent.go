@@ -22,9 +22,6 @@ func Run(ctx context.Context, conf Config) error {
 		errCh <- SyncKubernetesEndpoints(ctx)
 	}()
 	go func() {
-		errCh <- RunCSRAutoApprover(ctx)
-	}()
-	go func() {
 		errCh <- runKine(ctx, conf.Storage, conf.StorageMetrics)
 	}()
 	go func() {

@@ -190,6 +190,15 @@ func Run() {
 		os.Exit(1)
 	}
 
+	if err := (&clusteragentcontroller.CSRApproverReconciler{
+		Client:    mgr.GetClient(),
+		Clientset: clientset,
+		Recorder:  mgr.GetEventRecorder("clusteragent-csrapprover"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "Failed to create controller", "controller", "CSRApprover")
+		os.Exit(1)
+	}
+
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up health check")
 		os.Exit(1)
