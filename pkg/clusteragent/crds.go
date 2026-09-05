@@ -73,7 +73,10 @@ func readCRDFiles(dir string) ([]*apiextensionsv1.CustomResourceDefinition, erro
 	if err != nil {
 		return nil, fmt.Errorf("failed to read CRD directory %q: %w", dir, err)
 	}
-
+	log.WithField("files", entries).
+		WithField("dir", dir).
+		WithField("len.entries", len(entries)).
+		Info("read CRD files")
 	names := make([]string, 0, len(entries))
 	for _, e := range entries {
 		if e.IsDir() {
@@ -96,6 +99,7 @@ func readCRDFiles(dir string) ([]*apiextensionsv1.CustomResourceDefinition, erro
 		}
 		crds = append(crds, docs...)
 	}
+	log.WithField("files", entries).Debug("successfully read CRD files")
 	return crds, nil
 }
 
@@ -131,7 +135,13 @@ func readCRDDocuments(path string) ([]*apiextensionsv1.CustomResourceDefinition,
 // drifted, retrying transient failures with exponential backoff.
 func applyCRDWithBackoff(ctx context.Context, client apiextensionsclientset.Interface, crd *apiextensionsv1.CustomResourceDefinition) error {
 	return retry.Do(
-		func() error { return applyCRD(ctx, client, crd) },
+		func() error {
+			if err := applyCRD(ctx, client, crd); err != nil {
+				return err
+			}
+			log.WithField("crd", crd.Name).Info("applied CRD successfully")
+			return nil
+		},
 		retry.Context(ctx),
 		retry.Attempts(4),
 		retry.Delay(time.Second),

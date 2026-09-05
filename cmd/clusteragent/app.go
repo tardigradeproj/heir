@@ -153,6 +153,30 @@ func Run() {
 	ctx := ctrl.SetupSignalHandler()
 	cfg := ctrl.GetConfigOrDie()
 
+	layout := runtimelayout.NewControlPlaneLayout()
+	if caCertPath == "" {
+		caCertPath = layout.PKI.CACert.MountPath
+	}
+	if runtimeManifestPath == "" {
+		runtimeManifestPath = layout.ClusterAgent.RuntimeManifest.MountPath
+	}
+	if crdDir == "" {
+		crdDir = clusteragentpkg.DefaultCRDDir
+	}
+
+	caData, runtimeObj, err := loadClusterInfo(caCertPath, runtimeManifestPath)
+	if err != nil {
+		setupLog.Error(err, "unable to load cluster info")
+		os.Exit(1)
+	}
+
+	// The mounted admin kubeconfig's server is baked in as https://127.0.0.1:6443,
+	// correct only if clusteragent shared a pod with the tenant's apiserver. It runs as
+	// its own Deployment in the same namespace instead, so it must reach the apiserver
+	// through the Service in front of it — the same in-cluster DNS name already present
+	// in the apiserver certificate's SANs (see APIServerAltNames in pkg/runtime/pki_auth.go).
+	cfg.Host = fmt.Sprintf("https://%s.%s.svc.cluster.local:6443", runtimeObj.Name, runtimeObj.Namespace)
+
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme:                 scheme,
 		Metrics:                metricsServerOptions,
@@ -166,27 +190,10 @@ func Run() {
 		os.Exit(1)
 	}
 
-	layout := runtimelayout.NewControlPlaneLayout()
-	if caCertPath == "" {
-		caCertPath = layout.PKI.CACert.MountPath
-	}
-	if runtimeManifestPath == "" {
-		runtimeManifestPath = layout.ClusterAgent.RuntimeManifest.MountPath
-	}
-	if crdDir == "" {
-		crdDir = clusteragentpkg.DefaultCRDDir
-	}
-
 	// CRDs must exist before any controller below registers a watch on one of their
 	// types, so this runs first.
 	if err := clusteragentpkg.ApplyCRDs(ctx, cfg, crdDir); err != nil {
 		setupLog.Error(err, "unable to apply CRDs")
-		os.Exit(1)
-	}
-
-	caData, runtimeObj, err := loadClusterInfo(caCertPath, runtimeManifestPath)
-	if err != nil {
-		setupLog.Error(err, "unable to load cluster info")
 		os.Exit(1)
 	}
 

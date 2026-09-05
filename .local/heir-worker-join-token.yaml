@@ -1,9 +1,7 @@
-apiVersion: controlplane.tardigrade.runtime.io/v1alpha1
+apiVersion: clusteragent.tardigrade.runtime.io/v1alpha1
 kind: WorkerJoinToken
 metadata:
   name: new-node
   namespace: default
 spec:
-  runtimeRef:
-    name: my-cluster
   ttl: 3h

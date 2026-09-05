@@ -1,5 +1,4 @@
 ## Append samples of your project ##
 resources:
 - controlplane_v1alpha1_runtime.yaml
-- controlplane_v1alpha1_workerjointoken.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples

@@ -86,36 +86,59 @@ kubectl describe runtime my-cluster
 
 Wait for the `Available` condition to report `True` before moving on.
 
-## 5. Issue a worker join token
+## 5. Fetch the tenant cluster's kubeconfig
 
-A `WorkerJoinToken` mints a short-lived bootstrap token and kubeconfig against a specific tenant
-`Runtime`, so that a worker node can authenticate to it during the join process.
-`.local/heir-worker-join-token.yaml` requests one for the `my-cluster` Runtime created in the
-previous step.
+`WorkerJoinToken` is reconciled by `clusteragent`, which runs against the tenant cluster itself
+rather than the management cluster your `$KUBECONFIG` currently points at, so every command from
+here through the join needs to target the tenant cluster instead. The Runtime controller publishes
+an admin kubeconfig for it as a `<name>-kubeconfig` Secret in the management cluster; fetch and
+decode it once, up front.
 
 ```sh
-kubectl apply -f .local/heir-worker-join-token.yaml
-kubectl get workerjointoken new-node
+kubectl get secret my-cluster-kubeconfig -o jsonpath='{.data.kubeconfig}' | base64 -d > my-cluster-kubeconfig
 ```
 
-## 6. Copy the join token onto the Vagrant worker
-
-The controller publishes the minted token as the `jointoken` key of a `<name>-jointoken` Secret in
-the management cluster. The `distro provision worker` command, run inside the VM in the next step,
-expects that value written to `/home/vagrant/heir/token`. The command below reads the Secret, and
-writes it into the running Vagrant VM in a single pipeline.
+The server address baked into that kubeconfig is `.local/heir.yaml`'s
+`controlPlaneExternalEndpoint.apiServer.host`, `10.0.2.2`, the address the *Vagrant worker* uses to
+reach the host machine, not an address the host machine itself can dial. Since the rest of this
+guide runs the `--kubeconfig my-cluster-kubeconfig` commands directly on your host, point it at
+`localhost` instead, since kind also maps the same NodePort (`30080`) onto your host:
 
 ```sh
-kubectl get secret new-node-jointoken -o jsonpath='{.data.jointoken}' \
+kubectl --kubeconfig my-cluster-kubeconfig config set-cluster my-cluster --server=https://127.0.0.1:30080
+```
+
+## 6. Issue a worker join token
+
+A `WorkerJoinToken` mints a short-lived bootstrap token and kubeconfig against a specific tenant
+`Runtime`, so that a worker node can authenticate to it during the join process. Since
+`clusteragent` reconciles it on the tenant cluster itself, apply and inspect it there using the
+kubeconfig fetched in the previous step. `.local/heir-worker-join-token.yaml` requests one for the
+`my-cluster` Runtime created earlier.
+
+```sh
+kubectl --kubeconfig my-cluster-kubeconfig apply -f .local/heir-worker-join-token.yaml
+kubectl --kubeconfig my-cluster-kubeconfig get workerjointoken new-node
+```
+
+## 7. Copy the join token onto the Vagrant worker
+
+`clusteragent` publishes the minted token as the `jointoken` key of a `<name>-jointoken` Secret in
+the `kube-system` namespace of the tenant cluster. The `distro provision worker` command, run
+inside the VM in the next step, expects that value written to `/home/vagrant/heir/token`. The
+command below reads the Secret, and writes it into the running Vagrant VM in a single pipeline.
+
+```sh
+kubectl --kubeconfig my-cluster-kubeconfig -n kube-system get secret new-node-jointoken -o jsonpath='{.data.jointoken}' \
   | vagrant ssh -c "sudo tee /home/vagrant/heir/token > /dev/null"
 ```
 
-## 7. Build the distro binary and join the worker
+## 8. Build the distro binary and join the worker
 
 If this is your first time using the VM, start and provision it first with `make vagrant-up`. Then,
 from inside the VM, build the `distro` CLI with the `embedartifacts` build tag, which bakes the
 worker binaries downloaded in step 1 into the resulting binary, and run its `provision worker`
-command with the token copied over in step 6.
+command with the token copied over in step 7.
 
 ```sh
 vagrant ssh -c "cd /home/vagrant/heir && go build -tags=embedartifacts cmd/distro.go"
@@ -126,30 +149,14 @@ If you would rather work interactively, `make vagrant-ssh` opens a shell in the 
 can run the same two commands (`cd /home/vagrant/heir`, then the `go build` and `sudo ./distro ...` lines above)
 directly.
 
-## 8. Validate that the node joined
+## 9. Validate that the node joined
 
-The Runtime controller also publishes its own admin kubeconfig as a `<name>-kubeconfig` Secret.
-Fetching, decoding, and using it lets you query the tenant cluster directly and confirm the worker
-node registered successfully.
-
-```sh
-kubectl get secret my-cluster-kubeconfig -o jsonpath='{.data.kubeconfig}' | base64 -d > my-cluster-kubeconfig
-kubectl --kubeconfig my-cluster-kubeconfig get nodes
-```
-
-The server address baked into that kubeconfig is `.local/heir.yaml`'s
-`controlPlaneExternalEndpoint.apiServer.host`, `10.0.2.2`, the address the *Vagrant worker* uses to
-reach the host machine, not an address the host machine itself can dial. If you are running the
-command above directly on your host (rather than from inside the Vagrant VM or another container
-on the kind network), point it at `localhost` instead, since kind also maps the same NodePort
-(`30080`) onto your host:
+Using the tenant kubeconfig fetched back in step 5, confirm the worker node registered
+successfully.
 
 ```sh
-kubectl --kubeconfig my-cluster-kubeconfig config set-cluster my-cluster --server=https://127.0.0.1:30080
 kubectl --kubeconfig my-cluster-kubeconfig get nodes
 ```
-
-
 
 A successful join looks like this, with the Vagrant node in the `Ready` state:
 
@@ -169,6 +176,6 @@ sudo journalctl -xu heir --since "1 minutes ago"
 sudo /var/lib/heir/bin/crictl --runtime-endpoint /run/heir/containerd.sock ps
 ```
 
-To reset the VM's worker state and try again from step 7, run `.local/cleanup-worker.sh` inside
+To reset the VM's worker state and try again from step 8, run `.local/cleanup-worker.sh` inside
 the VM. It stops the heir service, tears down containerd and its containers, removes the CNI and
 iptables state left behind, and deletes every file heir wrote under `/etc`, `/var`, and `/run`.
