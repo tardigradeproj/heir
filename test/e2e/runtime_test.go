@@ -46,6 +46,7 @@ func provisionRuntimeSpec() {
 	def.Name = runtimeName
 	def.Namespace = runtimeNamespace
 	def.ControlPlaneImage = heirImage
+	def.ClusterAgentImage = heirClusterAgent
 	def.PlaneTunnelServerImage = heirTunnelImage
 	def.ControlPlaneExternalEndpoint = kindNodeIP
 	runtimeManifest, err := utils.BasicRuntimeManifest(*def)
@@ -85,19 +86,47 @@ func provisionRuntimeSpec() {
 	_, err = utils.Run(cmd)
 	Expect(err).NotTo(HaveOccurred(), "control-plane service should exist")
 
+	By("retrieving the tenant admin kubeconfig")
+	cmd = exec.Command("kubectl", "get", "secret", runtimeName+"-kubeconfig",
+		"-n", runtimeNamespace, "-o", "jsonpath={.data.kubeconfig}",
+	)
+	encodedKubeconfig, err := utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred(), "tenant kubeconfig secret should exist")
+	Expect(encodedKubeconfig).NotTo(BeEmpty())
+
+	decodedKubeconfig, err := base64.StdEncoding.DecodeString(encodedKubeconfig)
+	Expect(err).NotTo(HaveOccurred(), "tenant kubeconfig value should be valid base64")
+	tenantConfig, err := clientcmd.Load(decodedKubeconfig)
+	Expect(err).NotTo(HaveOccurred(), "tenant kubeconfig value should parse")
+
+	// GenerateClientKubeconfigAuthSecret (pkg/runtime/pki_auth.go) points the server at
+	// endpoint.APIServer.Host — the Runtime's external endpoint, i.e. the kind
+	// docker-network IP — which is only reachable from inside that network (e.g. the
+	// worker container), not from this test process. The API server's NodePort is
+	// published to the host at 127.0.0.1, so rewrite the server address to that before
+	// using this kubeconfig here.
+	apiServerURL := fmt.Sprintf("https://127.0.0.1:%d", def.ApiServerNodePort)
+	for _, cluster := range tenantConfig.Clusters {
+		cluster.Server = apiServerURL
+	}
+
+	rewrittenKubeconfig, err := clientcmd.Write(*tenantConfig)
+	Expect(err).NotTo(HaveOccurred())
+
+	kubeconfigPath := tenantKubeconfigPath()
+	Expect(os.WriteFile(kubeconfigPath, rewrittenKubeconfig, 0o600)).To(Succeed())
+
 	By("creating a WorkerJoinToken for the provisioned runtime")
 	workerJoinTokenName := runtimeName + "-join"
 	workerJoinTokenManifest := fmt.Sprintf(`
-apiVersion: controlplane.tardigrade.runtime.io/v1alpha1
+apiVersion: clusteragent.tardigrade.runtime.io/v1alpha1
 kind: WorkerJoinToken
 metadata:
   name: %s
-  namespace: %s
 spec:
-  runtimeRef:
-    name: %s
-`, workerJoinTokenName, runtimeNamespace, runtimeName)
-	cmd = exec.Command("kubectl", "apply", "-f", "-")
+  ttl: 3h
+`, workerJoinTokenName)
+	cmd = exec.Command("kubectl", "--kubeconfig", kubeconfigPath, "apply", "-f", "-")
 	cmd.Stdin = strings.NewReader(workerJoinTokenManifest)
 	_, err = utils.Run(cmd)
 	Expect(err).NotTo(HaveOccurred(), "Failed to create WorkerJoinToken resource")
@@ -105,8 +134,7 @@ spec:
 
 	By("waiting for the WorkerJoinToken to report a Ready status condition")
 	verifyWorkerJoinTokenReady := func(g Gomega) {
-		cmd := exec.Command("kubectl", "get", "workerjointoken", workerJoinTokenName,
-			"-n", runtimeNamespace,
+		cmd := exec.Command("kubectl", "--kubeconfig", kubeconfigPath, "get", "workerjointoken", workerJoinTokenName,
 			"-o", `jsonpath={.status.conditions[?(@.type=="Ready")].status}`,
 		)
 		output, err := utils.Run(cmd)
@@ -116,16 +144,16 @@ spec:
 	Eventually(verifyWorkerJoinTokenReady, 3*time.Minute, 5*time.Second).Should(Succeed())
 
 	By("fetching the minted token ID from the WorkerJoinToken status")
-	cmd = exec.Command("kubectl", "get", "workerjointoken", workerJoinTokenName,
-		"-n", runtimeNamespace, "-o", "jsonpath={.status.tokenID}",
+	cmd = exec.Command("kubectl", "--kubeconfig", kubeconfigPath, "get", "workerjointoken", workerJoinTokenName,
+		"-o", "jsonpath={.status.tokenID}",
 	)
 	tokenID, err := utils.Run(cmd)
 	Expect(err).NotTo(HaveOccurred())
 	Expect(tokenID).NotTo(BeEmpty(), "WorkerJoinToken status should report a tokenID")
 
 	By("validating the contents of the join token secret")
-	cmd = exec.Command("kubectl", "get", "secret", workerJoinTokenName+"-jointoken",
-		"-n", runtimeNamespace, "-o", "jsonpath={.data.jointoken}",
+	cmd = exec.Command("kubectl", "--kubeconfig", kubeconfigPath, "get", "secret", workerJoinTokenName+"-jointoken",
+		"-n", "kube-system", "-o", "jsonpath={.data.jointoken}",
 	)
 	encoded, err := utils.Run(cmd)
 	Expect(err).NotTo(HaveOccurred(), "join token secret should exist")
@@ -157,39 +185,9 @@ spec:
 	}
 	Eventually(verifyWorkerJoined, 2*time.Minute, 5*time.Second).Should(Succeed())
 
-	By("retrieving the tenant admin kubeconfig")
-	cmd = exec.Command("kubectl", "get", "secret", runtimeName+"-kubeconfig",
-		"-n", runtimeNamespace, "-o", "jsonpath={.data.kubeconfig}",
-	)
-	encodedKubeconfig, err := utils.Run(cmd)
-	Expect(err).NotTo(HaveOccurred(), "tenant kubeconfig secret should exist")
-	Expect(encodedKubeconfig).NotTo(BeEmpty())
-
-	decodedKubeconfig, err := base64.StdEncoding.DecodeString(encodedKubeconfig)
-	Expect(err).NotTo(HaveOccurred(), "tenant kubeconfig value should be valid base64")
-	tenantConfig, err := clientcmd.Load(decodedKubeconfig)
-	Expect(err).NotTo(HaveOccurred(), "tenant kubeconfig value should parse")
-
-	// GenerateClientKubeconfigAuthSecret (pkg/runtime/pki_auth.go) points the server at
-	// endpoint.APIServer.Host — the Runtime's external endpoint, i.e. the kind
-	// docker-network IP — which is only reachable from inside that network (e.g. the
-	// worker container), not from this test process. The API server's NodePort is
-	// published to the host at 127.0.0.1, so rewrite the server address to that before
-	// using this kubeconfig here.
-	apiServerURL := fmt.Sprintf("https://127.0.0.1:%d", def.ApiServerNodePort)
-	for _, cluster := range tenantConfig.Clusters {
-		cluster.Server = apiServerURL
-	}
-
-	rewrittenKubeconfig, err := clientcmd.Write(*tenantConfig)
-	Expect(err).NotTo(HaveOccurred())
-
-	tenantKubeconfigPath := filepath.Join(os.TempDir(), runtimeName+"-kubeconfig")
-	Expect(os.WriteFile(tenantKubeconfigPath, rewrittenKubeconfig, 0o600)).To(Succeed())
-
 	By("listing the nodes on the tenant cluster")
 	verifyTenantNodeCount := func(g Gomega) {
-		cmd := exec.Command("kubectl", "--kubeconfig", tenantKubeconfigPath, "get", "nodes",
+		cmd := exec.Command("kubectl", "--kubeconfig", kubeconfigPath, "get", "nodes",
 			"-o", "jsonpath={.items[*].metadata.name}",
 		)
 		output, err := utils.Run(cmd)
@@ -202,7 +200,7 @@ spec:
 
 	By("validating that the tenant node is Ready")
 	verifyTenantNodeReady := func(g Gomega) {
-		cmd := exec.Command("kubectl", "--kubeconfig", tenantKubeconfigPath, "get", "nodes",
+		cmd := exec.Command("kubectl", "--kubeconfig", kubeconfigPath, "get", "nodes",
 			"-o", `jsonpath={.items[0].status.conditions[?(@.type=="Ready")].status}`,
 		)
 		output, err := utils.Run(cmd)
@@ -215,7 +213,7 @@ spec:
 	By("reading logs from the flannel CNI pod on the tenant cluster")
 	var flannelPodName string
 	verifyFlannelPodRunning := func(g Gomega) {
-		cmd := exec.Command("kubectl", "--kubeconfig", tenantKubeconfigPath, "get", "pods",
+		cmd := exec.Command("kubectl", "--kubeconfig", kubeconfigPath, "get", "pods",
 			"-n", "kube-flannel", "-l", "app=flannel",
 			"-o", "jsonpath={.items[0].metadata.name}",
 		)
@@ -224,7 +222,7 @@ spec:
 		g.Expect(output).NotTo(BeEmpty(), "expected a flannel pod to exist in the kube-flannel namespace")
 		flannelPodName = output
 
-		cmd = exec.Command("kubectl", "--kubeconfig", tenantKubeconfigPath, "get", "pod", flannelPodName,
+		cmd = exec.Command("kubectl", "--kubeconfig", kubeconfigPath, "get", "pod", flannelPodName,
 			"-n", "kube-flannel",
 			"-o", `jsonpath={.status.containerStatuses[?(@.name=="kube-flannel")].ready}`,
 		)
@@ -236,7 +234,7 @@ spec:
 
 	var flannelLogs string
 	verifyFlannelPodLogsReadable := func(g Gomega) {
-		cmd := exec.Command("kubectl", "--kubeconfig", tenantKubeconfigPath, "logs", flannelPodName,
+		cmd := exec.Command("kubectl", "--kubeconfig", kubeconfigPath, "logs", flannelPodName,
 			"-n", "kube-flannel", "-c", "kube-flannel",
 		)
 		output, err := utils.Run(cmd)

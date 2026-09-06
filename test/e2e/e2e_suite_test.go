@@ -38,6 +38,7 @@ var (
 	controllerManagerImage = fmt.Sprintf("ghcr.io/tardigradeproj/heir-controller-manager:latest-%s", arch)
 	heirImage              = fmt.Sprintf("ghcr.io/tardigradeproj/heir:latest-%s", arch)
 	heirTunnelImage        = fmt.Sprintf("ghcr.io/tardigradeproj/heir-tunnel:latest-%s", arch)
+	heirClusterAgent       = fmt.Sprintf("ghcr.io/tardigradeproj/clusteragent:latest-%s", arch)
 
 	// shouldCleanupCertManager tracks whether CertManager was installed by this suite.
 	shouldCleanupCertManager = false
@@ -67,6 +68,8 @@ var _ = BeforeSuite(func() {
 	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to load the heir image into Kind")
 	err = utils.LoadImageToKindClusterWithName(heirTunnelImage)
 	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to load the plane tunnel image into Kind")
+	err = utils.LoadImageToKindClusterWithName(heirClusterAgent)
+	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to load cluster agent image into Kind")
 	setupCertManager()
 })
 
