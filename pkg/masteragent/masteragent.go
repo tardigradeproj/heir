@@ -19,9 +19,6 @@ func Run(ctx context.Context, conf Config) error {
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- SyncKubernetesEndpoints(ctx)
-	}()
-	go func() {
 		errCh <- runKine(ctx, conf.Storage, conf.StorageMetrics)
 	}()
 	go func() {
