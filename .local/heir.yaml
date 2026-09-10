@@ -5,6 +5,8 @@ metadata:
   namespace: default
 spec:
   controlPlane:
+    clusterAgent:
+      image: localhost:5001/clusteragent:latest
     heir:
       image: localhost:5001/heir:latest
     deployment:

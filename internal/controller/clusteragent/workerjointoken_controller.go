@@ -104,8 +104,11 @@ func (r *WorkerJoinTokenReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	if needsMint {
 		return r.mint(ctx, joinToken, log)
 	}
-
-	return r.refreshStatus(ctx, joinToken)
+	now := metav1.Now()
+	if now.Before(joinToken.Status.ExpiresAt) {
+		return ctrl.Result{RequeueAfter: joinToken.Status.ExpiresAt.Sub(now.Time)}, nil
+	}
+	return r.markExpired(ctx, joinToken)
 }
 
 func (r *WorkerJoinTokenReconciler) secretDrifted(ctx context.Context, joinToken *clusteragentv1alpha1.WorkerJoinToken) (bool, error) {
@@ -173,7 +176,8 @@ func (r *WorkerJoinTokenReconciler) mint(
 		}
 	}
 
-	expiresAt := metav1.NewTime(metav1.Now().Add(joinToken.Spec.TTL.Duration))
+	now := metav1.Now()
+	expiresAt := metav1.NewTime(now.Add(joinToken.Spec.TTL.Duration))
 	joinToken.Status.TokenID = tok.ID
 	joinToken.Status.ExpiresAt = &expiresAt
 	joinToken.Status.SecretRef = &corev1.LocalObjectReference{Name: secretName}
@@ -193,25 +197,16 @@ func (r *WorkerJoinTokenReconciler) mint(
 			"bootstrap token %s %q issued, expires at %s", joinToken.Name, tok.ID, expiresAt.Format(metav1.RFC3339Micro))
 	}
 
-	return ctrl.Result{RequeueAfter: joinToken.Spec.TTL.Duration}, nil
+	return ctrl.Result{RequeueAfter: joinToken.Status.ExpiresAt.Sub(now.Time)}, nil
 }
 
-// refreshStatus re-evaluates the Ready condition against status.expiresAt without
-// minting anything new. Once expiry has passed the condition flips to False/Expired and
-// stays that way/
-func (r *WorkerJoinTokenReconciler) refreshStatus(ctx context.Context, joinToken *clusteragentv1alpha1.WorkerJoinToken) (ctrl.Result, error) {
-	now := metav1.Now()
-	if joinToken.Status.ExpiresAt != nil && now.Before(joinToken.Status.ExpiresAt) {
-		meta.SetStatusCondition(&joinToken.Status.Conditions, metav1.Condition{
-			Type:    typeReadyWorkerJoinToken,
-			Status:  metav1.ConditionTrue,
-			Reason:  "TokenIssued",
-			Message: fmt.Sprintf("token valid until %s", joinToken.Status.ExpiresAt.Format(metav1.RFC3339Micro)),
-		})
-		if err := r.Status().Update(ctx, joinToken); err != nil {
-			return ctrl.Result{}, err
-		}
-		return ctrl.Result{RequeueAfter: joinToken.Status.ExpiresAt.Sub(now.Time)}, nil
+// markExpired flips the Ready condition to False/Expired once status.expiresAt has
+// passed. It is a no-op (no Status write) if that condition is already recorded, so
+// reconciles triggered after expiry don't churn resourceVersion forever.
+func (r *WorkerJoinTokenReconciler) markExpired(ctx context.Context, joinToken *clusteragentv1alpha1.WorkerJoinToken) (ctrl.Result, error) {
+	if cond := meta.FindStatusCondition(joinToken.Status.Conditions, typeReadyWorkerJoinToken); cond != nil &&
+		cond.Status == metav1.ConditionFalse && cond.Reason == "Expired" {
+		return ctrl.Result{}, nil
 	}
 
 	meta.SetStatusCondition(&joinToken.Status.Conditions, metav1.Condition{

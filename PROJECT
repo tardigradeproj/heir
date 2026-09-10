@@ -25,15 +25,6 @@ resources:
   version: v1alpha1
 - api:
     crdVersion: v1
-    namespaced: true
-  controller: true
-  domain: tardigrade.runtime.io
-  group: controlplane
-  kind: WorkerJoinToken
-  path: github.com/tardigradeproj/heir/api/controlplane/v1alpha1
-  version: v1alpha1
-- api:
-    crdVersion: v1
     namespaced: false
   controller: true
   domain: tardigrade.runtime.io

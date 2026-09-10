@@ -412,6 +412,15 @@ spec:
                 description: ControlPlane configures how the tenant control plane
                   is deployed in the management cluster.
                 properties:
+                  clusterAgent:
+                    description: ClusterAgent specifies Heir ClusterAgent Image
+                    properties:
+                      image:
+                        description: |-
+                          Image is the fully qualified container image reference (including tag or digest)
+                          for the Heir control plane, e.g. ghcr.io/tardigradeproj/clusteragent:v1.2.3.
+                        type: string
+                    type: object
                   deployment:
                     description: Deployment configures the Deployment resource created
                       for the heir control plane pods.

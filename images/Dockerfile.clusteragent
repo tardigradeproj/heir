@@ -1,0 +1,15 @@
+# Use distroless as minimal base image to package the clusteragent binary
+# Refer to https://github.com/GoogleContainerTools/distroless for more details
+FROM gcr.io/distroless/static:nonroot
+ARG TARGETPLATFORM
+COPY ${TARGETPLATFORM}/clusteragent /clusteragent
+
+# distroless/static has no shell, so there's no RUN/mkdir available to create
+# /etc/kubernetes/crd first. COPY creates any missing destination directories on its
+# own, so copying the CRD straight into the directory both creates it and populates it
+# in a single instruction.
+COPY config/clusteragent/crd/bases/clusteragent.tardigrade.runtime.io_workerjointokens.yaml /etc/kubernetes/crd/
+
+USER 65532:65532
+
+ENTRYPOINT ["/clusteragent"]

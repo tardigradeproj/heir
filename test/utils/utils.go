@@ -338,6 +338,7 @@ type RuntimeManifest struct {
 	Replicas                     int
 	ControlPlaneImage            string
 	PlaneTunnelServerImage       string
+	ClusterAgentImage            string
 	ApiServerNodePort            int
 	PlaneTunnelNodePort          int
 	ControlPlaneExternalEndpoint string
@@ -362,6 +363,8 @@ metadata:
   namespace: {{.Namespace}}
 spec:
   controlPlane:
+    clusterAgent:
+      image: {{.ClusterAgentImage}}
     heir:
       image: {{.ControlPlaneImage}}
     deployment:

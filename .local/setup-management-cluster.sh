@@ -130,6 +130,9 @@ docker push "localhost:${reg_port}/heir-tunnel:latest"
 docker tag "ghcr.io/tardigradeproj/heir-controller-manager:latest-${arch}" "localhost:${reg_port}/heir-controller-manager:latest"
 docker push "localhost:${reg_port}/heir-controller-manager:latest"
 
+docker tag "ghcr.io/tardigradeproj/clusteragent:latest-${arch}" "localhost:${reg_port}/clusteragent:latest"
+docker push "localhost:${reg_port}/clusteragent:latest"
+
 # 8. Provision PostgreSQL (secret, deployment, service) and wait until healthy
 kubectl --kubeconfig="${kubeconfig_path}" create secret generic postgres-credentials \
   --from-literal=password=kine-password \

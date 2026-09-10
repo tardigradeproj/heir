@@ -1,9 +1,0 @@
-apiVersion: controlplane.tardigrade.runtime.io/v1alpha1
-kind: WorkerJoinToken
-metadata:
-  labels:
-    app.kubernetes.io/name: heir
-    app.kubernetes.io/managed-by: kustomize
-  name: workerjointoken-sample
-spec:
-  # TODO(user): Add fields here

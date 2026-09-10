@@ -15,6 +15,12 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - nodes
+  verbs:
+  - get
+- apiGroups:
+  - ""
+  resources:
   - secrets
   verbs:
   - create
@@ -23,6 +29,28 @@ rules:
   - list
   - update
   - watch
+- apiGroups:
+  - certificates.k8s.io
+  resources:
+  - certificatesigningrequests
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - certificates.k8s.io
+  resources:
+  - certificatesigningrequests/approval
+  verbs:
+  - update
+- apiGroups:
+  - certificates.k8s.io
+  resourceNames:
+  - kubernetes.io/kubelet-serving
+  resources:
+  - signers
+  verbs:
+  - approve
 - apiGroups:
   - clusteragent.tardigrade.runtime.io
   resources:

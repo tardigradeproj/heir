@@ -1,4 +1,20 @@
-package masteragent
+/*
+Copyright 2026.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package clusteragent
 
 import (
 	"context"
@@ -342,8 +358,8 @@ func TestValidateAndApprove(t *testing.T) {
 				)
 			}
 
-			approver := NewCSRAutoApprover(fc)
-			err := approver.validateAndApprove(context.Background(), tt.csr)
+			r := &CSRApproverReconciler{Clientset: fc}
+			err := r.validateAndApprove(context.Background(), tt.csr)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -351,114 +367,6 @@ func TestValidateAndApprove(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 			}
-			tt.validate(t, fc)
-		})
-	}
-}
-
-// ---- approveKubeletServingCSRs ----
-
-func TestApproveKubeletServingCSRs(t *testing.T) {
-	node1 := newNode("node1",
-		addr(corev1.NodeHostName, "node1"),
-		addr(corev1.NodeInternalIP, "10.0.0.1"),
-	)
-	validRequest := generateServingCSRPEM(t, []string{"node1"}, []net.IP{net.ParseIP("10.0.0.1")})
-
-	tests := []struct {
-		name          string
-		objects       []runtime.Object
-		wantApprovals int
-		validate      func(t *testing.T, fc *fake.Clientset)
-	}{
-		{
-			name: "valid pending kubelet-serving CSR is approved",
-			objects: []runtime.Object{
-				node1,
-				newCSR("csr1", "system:node:node1", certificatesv1.KubeletServingSignerName, validRequest),
-			},
-			wantApprovals: 1,
-			validate: func(t *testing.T, fc *fake.Clientset) {
-				updated := approvedCSR(fc)
-				require.NotNil(t, updated)
-				assert.Equal(t, "csr1", updated.Name)
-			},
-		},
-		{
-			name: "already approved CSR is skipped",
-			objects: []runtime.Object{
-				node1,
-				newCSR("csr1", "system:node:node1", certificatesv1.KubeletServingSignerName, validRequest,
-					certificatesv1.CertificateSigningRequestCondition{Type: certificatesv1.CertificateApproved},
-				),
-			},
-			wantApprovals: 0,
-			validate: func(t *testing.T, fc *fake.Clientset) {
-				assert.Nil(t, approvedCSR(fc))
-			},
-		},
-		{
-			name: "already denied CSR is skipped",
-			objects: []runtime.Object{
-				node1,
-				newCSR("csr1", "system:node:node1", certificatesv1.KubeletServingSignerName, validRequest,
-					certificatesv1.CertificateSigningRequestCondition{Type: certificatesv1.CertificateDenied},
-				),
-			},
-			wantApprovals: 0,
-			validate: func(t *testing.T, fc *fake.Clientset) {
-				assert.Nil(t, approvedCSR(fc))
-			},
-		},
-		{
-			name: "CSR with SAN not in node addresses is skipped",
-			objects: []runtime.Object{
-				node1,
-				newCSR("csr1", "system:node:node1", certificatesv1.KubeletServingSignerName,
-					generateServingCSRPEM(t, []string{"attacker.example.com"}, nil)),
-			},
-			wantApprovals: 0,
-			validate: func(t *testing.T, fc *fake.Clientset) {
-				assert.Nil(t, approvedCSR(fc))
-			},
-		},
-		{
-			name:          "no CSRs in cluster → no approvals",
-			objects:       []runtime.Object{node1},
-			wantApprovals: 0,
-			validate: func(t *testing.T, fc *fake.Clientset) {
-				assert.Nil(t, approvedCSR(fc))
-			},
-		},
-		{
-			name: "only the valid pending CSR among several is approved",
-			objects: []runtime.Object{
-				node1,
-				newCSR("csr-valid", "system:node:node1", certificatesv1.KubeletServingSignerName, validRequest),
-				newCSR("csr-approved", "system:node:node1", certificatesv1.KubeletServingSignerName, validRequest,
-					certificatesv1.CertificateSigningRequestCondition{Type: certificatesv1.CertificateApproved},
-				),
-				newCSR("csr-bad-san", "system:node:node1", certificatesv1.KubeletServingSignerName,
-					generateServingCSRPEM(t, []string{"evil.host"}, nil)),
-			},
-			wantApprovals: 1,
-			validate: func(t *testing.T, fc *fake.Clientset) {
-				updated := approvedCSR(fc)
-				require.NotNil(t, updated)
-				assert.Equal(t, "csr-valid", updated.Name)
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			fc := fake.NewClientset(tt.objects...)
-			approver := NewCSRAutoApprover(fc)
-
-			err := approver.approveKubeletServingCSRs(context.Background())
-
-			require.NoError(t, err)
-			assert.Equal(t, tt.wantApprovals, countApprovals(fc))
 			tt.validate(t, fc)
 		})
 	}

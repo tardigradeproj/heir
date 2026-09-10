@@ -52,6 +52,16 @@ builds:
     goarch:
       - arm64
       - amd64
+  - main: cmd/clusteragent.go
+    id: clusteragent
+    binary: clusteragent
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - arm64
+      - amd64
   - main: cmd/masteragent.go
     id: masteragent
     binary: masteragent
@@ -117,6 +127,20 @@ dockers_v2:
       - manager
     images:
       - ghcr.io/tardigradeproj/heir-controller-manager
+    tags:
+      - "{{ .Tag }}"
+      - "{{ if or .IsSnapshot (and (not .IsNightly) (not (contains .Version \"-rc\"))) }}latest{{ end }}"
+    platforms:
+      - linux/amd64
+      - linux/arm64
+  - id: clusteragent
+    dockerfile: images/Dockerfile.clusteragent
+    ids:
+      - clusteragent
+    extra_files:
+      - config/clusteragent/crd/bases/clusteragent.tardigrade.runtime.io_workerjointokens.yaml
+    images:
+      - ghcr.io/tardigradeproj/clusteragent
     tags:
       - "{{ .Tag }}"
       - "{{ if or .IsSnapshot (and (not .IsNightly) (not (contains .Version \"-rc\"))) }}latest{{ end }}"

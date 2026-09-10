@@ -41,6 +41,7 @@ import (
 	clusteragentv1alpha1 "github.com/tardigradeproj/heir/api/clusteragent/v1alpha1"
 	controlplanev1alpha1 "github.com/tardigradeproj/heir/api/controlplane/v1alpha1"
 	clusteragentcontroller "github.com/tardigradeproj/heir/internal/controller/clusteragent"
+	clusteragentpkg "github.com/tardigradeproj/heir/pkg/clusteragent"
 	runtimelayout "github.com/tardigradeproj/heir/pkg/runtime"
 )
 
@@ -88,6 +89,10 @@ func Run() {
 	flag.StringVar(&runtimeManifestPath, "runtime-manifest-path", os.Getenv("HEIR_CLUSTERAGENT_RUNTIME_MANIFEST_PATH"),
 		"Path to this cluster's Runtime manifest (env: HEIR_CLUSTERAGENT_RUNTIME_MANIFEST_PATH). "+
 			"Defaults to the control-plane layout's runtime manifest mount path.")
+	var crdDir string
+	flag.StringVar(&crdDir, "crd-dir", os.Getenv("HEIR_CLUSTERAGENT_CRD_DIR"),
+		"Directory of CRD YAML files to apply against the cluster on startup (env: HEIR_CLUSTERAGENT_CRD_DIR). "+
+			"Defaults to "+clusteragentpkg.DefaultCRDDir+".")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -145,7 +150,34 @@ func Run() {
 		metricsServerOptions.KeyName = metricsCertKey
 	}
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	ctx := ctrl.SetupSignalHandler()
+	cfg := ctrl.GetConfigOrDie()
+
+	layout := runtimelayout.NewControlPlaneLayout()
+	if caCertPath == "" {
+		caCertPath = layout.PKI.CACert.MountPath
+	}
+	if runtimeManifestPath == "" {
+		runtimeManifestPath = layout.ClusterAgent.RuntimeManifest.MountPath
+	}
+	if crdDir == "" {
+		crdDir = clusteragentpkg.DefaultCRDDir
+	}
+
+	caData, runtimeObj, err := loadClusterInfo(caCertPath, runtimeManifestPath)
+	if err != nil {
+		setupLog.Error(err, "unable to load cluster info")
+		os.Exit(1)
+	}
+
+	// The mounted admin kubeconfig's server is baked in as https://127.0.0.1:6443,
+	// correct only if clusteragent shared a pod with the tenant's apiserver. It runs as
+	// its own Deployment in the same namespace instead, so it must reach the apiserver
+	// through the Service in front of it — the same in-cluster DNS name already present
+	// in the apiserver certificate's SANs (see APIServerAltNames in pkg/runtime/pki_auth.go).
+	cfg.Host = fmt.Sprintf("https://%s.%s.svc.cluster.local:6443", runtimeObj.Name, runtimeObj.Namespace)
+
+	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme:                 scheme,
 		Metrics:                metricsServerOptions,
 		WebhookServer:          webhookServer,
@@ -158,21 +190,14 @@ func Run() {
 		os.Exit(1)
 	}
 
-	layout := runtimelayout.NewControlPlaneLayout()
-	if caCertPath == "" {
-		caCertPath = layout.PKI.CACert.MountPath
-	}
-	if runtimeManifestPath == "" {
-		runtimeManifestPath = layout.ClusterAgent.RuntimeManifest.MountPath
-	}
-
-	caData, runtimeObj, err := loadClusterInfo(caCertPath, runtimeManifestPath)
-	if err != nil {
-		setupLog.Error(err, "unable to load cluster info")
+	// CRDs must exist before any controller below registers a watch on one of their
+	// types, so this runs first.
+	if err := clusteragentpkg.ApplyCRDs(ctx, cfg, crdDir); err != nil {
+		setupLog.Error(err, "unable to apply CRDs")
 		os.Exit(1)
 	}
 
-	clientset, err := kubernetes.NewForConfig(mgr.GetConfig())
+	clientset, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
 		setupLog.Error(err, "unable to create clientset")
 		os.Exit(1)
@@ -190,6 +215,15 @@ func Run() {
 		os.Exit(1)
 	}
 
+	if err := (&clusteragentcontroller.CSRApproverReconciler{
+		Client:    mgr.GetClient(),
+		Clientset: clientset,
+		Recorder:  mgr.GetEventRecorder("clusteragent-csrapprover"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "Failed to create controller", "controller", "CSRApprover")
+		os.Exit(1)
+	}
+
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up health check")
 		os.Exit(1)
@@ -199,8 +233,14 @@ func Run() {
 		os.Exit(1)
 	}
 
+	go func() {
+		if err := clusteragentpkg.SyncKubernetesEndpoints(ctx, clientset, runtimeObj); err != nil {
+			setupLog.Error(err, "kubernetes endpoint sync stopped")
+		}
+	}()
+
 	setupLog.Info("starting manager")
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+	if err := mgr.Start(ctx); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}

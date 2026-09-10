@@ -22,9 +22,6 @@ resources:
 # default, aiding admins in cluster management. Those roles are
 # not used by the heir itself. You can comment the following lines
 # if you do not want those helpers be installed with your Project.
-- workerjointoken_admin_role.yaml
-- workerjointoken_editor_role.yaml
-- workerjointoken_viewer_role.yaml
 - runtime_admin_role.yaml
 - runtime_editor_role.yaml
 - runtime_viewer_role.yaml

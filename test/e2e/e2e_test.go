@@ -58,6 +58,13 @@ const runtimeName = "e2e-runtime"
 const workerClusterName = runtimeName + "-worker"
 const workerContainerName = workerClusterName + "-worker0"
 
+// tenantKubeconfigPath is where runtime_test.go writes the tenant cluster's admin
+// kubeconfig. Kept as a func of runtimeName rather than a local, so AfterEach can
+// reference it too.
+func tenantKubeconfigPath() string {
+	return filepath.Join(os.TempDir(), runtimeName+"-kubeconfig")
+}
+
 // kindNodeIP is the docker-network IPv4 address of the (single) Kind control-plane
 // node, used as the externally reachable host for Runtimes provisioned in these tests.
 // Set once in BeforeAll below; read from runtime_test.go's provisionRuntimeSpec.
@@ -122,8 +129,8 @@ var _ = Describe("Manager", Ordered, func() {
 	// and pod descriptions for debugging.
 	AfterEach(func() {
 		By("cleaning up runtime-provisioning resources")
-		cmd := exec.Command("kubectl", "delete", "workerjointoken", runtimeName+"-join",
-			"-n", runtimeNamespace, "--ignore-not-found", "--timeout=60s")
+		cmd := exec.Command("kubectl", "--kubeconfig", tenantKubeconfigPath(), "delete", "workerjointoken",
+			runtimeName+"-join", "--ignore-not-found", "--timeout=60s")
 		_, _ = utils.Run(cmd)
 
 		cmd = exec.Command("kubectl", "delete", "runtime", runtimeName,
@@ -133,6 +140,7 @@ var _ = Describe("Manager", Ordered, func() {
 		cmd = exec.Command("docker", "rm", "-f", workerContainerName)
 		_, _ = utils.Run(cmd)
 		_ = os.RemoveAll(filepath.Join(os.TempDir(), workerClusterName))
+		_ = os.Remove(tenantKubeconfigPath())
 
 		specReport := CurrentSpecReport()
 		if specReport.Failed() {
