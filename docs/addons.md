@@ -77,7 +77,6 @@ on the upstream cluster.
 <tr><td><code>spec.helm.insecureSkipTLSVerify</code></td><td><code>false</code></td><td>Skip TLS certificate checks when downloading the chart</td><td><code>--insecure-skip-tls-verify</code></td></tr>
 <tr><td><code>spec.helm.backOffLimit</code></td><td><code>10</code></td><td>Number of retries allowed before the job is considered failed</td><td></td></tr>
 <tr><td><code>spec.helm.timeout</code></td><td><code>300s</code></td><td>Timeout for Helm operations, expressed as a duration string (<code>300s</code>, <code>10m</code>, <code>1h</code>, etc.)</td><td><code>--timeout</code></td></tr>
-<tr><td><code>spec.helm.failurePolicy</code></td><td><code>reinstall</code></td><td>When set to <code>abort</code>, the Helm operation stops and waits for manual intervention by the operator</td><td></td></tr>
 <tr><td><code>spec.runtime.bootstrap</code></td><td><code>false</code></td><td>Set to <code>true</code> if this chart is required to bootstrap the cluster (CoreDNS, kube proxy, etc.)</td><td></td></tr>
 <tr><td><code>spec.runtime.image</code></td><td></td><td>Image used to run the Helm job, for example <code>rancher/klipper-helm:v0.3.0</code></td><td></td></tr>
 <tr><td><code>spec.runtime.securityContext</code></td><td></td><td>Custom <code>v1.PodSecurityContext</code> applied to the Helm job pod</td><td></td></tr>

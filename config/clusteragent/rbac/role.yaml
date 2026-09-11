@@ -54,6 +54,7 @@ rules:
 - apiGroups:
   - clusteragent.tardigrade.runtime.io
   resources:
+  - helmcharts
   - workerjointokens
   verbs:
   - create
@@ -66,12 +67,14 @@ rules:
 - apiGroups:
   - clusteragent.tardigrade.runtime.io
   resources:
+  - helmcharts/finalizers
   - workerjointokens/finalizers
   verbs:
   - update
 - apiGroups:
   - clusteragent.tardigrade.runtime.io
   resources:
+  - helmcharts/status
   - workerjointokens/status
   verbs:
   - get

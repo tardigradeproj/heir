@@ -1,0 +1,13 @@
+apiVersion: clusteragent.tardigrade.runtime.io/v1alpha1
+kind: HelmChart
+metadata:
+  labels:
+    app.kubernetes.io/name: heir
+    app.kubernetes.io/managed-by: kustomize
+  name: helmchart-sample
+spec:
+  chart:
+    name: metrics-server
+    repo: https://kubernetes-sigs.github.io/metrics-server/
+    version: 3.12.1
+    targetNamespace: kube-system

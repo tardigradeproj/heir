@@ -3,6 +3,7 @@
 # It should be run by config/clusteragent/default
 resources:
 - bases/clusteragent.tardigrade.runtime.io_workerjointokens.yaml
+- bases/clusteragent.tardigrade.runtime.io_helmcharts.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patches:

@@ -32,4 +32,13 @@ resources:
   kind: WorkerJoinToken
   path: github.com/tardigradeproj/heir/api/clusteragent/v1alpha1
   version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: false
+  controller: true
+  domain: tardigrade.runtime.io
+  group: clusteragent
+  kind: HelmChart
+  path: github.com/tardigradeproj/heir/api/clusteragent/v1alpha1
+  version: v1alpha1
 version: "3"
