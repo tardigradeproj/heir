@@ -20,10 +20,6 @@ type ChartSpec struct {
 	// +optional
 	Name string `json:"name,omitempty"`
 
-	// Content is a base64-encoded chart archive (.tgz). Overrides Name when set.
-	// +optional
-	Content string `json:"content,omitempty"`
-
 	// TargetNamespace is the namespace the Helm chart is installed into.
 	// +kubebuilder:default="default"
 	TargetNamespace string `json:"targetNamespace,omitempty"`

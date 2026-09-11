@@ -68,7 +68,6 @@ on the upstream cluster.
 </thead>
 <tbody>
 <tr><td><code>spec.chart.name</code></td><td></td><td>Helm chart name in the repository, or a complete HTTPS URL to a chart archive (.tgz)</td><td><code>CHART</code></td></tr>
-<tr><td><code>spec.chart.content</code></td><td></td><td>Base64 encoded chart archive (.tgz); overrides <code>spec.chart.name</code></td><td><code>CHART</code></td></tr>
 <tr><td><code>spec.chart.targetNamespace</code></td><td><code>default</code></td><td>Namespace the Helm chart is installed into</td><td><code>--namespace</code></td></tr>
 <tr><td><code>spec.chart.createNamespace</code></td><td><code>false</code></td><td>Create the target namespace if it does not already exist</td><td><code>--create-namespace</code></td></tr>
 <tr><td><code>spec.chart.version</code></td><td></td><td>Helm chart version to install (when installing from a repository)</td><td><code>--version</code></td></tr>
