@@ -170,7 +170,7 @@ func (r *HelmChartReconciler) installJobSucceeded(ctx context.Context, helmChart
 }
 
 func (r *HelmChartReconciler) deleteJobRBAC(ctx context.Context, helmChart *clusteragentv1alpha1.HelmChart, log logr.Logger) {
-	name := fmt.Sprintf("helmchart-%s", helmChart.Name)
+	name := heirruntime.ServiceAccountName(helmChart.Name)
 
 	crb := &rbacv1.ClusterRoleBinding{ObjectMeta: metav1.ObjectMeta{Name: name}}
 	if err := r.Delete(ctx, crb); err != nil && !apierrors.IsNotFound(err) {

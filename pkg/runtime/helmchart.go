@@ -6,6 +6,7 @@ import (
 	clusteragentv1alpha1 "github.com/tardigradeproj/heir/api/clusteragent/v1alpha1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -25,11 +26,47 @@ func JobName(chartName string, operation JobOperation) string {
 	return fmt.Sprintf("helmchart-%s-%s", chartName, operation)
 }
 
+func ServiceAccountName(chartName string) string {
+	return fmt.Sprintf("helmchart-%s", chartName)
+}
+
+// GenerateRBAC builds the ServiceAccount and ClusterRoleBinding that grant helmChart's Jobs
+// permission to run Helm operations against the cluster.
+func GenerateRBAC(helmChart *clusteragentv1alpha1.HelmChart) (*corev1.ServiceAccount, *rbacv1.ClusterRoleBinding) {
+	name := ServiceAccountName(helmChart.Name)
+
+	serviceAccount := &corev1.ServiceAccount{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: helmChart.Spec.Chart.TargetNamespace,
+		},
+	}
+
+	clusterRoleBinding := &rbacv1.ClusterRoleBinding{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+		RoleRef: rbacv1.RoleRef{
+			APIGroup: rbacv1.GroupName,
+			Kind:     "ClusterRole",
+			Name:     "cluster-admin",
+		},
+		Subjects: []rbacv1.Subject{
+			{
+				Kind:      rbacv1.ServiceAccountKind,
+				Name:      serviceAccount.Name,
+				Namespace: serviceAccount.Namespace,
+			},
+		},
+	}
+
+	return serviceAccount, clusterRoleBinding
+}
+
 // GenerateJob builds the Job that runs command in the HelmChart's Runtime.Image to perform
 // operation. When Spec.Runtime.Bootstrap is set, the pod runs on the host network and
 // tolerates all NoSchedule/NoExecute taints, so bootstrap addons (CNI, kube-proxy, etc.) can
-// run before the node is marked Ready. No API calls are made; the caller is responsible for
-// setting the owner reference and persisting the result.
+// run before the node is marked Ready.
 func GenerateJob(helmChart *clusteragentv1alpha1.HelmChart, command []string, operation JobOperation) (*batchv1.Job, error) {
 	labels := map[string]string{
 		"app.kubernetes.io/name":       helmChart.Name,
@@ -67,7 +104,7 @@ func GenerateJob(helmChart *clusteragentv1alpha1.HelmChart, command []string, op
 				},
 				Spec: corev1.PodSpec{
 					RestartPolicy:      corev1.RestartPolicyNever,
-					ServiceAccountName: fmt.Sprintf("helmchart-%s", helmChart.Name),
+					ServiceAccountName: ServiceAccountName(helmChart.Name),
 					SecurityContext:    helmChart.Spec.Runtime.SecurityContext,
 					HostNetwork:        helmChart.Spec.Runtime.Bootstrap,
 					Tolerations:        tolerations,
