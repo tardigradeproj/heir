@@ -38,7 +38,6 @@ import (
 
 	clusteragentv1alpha1 "github.com/tardigradeproj/heir/api/clusteragent/v1alpha1"
 	controlplanev1alpha1 "github.com/tardigradeproj/heir/api/controlplane/v1alpha1"
-	clusteragentcontroller "github.com/tardigradeproj/heir/internal/controller/clusteragent"
 	controller "github.com/tardigradeproj/heir/internal/controller/controlplane"
 	// +kubebuilder:scaffold:imports
 )
@@ -189,13 +188,6 @@ func main() {
 		WrkCtx:   typ.NewWorkerContextWithDefaults(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Runtime")
-		os.Exit(1)
-	}
-	if err := (&clusteragentcontroller.HelmChartReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "Failed to create controller", "controller", "HelmChart")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder
