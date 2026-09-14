@@ -1,0 +1,22 @@
+apiVersion: clusteragent.tardigrade.runtime.io/v1alpha1
+kind: HelmChart
+metadata:
+  name: podinfo
+spec:
+  chart:
+    name: podinfo
+    repo: https://stefanprodan.github.io/podinfo
+    targetNamespace: default
+    createNamespace: true
+  helm:
+    version: v3
+    backOffLimit: 3
+    timeout: 120s
+    atomic: true
+  runtime:
+    image: ghcr.io/tardigradeproj/helmer:latest
+  values:
+#    content: |
+#      new: set
+    set:
+      replicaCount: "1"
