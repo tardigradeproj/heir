@@ -15,10 +15,9 @@ const (
 
 // ChartSpec identifies the Helm chart to install and where it is installed to.
 type ChartSpec struct {
-	// Name is the Helm chart name in the repository, or a complete HTTPS URL to a
-	// chart archive (.tgz).
-	// +optional
-	Name string `json:"name,omitempty"`
+	// Name is the Helm chart name in the repository.
+	// +required
+	Name string `json:"name"`
 
 	// TargetNamespace is the namespace the Helm chart is installed into.
 	// +kubebuilder:default="default"
@@ -33,8 +32,8 @@ type ChartSpec struct {
 	Version string `json:"version,omitempty"`
 
 	// Repo is the Helm chart repository URL.
-	// +optional
-	Repo string `json:"repo,omitempty"`
+	// +required
+	Repo string `json:"repo"`
 }
 
 // HelmOptions controls how the Helm operation itself is run.
@@ -47,6 +46,11 @@ type HelmOptions struct {
 	// InsecureSkipTLSVerify skips TLS certificate checks when downloading the chart.
 	// +kubebuilder:default=false
 	InsecureSkipTLSVerify bool `json:"insecureSkipTLSVerify,omitempty"`
+
+	// Atomic rolls back the release on install/upgrade failure and waits for resources to
+	// become ready.
+	// +kubebuilder:default=false
+	Atomic bool `json:"atomic,omitempty"`
 
 	// BackOffLimit is the number of retries allowed before the job is considered failed.
 	// +kubebuilder:default=10

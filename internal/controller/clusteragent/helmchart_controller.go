@@ -25,6 +25,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -39,6 +40,7 @@ import (
 
 const (
 	helmChartFinalizer = "clusteragent.tardigrade.runtime.io/helmchart"
+	typeReadyHelmChart = "Ready"
 )
 
 // HelmChartReconciler reconciles a HelmChart object
@@ -51,6 +53,7 @@ type HelmChartReconciler struct {
 // +kubebuilder:rbac:groups=clusteragent.tardigrade.runtime.io,resources=helmcharts/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=clusteragent.tardigrade.runtime.io,resources=helmcharts/finalizers,verbs=update
 // +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=serviceaccounts,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterrolebindings,verbs=get;list;watch;create;update;patch;delete
 
 func (r *HelmChartReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -72,16 +75,79 @@ func (r *HelmChartReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		if err := r.Update(ctx, helmChart); err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
 		}
-		// The Update above bumps resourceVersion, which the watch on HelmChart picks up
-		// and re-queues on its own — no explicit requeue needed here.
+		// The Update above bumps resourceVersion,
 		return ctrl.Result{}, nil
 	}
 
-	// create serviceaccount
-	// create clusterrole and clusterrolebinding, use clusterrole: cluster-admin
-	// create job
+	serviceAccount, clusterRoleBinding := heirruntime.GenerateRBAC(helmChart)
+	if err := ctrl.SetControllerReference(helmChart, serviceAccount, r.Scheme); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to set owner reference on serviceaccount: %w", err)
+	}
+	if err := r.Create(ctx, serviceAccount); err != nil && !apierrors.IsAlreadyExists(err) {
+		return ctrl.Result{}, fmt.Errorf("failed to create serviceaccount: %w", err)
+	}
+	if err := ctrl.SetControllerReference(helmChart, clusterRoleBinding, r.Scheme); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to set owner reference on clusterrolebinding: %w", err)
+	}
+	if err := r.Create(ctx, clusterRoleBinding); err != nil && !apierrors.IsAlreadyExists(err) {
+		return ctrl.Result{}, fmt.Errorf("failed to create clusterrolebinding: %w", err)
+	}
+
+	installJob := &batchv1.Job{}
+	installKey := types.NamespacedName{
+		Name:      heirruntime.JobName(helmChart.Name, heirruntime.JobOperationInstall),
+		Namespace: helmChart.Spec.Chart.TargetNamespace,
+	}
+	if err := r.Get(ctx, installKey, installJob); err != nil {
+		if !apierrors.IsNotFound(err) {
+			return ctrl.Result{}, err
+		}
+		newJob, err := heirruntime.GenerateJob(helmChart, heirruntime.JobOperationInstall)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to build install job: %w", err)
+		}
+		if err := ctrl.SetControllerReference(helmChart, newJob, r.Scheme); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to set owner reference on install job: %w", err)
+		}
+		if err := r.Create(ctx, newJob); err != nil && !apierrors.IsAlreadyExists(err) {
+			return ctrl.Result{}, fmt.Errorf("failed to create install job: %w", err)
+		}
+		return ctrl.Result{}, nil
+	}
+
+	if err := r.updateReadyCondition(ctx, helmChart, installJob); err != nil {
+		return ctrl.Result{}, err
+	}
 
 	return ctrl.Result{}, nil
+}
+
+func (r *HelmChartReconciler) updateReadyCondition(ctx context.Context, helmChart *clusteragentv1alpha1.HelmChart, installJob *batchv1.Job) error {
+	condition := metav1.Condition{
+		Type:               typeReadyHelmChart,
+		ObservedGeneration: helmChart.Generation,
+	}
+
+	switch {
+	case jobCondition(installJob, batchv1.JobComplete) != nil:
+		condition.Status = metav1.ConditionTrue
+		condition.Reason = "InstallSucceeded"
+		condition.Message = fmt.Sprintf("install job %s completed successfully", installJob.Name)
+	case jobCondition(installJob, batchv1.JobFailed) != nil:
+		condition.Status = metav1.ConditionFalse
+		condition.Reason = "InstallFailed"
+		condition.Message = fmt.Sprintf("install job %s failed", installJob.Name)
+	default:
+		return nil
+	}
+
+	if !meta.SetStatusCondition(&helmChart.Status.Conditions, condition) {
+		return nil
+	}
+	if err := r.Status().Update(ctx, helmChart); err != nil {
+		return fmt.Errorf("failed to update helmchart status: %w", err)
+	}
+	return nil
 }
 
 // reconcileDelete runs a best-effort `helm uninstall` Job before removing the finalizer, so
@@ -115,8 +181,7 @@ func (r *HelmChartReconciler) reconcileDelete(
 			return r.removeFinalizer(ctx, helmChart)
 		}
 
-		command := []string{"helm", "uninstall", helmChart.Name, "--namespace", helmChart.Spec.Chart.TargetNamespace}
-		newJob, err := heirruntime.GenerateJob(helmChart, command, heirruntime.JobOperationTeardown)
+		newJob, err := heirruntime.GenerateJob(helmChart, heirruntime.JobOperationTeardown)
 		if err != nil {
 			log.Error(err, "failed to build teardown job; removing finalizer anyway")
 			r.deleteJobRBAC(ctx, helmChart, log)
@@ -149,7 +214,7 @@ func (r *HelmChartReconciler) reconcileDelete(
 	}
 	// Still running; the watch on batchv1.Job requeues once its status changes. Its RBAC must
 	// stay in place until it reaches a terminal state above, or it will lose permission to run
-	// `helm uninstall` mid-flight.
+	// `helm uninstall`
 	return ctrl.Result{}, nil
 }
 

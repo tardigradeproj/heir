@@ -1,7 +1,10 @@
 package runtime
 
 import (
+	"encoding/base64"
 	"fmt"
+	"sort"
+	"strings"
 
 	clusteragentv1alpha1 "github.com/tardigradeproj/heir/api/clusteragent/v1alpha1"
 	batchv1 "k8s.io/api/batch/v1"
@@ -10,14 +13,17 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+const (
+	helmValuesEnvVar = "HELM_VALUES"
+	helmValuesFile   = "/tmp/values.yaml"
+)
+
 // JobOperation identifies which Helm operation a HelmChart Job runs.
 type JobOperation string
 
 const (
 	// JobOperationInstall runs the initial `helm install` for a HelmChart.
 	JobOperationInstall JobOperation = "install"
-	// JobOperationUpgrade runs `helm upgrade` when a HelmChart's spec or values change.
-	JobOperationUpgrade JobOperation = "upgrade"
 	// JobOperationTeardown runs `helm uninstall` when a HelmChart is deleted.
 	JobOperationTeardown JobOperation = "teardown"
 )
@@ -63,11 +69,91 @@ func GenerateRBAC(helmChart *clusteragentv1alpha1.HelmChart) (*corev1.ServiceAcc
 	return serviceAccount, clusterRoleBinding
 }
 
-// GenerateJob builds the Job that runs command in the HelmChart's Runtime.Image to perform
-// operation. When Spec.Runtime.Bootstrap is set, the pod runs on the host network and
-// tolerates all NoSchedule/NoExecute taints, so bootstrap addons (CNI, kube-proxy, etc.) can
-// run before the node is marked Ready.
-func GenerateJob(helmChart *clusteragentv1alpha1.HelmChart, command []string, operation JobOperation) (*batchv1.Job, error) {
+// Command returns the argv-style commands helmChart's Job must run, in order, to perform
+// operation. It has no notion of shells or how the Job actually execs them — GenerateJob
+// decides whether that takes a single exec or a `sh -c` script chaining several steps
+// together. The Job pod runs as the ServiceAccount GenerateRBAC creates, bound to
+// cluster-admin, so none of these commands need their own kubeconfig or credentials — helm
+// picks up the pod's in-cluster ServiceAccount token automatically.
+func Command(helmChart *clusteragentv1alpha1.HelmChart, operation JobOperation) [][]string {
+	chart := helmChart.Spec.Chart
+	helm := helmChart.Spec.Helm
+	if operation == JobOperationTeardown {
+		uninstall := []string{"helm", "uninstall", helmChart.Name, "--namespace", chart.TargetNamespace}
+		if helm.Timeout.Duration > 0 {
+			uninstall = append(uninstall, "--timeout", helm.Timeout.Duration.String())
+		}
+		return [][]string{uninstall}
+	}
+
+	// chart.Name doubles as the local name the chart's repository is registered under, since
+	// it only needs to be unique within the Job's pod, which never runs more than one
+	// HelmChart's commands.
+	chartRef := chart.Name + "/" + chart.Name
+
+	upgrade := []string{"helm", "upgrade", helmChart.Name, chartRef, "--install", "--namespace", chart.TargetNamespace}
+	if chart.CreateNamespace {
+		upgrade = append(upgrade, "--create-namespace")
+	}
+	if chart.Version != "" {
+		upgrade = append(upgrade, "--version", chart.Version)
+	}
+	if helm.InsecureSkipTLSVerify {
+		upgrade = append(upgrade, "--insecure-skip-tls-verify")
+	}
+	if helm.Timeout.Duration > 0 {
+		upgrade = append(upgrade, "--timeout", helm.Timeout.Duration.String())
+	}
+	if helm.Atomic {
+		upgrade = append(upgrade, "--atomic")
+	}
+
+	// Sorted for a deterministic command
+	keys := make([]string, 0, len(helmChart.Spec.Values.Set))
+	for key := range helmChart.Spec.Values.Set {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		upgrade = append(upgrade, "--set", fmt.Sprintf("%s=%s", key, helmChart.Spec.Values.Set[key]))
+	}
+	if helmChart.Spec.Values.Content != "" {
+		upgrade = append(upgrade, "--values", helmValuesFile)
+	}
+
+	repoAdd := []string{"helm", "repo", "add", chart.Name, chart.Repo}
+	if helm.InsecureSkipTLSVerify {
+		repoAdd = append(repoAdd, "--insecure-skip-tls-verify")
+	}
+
+	return [][]string{repoAdd, upgrade}
+}
+
+func containerCommand(decode string, steps [][]string) []string {
+	shellJoin := func(args []string) string {
+		quoted := make([]string, len(args))
+		for i, arg := range args {
+			quoted[i] = "'" + strings.ReplaceAll(arg, "'", `'\''`) + "'"
+		}
+		return strings.Join(quoted, " ")
+	}
+	if decode == "" && len(steps) == 1 {
+		return steps[0]
+	}
+
+	parts := make([]string, 0, len(steps)+1)
+	if decode != "" {
+		parts = append(parts, decode)
+	}
+	for _, step := range steps {
+		parts = append(parts, shellJoin(step))
+	}
+	return []string{"sh", "-c", strings.Join(parts, " && ")}
+}
+
+// GenerateJob builds the Job that runs Command(helmChart, operation) in the HelmChart's
+// Runtime.Image to perform operation.
+func GenerateJob(helmChart *clusteragentv1alpha1.HelmChart, operation JobOperation) (*batchv1.Job, error) {
 	labels := map[string]string{
 		"app.kubernetes.io/name":       helmChart.Name,
 		"app.kubernetes.io/managed-by": "heir",
@@ -85,6 +171,21 @@ func GenerateJob(helmChart *clusteragentv1alpha1.HelmChart, command []string, op
 			{Operator: corev1.TolerationOpExists, Effect: corev1.TaintEffectNoExecute},
 		}
 	}
+
+	env := []corev1.EnvVar{
+		{Name: "HELM_VERSION", Value: string(helmChart.Spec.Helm.Version)},
+	}
+
+	var decode string
+	if content := helmChart.Spec.Values.Content; content != "" && operation != JobOperationTeardown {
+		env = append(env, corev1.EnvVar{
+			Name:  helmValuesEnvVar,
+			Value: base64.StdEncoding.EncodeToString([]byte(content)),
+		})
+		decode = fmt.Sprintf("echo \"$%s\" | base64 -d > %s", helmValuesEnvVar, helmValuesFile)
+	}
+
+	command := containerCommand(decode, Command(helmChart, operation))
 
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
@@ -113,9 +214,7 @@ func GenerateJob(helmChart *clusteragentv1alpha1.HelmChart, command []string, op
 							Name:    "helm",
 							Image:   helmChart.Spec.Runtime.Image,
 							Command: command,
-							Env: []corev1.EnvVar{
-								{Name: "HELM_VERSION", Value: string(helmChart.Spec.Helm.Version)},
-							},
+							Env:     env,
 						},
 					},
 				},

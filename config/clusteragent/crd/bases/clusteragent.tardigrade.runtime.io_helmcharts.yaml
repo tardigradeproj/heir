@@ -43,19 +43,13 @@ spec:
                 description: Chart identifies the Helm chart to install and where
                   it is installed to.
                 properties:
-                  content:
-                    description: Content is a base64-encoded chart archive (.tgz).
-                      Overrides Name when set.
-                    type: string
                   createNamespace:
                     default: false
                     description: CreateNamespace creates TargetNamespace if it does
                       not already exist.
                     type: boolean
                   name:
-                    description: |-
-                      Name is the Helm chart name in the repository, or a complete HTTPS URL to a
-                      chart archive (.tgz).
+                    description: Name is the Helm chart name in the repository.
                     type: string
                   repo:
                     description: Repo is the Helm chart repository URL.
@@ -69,10 +63,19 @@ spec:
                     description: Version is the Helm chart version to install, when
                       installing from a repository.
                     type: string
+                required:
+                - name
+                - repo
                 type: object
               helm:
                 description: Helm controls how the Helm operation itself is run.
                 properties:
+                  atomic:
+                    default: false
+                    description: |-
+                      Atomic rolls back the release on install/upgrade failure and waits for resources to
+                      become ready.
+                    type: boolean
                   backOffLimit:
                     default: 10
                     description: BackOffLimit is the number of retries allowed before

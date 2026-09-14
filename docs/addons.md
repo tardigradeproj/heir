@@ -67,13 +67,14 @@ on the upstream cluster.
 <tr><th>Field</th><th>Default</th><th>Description</th><th>Equivalent CLI Flag</th></tr>
 </thead>
 <tbody>
-<tr><td><code>spec.chart.name</code></td><td></td><td>Helm chart name in the repository, or a complete HTTPS URL to a chart archive (.tgz)</td><td><code>CHART</code></td></tr>
+<tr><td><code>spec.chart.name</code></td><td><em>required</em></td><td>Helm chart name in the repository</td><td><code>CHART</code></td></tr>
+<tr><td><code>spec.chart.repo</code></td><td><em>required</em></td><td>Helm chart repository URL; registered with <code>helm repo add</code> before install/upgrade</td><td><code>helm repo add</code></td></tr>
 <tr><td><code>spec.chart.targetNamespace</code></td><td><code>default</code></td><td>Namespace the Helm chart is installed into</td><td><code>--namespace</code></td></tr>
 <tr><td><code>spec.chart.createNamespace</code></td><td><code>false</code></td><td>Create the target namespace if it does not already exist</td><td><code>--create-namespace</code></td></tr>
 <tr><td><code>spec.chart.version</code></td><td></td><td>Helm chart version to install (when installing from a repository)</td><td><code>--version</code></td></tr>
-<tr><td><code>spec.chart.repo</code></td><td></td><td>Helm chart repository URL</td><td><code>--repo</code></td></tr>
 <tr><td><code>spec.helm.version</code></td><td><code>v3</code></td><td>Helm version to use (<code>v2</code> or <code>v3</code>)</td><td></td></tr>
 <tr><td><code>spec.helm.insecureSkipTLSVerify</code></td><td><code>false</code></td><td>Skip TLS certificate checks when downloading the chart</td><td><code>--insecure-skip-tls-verify</code></td></tr>
+<tr><td><code>spec.helm.atomic</code></td><td><code>false</code></td><td>Roll back the release on install/upgrade failure and wait for resources to become ready</td><td><code>--atomic</code></td></tr>
 <tr><td><code>spec.helm.backOffLimit</code></td><td><code>10</code></td><td>Number of retries allowed before the job is considered failed</td><td></td></tr>
 <tr><td><code>spec.helm.timeout</code></td><td><code>300s</code></td><td>Timeout for Helm operations, expressed as a duration string (<code>300s</code>, <code>10m</code>, <code>1h</code>, etc.)</td><td><code>--timeout</code></td></tr>
 <tr><td><code>spec.runtime.bootstrap</code></td><td><code>false</code></td><td>Set to <code>true</code> if this chart is required to bootstrap the cluster (CoreDNS, kube proxy, etc.)</td><td></td></tr>
@@ -90,7 +91,6 @@ on the upstream cluster.
 spec:
   chart:
     name: "my-chart"
-    content: "YmFzZ..."
     repo: "https://charts.example.com"
     version: "1.2.3"
     targetNamespace: "default"
@@ -99,6 +99,7 @@ spec:
   helm:
     version: "v3"
     insecureSkipTLSVerify: false
+    atomic: false
     backOffLimit: 10
     timeout: "300s"
     failurePolicy: "reinstall"
