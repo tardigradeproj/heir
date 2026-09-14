@@ -1,0 +1,45 @@
+# syntax=docker/dockerfile:1
+#
+# Image the HelmChart controller's Jobs run to perform `helm upgrade --install` / `helm
+# uninstall` against the upstream cluster (see pkg/runtime/helmchart.go's Command and
+# GenerateJob). The Job's Command is sometimes a `sh -c` script that chains `helm repo add`,
+# `helm repo update`, and decoding Spec.Values.Content before the real helm invocation, so this
+# image needs a shell and coreutils and can't be a scratch/distroless image like the other
+# binaries under images/ — that's why it's Alpine-based instead.
+#
+# Helm's version is pinned in .dependencies-version.yaml (key: helm), the single source of
+# truth Makefile.distro also reads from for every other dependency version. goreleaser's
+# docker build has no way to feed a value read from that file in as a --build-arg, so the fetch
+# stage below reads it directly out of the file instead (it's copied in as an extra_files entry
+# in the helmer entry of .goreleaser.yaml).
+#
+# The fetch stage runs on --platform=$BUILDPLATFORM (the host's own arch) rather than the
+# image's target arch: it only ever downloads and unpacks a TARGETARCH helm binary as a file,
+# it never executes it, so there's no reason to pay for (or fight buggy) cross-arch emulation
+# here. The final stage has no RUN steps at all — just COPY, so it never needs to execute
+# anything for the target arch either.
+FROM --platform=$BUILDPLATFORM alpine:3.21 AS fetch
+
+ARG TARGETARCH
+
+COPY .dependencies-version.yaml /tmp/.dependencies-version.yaml
+
+RUN apk add --no-cache curl ca-certificates \
+    && HELM_VERSION="$(grep '^helm:' /tmp/.dependencies-version.yaml | awk '{print $2}')" \
+    && curl -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-${TARGETARCH}.tar.gz" -o /tmp/helm.tar.gz \
+    && tar -xzf /tmp/helm.tar.gz -C /tmp \
+    && mv "/tmp/linux-${TARGETARCH}/helm" /usr/local/bin/helm \
+    && chmod +x /usr/local/bin/helm
+
+FROM alpine:3.21
+
+COPY --from=fetch /etc/ssl/certs /etc/ssl/certs
+COPY --from=fetch /usr/local/bin/helm /usr/local/bin/helm
+
+# HOME must be writable without relying on an /etc/passwd entry for the numeric UID below,
+# since that's where helm keeps its repository config/cache (~/.config/helm, ~/.cache/helm).
+ENV HOME=/tmp
+
+USER 65532:65532
+
+ENTRYPOINT ["/usr/local/bin/helm"]
