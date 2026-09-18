@@ -2,6 +2,7 @@ apiVersion: clusteragent.tardigrade.runtime.io/v1alpha1
 kind: HelmChart
 metadata:
   name: podinfo
+  namespace: default
 spec:
   chart:
     name: podinfo

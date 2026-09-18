@@ -79,15 +79,15 @@ func (r *HelmChartReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, nil
 	}
 
+	// serviceAccount lives in helmChart's own namespace (see GenerateRBAC), so it can carry an
+	// owner reference back to it. clusterRoleBinding can't: it's cluster-scoped, and a
+	// namespaced owner may never reference a cluster-scoped dependent.
 	serviceAccount, clusterRoleBinding := heirruntime.GenerateRBAC(helmChart)
 	if err := ctrl.SetControllerReference(helmChart, serviceAccount, r.Scheme); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to set owner reference on serviceaccount: %w", err)
 	}
 	if err := r.Create(ctx, serviceAccount); err != nil && !apierrors.IsAlreadyExists(err) {
 		return ctrl.Result{}, fmt.Errorf("failed to create serviceaccount: %w", err)
-	}
-	if err := ctrl.SetControllerReference(helmChart, clusterRoleBinding, r.Scheme); err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to set owner reference on clusterrolebinding: %w", err)
 	}
 	if err := r.Create(ctx, clusterRoleBinding); err != nil && !apierrors.IsAlreadyExists(err) {
 		return ctrl.Result{}, fmt.Errorf("failed to create clusterrolebinding: %w", err)
@@ -96,7 +96,7 @@ func (r *HelmChartReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	installJob := &batchv1.Job{}
 	installKey := types.NamespacedName{
 		Name:      heirruntime.JobName(helmChart.Name, heirruntime.JobOperationInstall),
-		Namespace: helmChart.Spec.Chart.TargetNamespace,
+		Namespace: helmChart.Namespace,
 	}
 	if err := r.Get(ctx, installKey, installJob); err != nil {
 		if !apierrors.IsNotFound(err) {
@@ -166,7 +166,7 @@ func (r *HelmChartReconciler) reconcileDelete(
 	teardownJob := &batchv1.Job{}
 	jobKey := types.NamespacedName{
 		Name:      heirruntime.JobName(helmChart.Name, heirruntime.JobOperationTeardown),
-		Namespace: helmChart.Spec.Chart.TargetNamespace,
+		Namespace: helmChart.Namespace,
 	}
 	err := r.Get(ctx, jobKey, teardownJob)
 	switch {
@@ -223,7 +223,7 @@ func (r *HelmChartReconciler) installJobSucceeded(ctx context.Context, helmChart
 	installJob := &batchv1.Job{}
 	key := types.NamespacedName{
 		Name:      heirruntime.JobName(helmChart.Name, heirruntime.JobOperationInstall),
-		Namespace: helmChart.Spec.Chart.TargetNamespace,
+		Namespace: helmChart.Namespace,
 	}
 	if err := r.Get(ctx, key, installJob); err != nil {
 		if apierrors.IsNotFound(err) {
@@ -243,7 +243,7 @@ func (r *HelmChartReconciler) deleteJobRBAC(ctx context.Context, helmChart *clus
 	}
 
 	sa := &corev1.ServiceAccount{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: helmChart.Spec.Chart.TargetNamespace},
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: helmChart.Namespace},
 	}
 	if err := r.Delete(ctx, sa); err != nil && !apierrors.IsNotFound(err) {
 		log.Error(err, "failed to delete serviceaccount", "serviceaccount", name)

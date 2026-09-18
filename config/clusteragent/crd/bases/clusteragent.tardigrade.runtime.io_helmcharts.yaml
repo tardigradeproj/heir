@@ -12,7 +12,7 @@ spec:
     listKind: HelmChartList
     plural: helmcharts
     singular: helmchart
-  scope: Cluster
+  scope: Namespaced
   versions:
   - name: v1alpha1
     schema:

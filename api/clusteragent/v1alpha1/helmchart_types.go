@@ -119,7 +119,6 @@ type HelmChartStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Cluster
 
 // HelmChart is the Schema for the helmcharts API
 type HelmChart struct {

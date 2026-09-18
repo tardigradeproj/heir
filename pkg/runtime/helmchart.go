@@ -44,7 +44,7 @@ func GenerateRBAC(helmChart *clusteragentv1alpha1.HelmChart) (*corev1.ServiceAcc
 	serviceAccount := &corev1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
-			Namespace: helmChart.Spec.Chart.TargetNamespace,
+			Namespace: helmChart.Namespace,
 		},
 	}
 
@@ -70,11 +70,7 @@ func GenerateRBAC(helmChart *clusteragentv1alpha1.HelmChart) (*corev1.ServiceAcc
 }
 
 // Command returns the argv-style commands helmChart's Job must run, in order, to perform
-// operation. It has no notion of shells or how the Job actually execs them — GenerateJob
-// decides whether that takes a single exec or a `sh -c` script chaining several steps
-// together. The Job pod runs as the ServiceAccount GenerateRBAC creates, bound to
-// cluster-admin, so none of these commands need their own kubeconfig or credentials — helm
-// picks up the pod's in-cluster ServiceAccount token automatically.
+// operation.
 func Command(helmChart *clusteragentv1alpha1.HelmChart, operation JobOperation) [][]string {
 	chart := helmChart.Spec.Chart
 	helm := helmChart.Spec.Helm
@@ -190,7 +186,7 @@ func GenerateJob(helmChart *clusteragentv1alpha1.HelmChart, operation JobOperati
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      JobName(helmChart.Name, operation),
-			Namespace: helmChart.Spec.Chart.TargetNamespace,
+			Namespace: helmChart.Namespace,
 			Labels:    labels,
 		},
 		Spec: batchv1.JobSpec{

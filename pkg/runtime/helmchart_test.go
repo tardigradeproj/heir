@@ -12,14 +12,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func helmChart(name, targetNamespace string) *clusteragentv1alpha1.HelmChart {
+func helmChart(name, namespace string) *clusteragentv1alpha1.HelmChart {
 	return &clusteragentv1alpha1.HelmChart{
-		ObjectMeta: metav1.ObjectMeta{Name: name},
-		Spec: clusteragentv1alpha1.HelmChartSpec{
-			Chart: clusteragentv1alpha1.ChartSpec{
-				TargetNamespace: targetNamespace,
-			},
-		},
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
 	}
 }
 
@@ -37,7 +32,7 @@ func TestGenerateRBAC(t *testing.T) {
 			},
 		},
 		{
-			name:  "service account namespace matches chart.targetNamespace",
+			name:  "service account namespace matches the HelmChart's own namespace",
 			chart: helmChart("podinfo", "podinfo"),
 			validate: func(t *testing.T, sa *corev1.ServiceAccount, _ *rbacv1.ClusterRoleBinding) {
 				assert.Equal(t, "podinfo", sa.Namespace)
@@ -74,7 +69,7 @@ func TestGenerateRBAC(t *testing.T) {
 			},
 		},
 		{
-			name:  "chart name and target namespace can differ, and each object follows its own field",
+			name:  "chart name and HelmChart namespace can differ, and each object follows its own field",
 			chart: helmChart("cert-manager", "cert-manager-system"),
 			validate: func(t *testing.T, sa *corev1.ServiceAccount, crb *rbacv1.ClusterRoleBinding) {
 				assert.Equal(t, "helmchart-cert-manager", sa.Name)
