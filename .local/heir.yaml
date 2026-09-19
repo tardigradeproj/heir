@@ -25,7 +25,7 @@ spec:
         nodePort: 30081
   cluster:
     apiServer:
-      sans: ["master0", "10.0.2.2"]
+      sans: ["master0", "10.0.2.2","integration-test-control-plane"]
       extraArgs:
         advertise-address: "10.0.2.2"
     controllerManager:
@@ -34,10 +34,10 @@ spec:
       extraArgs: {}
     controlPlaneExternalEndpoint:
       apiServer:
-        host: "10.0.2.2"
+        host: "integration-test-control-plane"
         port: 30080
       planeTunnel:
-        host: "10.0.2.2"
+        host: "integration-test-control-plane"
         port: 30081
     storage:
       type: kine

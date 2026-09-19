@@ -20,3 +20,5 @@ if docker inspect "${reg_name}" > /dev/null 2>&1; then
   docker stop "${reg_name}" || true
   docker rm "${reg_name}"
 fi
+
+docker compose -f .local/docker-compose.yml down -v
