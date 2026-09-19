@@ -96,10 +96,12 @@ type HelmChartSpec struct {
 
 	// Helm controls how the Helm operation itself is run.
 	// +optional
+	// +kubebuilder:default={}
 	Helm HelmOptions `json:"helm,omitzero"`
 
 	// Runtime controls the Job the chart controller creates to run Helm.
 	// +optional
+	// +kubebuilder:default={}
 	Runtime RuntimeOptions `json:"runtime,omitzero"`
 
 	// Values overrides the chart's default values.

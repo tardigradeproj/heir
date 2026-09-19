@@ -21,6 +21,9 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -28,6 +31,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	clusteragentv1alpha1 "github.com/tardigradeproj/heir/api/clusteragent/v1alpha1"
+	heirruntime "github.com/tardigradeproj/heir/pkg/runtime"
 )
 
 var _ = Describe("HelmChart Controller", func() {
@@ -38,7 +42,7 @@ var _ = Describe("HelmChart Controller", func() {
 
 		typeNamespacedName := types.NamespacedName{
 			Name:      resourceName,
-			Namespace: "default", // TODO(user):Modify as needed
+			Namespace: "default",
 		}
 		helmchart := &clusteragentv1alpha1.HelmChart{}
 
@@ -51,14 +55,20 @@ var _ = Describe("HelmChart Controller", func() {
 						Name:      resourceName,
 						Namespace: "default",
 					},
-					// TODO(user): Specify other spec details if needed.
+					Spec: clusteragentv1alpha1.HelmChartSpec{
+						Chart: clusteragentv1alpha1.ChartSpec{
+							Name: "podinfo",
+							Repo: "https://stefanprodan.github.io/podinfo",
+						},
+						// runtime.image is deliberately left unset here: it must come from the
+						// CRD's default (see +kubebuilder:default={} on HelmChartSpec.Runtime).
+					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}
 		})
 
 		AfterEach(func() {
-			// TODO(user): Cleanup logic after each test, like removing the resource instance.
 			resource := &clusteragentv1alpha1.HelmChart{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
@@ -66,19 +76,40 @@ var _ = Describe("HelmChart Controller", func() {
 			By("Cleanup the specific resource instance HelmChart")
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 		})
-		It("should successfully reconcile the resource", func() {
-			By("Reconciling the created resource")
+
+		It("creates a ServiceAccount, ClusterRoleBinding, and install Job for the chart", func() {
 			controllerReconciler := &HelmChartReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
 			}
 
-			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: typeNamespacedName,
-			})
+			By("reconciling once to add the finalizer")
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
 			Expect(err).NotTo(HaveOccurred())
-			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
-			// Example: If you expect a certain status condition after reconciliation, verify it here.
+
+			By("reconciling again to create the chart's resources")
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("checking the service account was created in the HelmChart's namespace")
+			sa := &corev1.ServiceAccount{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Name:      heirruntime.ServiceAccountName(resourceName),
+				Namespace: "default",
+			}, sa)).To(Succeed())
+
+			By("checking the clusterrolebinding was created")
+			crb := &rbacv1.ClusterRoleBinding{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Name: heirruntime.ServiceAccountName(resourceName),
+			}, crb)).To(Succeed())
+
+			By("checking the install job was created in the HelmChart's namespace")
+			job := &batchv1.Job{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Name:      heirruntime.JobName(resourceName, heirruntime.JobOperationInstall),
+				Namespace: "default",
+			}, job)).To(Succeed())
 		})
 	})
 })
