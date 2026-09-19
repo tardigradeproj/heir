@@ -15,7 +15,8 @@ spec:
     timeout: 120s
     atomic: true
   runtime:
-    image: ghcr.io/tardigradeproj/helmer:latest
+    image: kind-registry:5000/helmer:latest
+    bootstrap: true
   values:
 #    content: |
 #      new: set
