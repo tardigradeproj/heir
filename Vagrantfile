@@ -1,12 +1,15 @@
 
 Vagrant.configure("2") do |config|
   config.vm.box = "hashicorp-education/ubuntu-24-04"
-  config.vm.disk :disk, size: "25GB", primary: true
+  config.vm.disk :disk, size: "40GB", primary: true
 
   config.vm.provider "virtualbox" do |vb|
     vb.cpus = 2
   end
-
+  config.vm.provision "shell", name: "resize-fs", inline: <<-SHELL
+    sudo lvextend -l +100%FREE /dev/mapper/ubuntu--vg-ubuntu--lv
+    sudo resize2fs /dev/mapper/ubuntu--vg-ubuntu--lv
+  SHELL
   config.vm.synced_folder "./", "/home/vagrant/heir", type: "rsync",
     rsync__exclude: [".git/", ".DS_Store", "vendor/"]
 
@@ -65,10 +68,7 @@ Vagrant.configure("2") do |config|
 #     kind create cluster --name heir
 #   SHELL
 
-  config.vm.provision "shell", name: "resize-fs", inline: <<-SHELL
-    sudo lvextend -l +100%FREE /dev/mapper/ubuntu--vg-ubuntu--lv
-    sudo resize2fs /dev/mapper/ubuntu--vg-ubuntu--lv
-  SHELL
+
 
 #   config.vm.provision "shell", name: "minikube", inline: <<-SHELL
 #     ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
