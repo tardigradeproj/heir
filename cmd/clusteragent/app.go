@@ -173,8 +173,7 @@ func Run() {
 	// The mounted admin kubeconfig's server is baked in as https://127.0.0.1:6443,
 	// correct only if clusteragent shared a pod with the tenant's apiserver. It runs as
 	// its own Deployment in the same namespace instead, so it must reach the apiserver
-	// through the Service in front of it — the same in-cluster DNS name already present
-	// in the apiserver certificate's SANs (see APIServerAltNames in pkg/runtime/pki_auth.go).
+	// through the Service in front of it.
 	cfg.Host = fmt.Sprintf("https://%s.%s.svc.cluster.local:6443", runtimeObj.Name, runtimeObj.Namespace)
 
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
@@ -221,6 +220,14 @@ func Run() {
 		Recorder:  mgr.GetEventRecorder("clusteragent-csrapprover"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "CSRApprover")
+		os.Exit(1)
+	}
+
+	if err := (&clusteragentcontroller.HelmChartReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "Failed to create controller", "controller", "HelmChart")
 		os.Exit(1)
 	}
 

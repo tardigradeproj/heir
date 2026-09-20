@@ -1,0 +1,25 @@
+FROM --platform=$BUILDPLATFORM alpine:3.21 AS fetch
+
+ARG TARGETARCH
+
+COPY .dependencies-version.yaml /tmp/.dependencies-version.yaml
+
+RUN apk add --no-cache curl ca-certificates \
+    && HELM_VERSION="$(grep '^helm:' /tmp/.dependencies-version.yaml | awk '{print $2}')" \
+    && curl -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-${TARGETARCH}.tar.gz" -o /tmp/helm.tar.gz \
+    && tar -xzf /tmp/helm.tar.gz -C /tmp \
+    && mv "/tmp/linux-${TARGETARCH}/helm" /usr/local/bin/helm \
+    && chmod +x /usr/local/bin/helm
+
+FROM alpine:3.21
+
+COPY --from=fetch /etc/ssl/certs /etc/ssl/certs
+COPY --from=fetch /usr/local/bin/helm /usr/local/bin/helm
+
+# HOME must be writable without relying on an /etc/passwd entry for the numeric UID below,
+# since that's where helm keeps its repository config/cache (~/.config/helm, ~/.cache/helm).
+ENV HOME=/tmp
+
+USER 65532:65532
+
+ENTRYPOINT ["/usr/local/bin/helm"]

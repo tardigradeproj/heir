@@ -2,8 +2,9 @@
 
 This guide walks through building every heir component from source and wiring them together on
 your own machine: a local management cluster (via kind), the heir controller manager, a tenant
-`Runtime`, and a worker node (via Vagrant) joined to that tenant cluster. It is the fastest way to
-exercise a change end to end before opening a PR.
+`Runtime`, and a worker node (`dev-worker0`, a Docker container defined in
+`.local/docker-compose.yml`) joined to that tenant cluster. It is the fastest way to exercise a
+change end to end before opening a PR.
 
 The project is driven by two Makefiles. `Makefile` covers the heir controller manager itself
 (building, testing, installing CRDs, deploying to a cluster). `Makefile.distro` covers everything
@@ -17,13 +18,12 @@ You will need the following tools installed and available on your `PATH`:
 1. **Go**, matching the version in `go.mod`, to build the controller manager and the `distro` CLI.
 2. **[goreleaser](https://goreleaser.com/)**, which cross-compiles every heir binary and builds
    the tenant control plane and plane tunnel container images.
-3. **Docker**, to run the local kind cluster and registry, and because goreleaser uses it to
-   build every heir image (including the controller manager).
+3. **Docker**, with the `docker compose` plugin, to run the local kind cluster and registry, the
+   `dev-worker0` container that plays the role of a worker node, and because goreleaser uses it
+   to build every heir image (including the controller manager).
 4. **[kind](https://kind.sigs.k8s.io/)**, to run the local management cluster.
 5. **kubectl**, to interact with both the management cluster and, later, the tenant cluster.
-6. **[Vagrant](https://www.vagrantup.com/)**, to run a disposable VM that plays the role of a
-   worker node, since heir worker nodes are not designed to run as containers.
-7. **[yq](https://github.com/mikefarah/yq)**, used by `Makefile.distro` to read dependency
+6. **[yq](https://github.com/mikefarah/yq)**, used by `Makefile.distro` to read dependency
    versions out of `.dependencies-version.yaml`.
 
 ## 1. Download dependency artifacts and build every heir binary and image
@@ -45,8 +45,10 @@ make build-bins
 `.local/setup-management-cluster.sh` creates the environment the rest of this guide runs against.
 It starts a local Docker registry container, creates a kind cluster configured to trust that
 registry, tags and pushes the `heir`/`heir-tunnel`/`heir-controller-manager` images built in step 1
-(plus a Postgres image) into the registry, and finally provisions a Postgres deployment that the
-tenant Runtime will use as its kine storage backend.
+(plus a Postgres image) into the registry, starts the worker containers defined in
+`.local/docker-compose.yml` (this guide only uses `dev-worker0`; `dev-worker1` is available if you
+need a second node), and finally provisions a Postgres deployment that the tenant Runtime will use
+as its kine storage backend.
 
 ```sh
 ./.local/setup-management-cluster.sh
@@ -75,9 +77,9 @@ make deploy IMG="localhost:5001/heir-controller-manager:latest"
 
 `.local/heir.yaml` is a sample `Runtime` that references the `heir` and `heir-tunnel` images
 pushed to the local registry, exposes the API server and plane tunnel on NodePorts `30080` and
-`30081` so the Vagrant worker can reach them, and uses the Postgres instance from step 2 as its
-kine storage backend. Applying it and watching its status will tell you once the tenant control
-plane is up.
+`30081` so `dev-worker0` can reach them over the `kind` docker network both it and the kind
+control-plane node are attached to, and uses the Postgres instance from step 2 as its kine storage
+backend. Applying it and watching its status will tell you once the tenant control plane is up.
 
 ```sh
 kubectl apply -f .local/heir.yaml
@@ -99,10 +101,11 @@ kubectl get secret my-cluster-kubeconfig -o jsonpath='{.data.kubeconfig}' | base
 ```
 
 The server address baked into that kubeconfig is `.local/heir.yaml`'s
-`controlPlaneExternalEndpoint.apiServer.host`, `10.0.2.2`, the address the *Vagrant worker* uses to
-reach the host machine, not an address the host machine itself can dial. Since the rest of this
-guide runs the `--kubeconfig my-cluster-kubeconfig` commands directly on your host, point it at
-`localhost` instead, since kind also maps the same NodePort (`30080`) onto your host:
+`controlPlaneExternalEndpoint.apiServer.host`, `integration-test-control-plane` — the kind
+control-plane container's own name, reachable from `dev-worker0` because both containers sit on
+the same `kind` docker network, but not an address the host machine itself can dial. Since the
+rest of this guide runs the `--kubeconfig my-cluster-kubeconfig` commands directly on your host,
+point it at `localhost` instead, since kind also maps the same NodePort (`30080`) onto your host:
 
 ```sh
 kubectl --kubeconfig my-cluster-kubeconfig config set-cluster my-cluster --server=https://127.0.0.1:30080
@@ -110,7 +113,7 @@ kubectl --kubeconfig my-cluster-kubeconfig config set-cluster my-cluster --serve
 
 ## 6. Issue a worker join token
 
-A `WorkerJoinToken` mints a short-lived bootstrap token and kubeconfig against a specific tenant
+A `WorkerJoinToken` mints a short-lived bootstrap token against a specific tenant
 `Runtime`, so that a worker node can authenticate to it during the join process. Since
 `clusteragent` reconciles it on the tenant cluster itself, apply and inspect it there using the
 kubeconfig fetched in the previous step. `.local/heir-worker-join-token.yaml` requests one for the
@@ -121,35 +124,52 @@ kubectl --kubeconfig my-cluster-kubeconfig apply -f .local/heir-worker-join-toke
 kubectl --kubeconfig my-cluster-kubeconfig get workerjointoken new-node
 ```
 
-## 7. Copy the join token onto the Vagrant worker
+## 7. Copy the join token onto dev-worker0
 
 `clusteragent` publishes the minted token as the `jointoken` key of a `<name>-jointoken` Secret in
-the `kube-system` namespace of the tenant cluster. The `distro provision worker` command, run
-inside the VM in the next step, expects that value written to `/home/vagrant/heir/token`. The
-command below reads the Secret, and writes it into the running Vagrant VM in a single pipeline.
+the `kube-system` namespace of the tenant cluster. The `heir provision worker` command, run inside
+`dev-worker0` in the next step, expects that value written to `/tmp/token`. The command below reads
+the Secret and writes it into the running container in a single pipeline.
 
 ```sh
 kubectl --kubeconfig my-cluster-kubeconfig -n kube-system get secret new-node-jointoken -o jsonpath='{.data.jointoken}' \
-  | vagrant ssh -c "sudo tee /home/vagrant/heir/token > /dev/null"
+  | docker exec -i dev-worker0 sh -c 'cat > /tmp/token'
 ```
 
-## 8. Build the distro binary and join the worker
+## 8. Join the worker
 
-If this is your first time using the VM, start and provision it first with `make vagrant-up`. Then,
-from inside the VM, build the `distro` CLI with the `embedartifacts` build tag, which bakes the
-worker binaries downloaded in step 1 into the resulting binary, and run its `provision worker`
-command with the token copied over in step 7.
+Connect worker node using the token copied in step 7.
 
 ```sh
-vagrant ssh -c "cd /home/vagrant/heir && go build -tags=embedartifacts cmd/distro.go"
-vagrant ssh -c "cd /home/vagrant/heir && sudo ./distro provision worker --token=\$(cat /home/vagrant/heir/token)"
+docker exec dev-worker0 heir provision worker --token="$(docker exec dev-worker0 cat /tmp/token)"
 ```
 
-If you would rather work interactively, `make vagrant-ssh` opens a shell in the VM, from where you
-can run the same two commands (`cd /home/vagrant/heir`, then the `go build` and `sudo ./distro ...` lines above)
-directly.
+If you would rather work interactively, `docker exec -it dev-worker0 bash` opens a shell in the
+container, from where you can run `heir provision worker --token=$(cat /tmp/token)` directly.
 
-## 9. Validate that the node joined
+## 9. Let dev-worker0 pull images from the local registry
+
+Any image referenced as `kind-registry:5000/<name>` fails to pull from `dev-worker0`, since
+containerd's CRI plugin assumes HTTPS for every registry host except the literal name `localhost`,
+and the `registry:2` container behind `kind-registry:5000` only serves plain HTTP. `heir provision
+worker` does not yet support configuring a registry mirror itself, so patch the containerd config
+it generated by hand and restart just the containerd process (not the whole `heir` service, which
+would regenerate the file and undo this) to pick up the change:
+
+```sh
+docker exec dev-worker0 sh -c 'cat >> /etc/lib/heir/containerd/config.toml <<EOF
+
+[plugins."io.containerd.grpc.v1.cri".registry.mirrors."kind-registry:5000"]
+  endpoint = ["http://kind-registry:5000"]
+EOF
+pkill -x containerd'
+```
+
+`heir`'s own process supervisor restarts containerd automatically after the `pkill`, using the
+same `--config` path, so it picks up the appended mirror. Repeat this any time you rejoin
+`dev-worker0` from scratch, since `provision worker` rewrites `config.toml` on every run.
+
+## 10. Validate that the node joined
 
 Using the tenant kubeconfig fetched back in step 5, confirm the worker node registered
 successfully.
@@ -158,24 +178,33 @@ successfully.
 kubectl --kubeconfig my-cluster-kubeconfig get nodes
 ```
 
-A successful join looks like this, with the Vagrant node in the `Ready` state:
+A successful join looks like this, with `worker0` (dev-worker0's hostname) in the `Ready` state:
 
 ```
-NAME             STATUS   ROLES    AGE   VERSION
-vagrant-ubuntu   Ready    <none>   42m   v1.xx.xx
+NAME      STATUS   ROLES    AGE   VERSION
+worker0   Ready    <none>   42m   v1.xx.xx
 ```
 
 ## Troubleshooting
 
-If the node does not appear, or does not reach `Ready`, open a shell in the VM with
-`make vagrant-ssh` and inspect the heir worker service:
+If the node does not appear, or does not reach `Ready`, open a shell in the container with
+`docker exec -it dev-worker0 bash` and inspect the heir worker service:
 
 ```sh
-sudo systemctl status heir.service
-sudo journalctl -xu heir --since "1 minutes ago"
-sudo /var/lib/heir/bin/crictl --runtime-endpoint /run/heir/containerd.sock ps
+systemctl status heir.service
+journalctl -xu heir --since "1 minutes ago"
+/var/lib/heir/bin/crictl --runtime-endpoint /run/heir/containerd.sock ps
 ```
 
-To reset the VM's worker state and try again from step 8, run `.local/cleanup-worker.sh` inside
-the VM. It stops the heir service, tears down containerd and its containers, removes the CNI and
-iptables state left behind, and deletes every file heir wrote under `/etc`, `/var`, and `/run`.
+`docker exec` already drops you in as root inside the container, so none of these need `sudo`.
+
+To reset the container's worker state and try again from step 8, pipe `.local/cleanup-worker.sh`
+into a shell running inside it (the container has no copy of the repo of its own, so this avoids
+needing one):
+
+```sh
+cat .local/cleanup-worker.sh | docker exec -i dev-worker0 sh
+```
+
+It stops the heir service, tears down containerd and its containers, removes the CNI and iptables
+state left behind, and deletes every file heir wrote under `/etc`, `/var`, and `/run`.

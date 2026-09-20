@@ -30,6 +30,30 @@ rules:
   - update
   - watch
 - apiGroups:
+  - ""
+  resources:
+  - serviceaccounts
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - batch
+  resources:
+  - jobs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
   - certificates.k8s.io
   resources:
   - certificatesigningrequests
@@ -54,6 +78,7 @@ rules:
 - apiGroups:
   - clusteragent.tardigrade.runtime.io
   resources:
+  - helmcharts
   - workerjointokens
   verbs:
   - create
@@ -66,12 +91,14 @@ rules:
 - apiGroups:
   - clusteragent.tardigrade.runtime.io
   resources:
+  - helmcharts/finalizers
   - workerjointokens/finalizers
   verbs:
   - update
 - apiGroups:
   - clusteragent.tardigrade.runtime.io
   resources:
+  - helmcharts/status
   - workerjointokens/status
   verbs:
   - get
@@ -84,3 +111,15 @@ rules:
   verbs:
   - create
   - patch
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - clusterrolebindings
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch

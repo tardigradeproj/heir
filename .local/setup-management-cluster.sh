@@ -133,11 +133,16 @@ docker push "localhost:${reg_port}/heir-controller-manager:latest"
 docker tag "ghcr.io/tardigradeproj/clusteragent:latest-${arch}" "localhost:${reg_port}/clusteragent:latest"
 docker push "localhost:${reg_port}/clusteragent:latest"
 
+docker tag "ghcr.io/tardigradeproj/helmer:latest-${arch}" "localhost:${reg_port}/helmer:latest"
+docker push "localhost:${reg_port}/helmer:latest"
+
 # 8. Provision PostgreSQL (secret, deployment, service) and wait until healthy
 kubectl --kubeconfig="${kubeconfig_path}" create secret generic postgres-credentials \
   --from-literal=password=kine-password \
   --from-literal=dsn=postgres://kine:kine-password@postgres.default.svc.cluster.local:5432/kine?sslmode=disable \
   --namespace=default
+
+docker compose -f .local/docker-compose.yml up -d
 
 cat <<EOF | kubectl --kubeconfig="${kubeconfig_path}" apply -f -
 apiVersion: apps/v1

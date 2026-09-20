@@ -25,3 +25,6 @@ resources:
 - clusteragent_workerjointoken_admin_role.yaml
 - clusteragent_workerjointoken_editor_role.yaml
 - clusteragent_workerjointoken_viewer_role.yaml
+- clusteragent_helmchart_admin_role.yaml
+- clusteragent_helmchart_editor_role.yaml
+- clusteragent_helmchart_viewer_role.yaml

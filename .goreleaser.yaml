@@ -139,6 +139,7 @@ dockers_v2:
       - clusteragent
     extra_files:
       - config/clusteragent/crd/bases/clusteragent.tardigrade.runtime.io_workerjointokens.yaml
+      - config/clusteragent/crd/bases/clusteragent.tardigrade.runtime.io_helmcharts.yaml
     images:
       - ghcr.io/tardigradeproj/clusteragent
     tags:
@@ -153,6 +154,18 @@ dockers_v2:
       - tunnel
     images:
       - ghcr.io/tardigradeproj/heir-tunnel
+    tags:
+      - "{{ .Tag }}"
+      - "{{ if or .IsSnapshot (and (not .IsNightly) (not (contains .Version \"-rc\"))) }}latest{{ end }}"
+    platforms:
+      - linux/amd64
+      - linux/arm64
+  - id: helmer
+    dockerfile: images/Dockerfile.helmer
+    extra_files:
+      - .dependencies-version.yaml
+    images:
+      - ghcr.io/tardigradeproj/helmer
     tags:
       - "{{ .Tag }}"
       - "{{ if or .IsSnapshot (and (not .IsNightly) (not (contains .Version \"-rc\"))) }}latest{{ end }}"

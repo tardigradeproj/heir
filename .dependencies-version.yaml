@@ -10,3 +10,4 @@ runc: v1.2.6
 crictl: v1.35.0
 cni: v1.9.1
 calico: 3.31.4
+helm: v3.17.3
