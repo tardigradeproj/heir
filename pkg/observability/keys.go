@@ -7,4 +7,6 @@ const (
 	NodeName      = "node.name"
 	PlaneTunnelID = "plane_tunnel.id"
 	Server        = "server"
+	Namespace     = "namespace"
+	Chart         = "chart"
 )
