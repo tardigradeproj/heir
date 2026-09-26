@@ -55,11 +55,9 @@ type ClusterSpec struct {
 	// tenant cluster once its API server becomes available.
 	// +kubebuilder:default={}
 	ExtraResources ExtraResourcesSpec `json:"extraResources,omitempty"`
-	// Addons configures cluster addons installed via Helm, keyed by addon name. Disable one
-	// of Heir's built-in default addons, override its values, or install an entirely new
-	// addon — see AddonSpec.
-	// +optional
-	Addons map[string]AddonSpec `json:"addons,omitempty"`
+	// Addons configures cluster addons
+	// +kubebuilder:default={}
+	Addons AddonsSpec `json:"addons,omitempty"`
 }
 
 // PlaneTunnelSpec configures the plane tunnel TCP multiplexer, which tunnels traffic

@@ -127,18 +127,24 @@ func installedChart(name string, spec clusteragentv1alpha1.HelmChartSpec) cluste
 
 // ConsolidateAddons builds the full set of HelmCharts Heir should install for runtime.
 func ConsolidateAddons(runtime *controlplanev1alpha1.Runtime) ([]clusteragentv1alpha1.HelmChart, error) {
-	addons := runtime.Spec.Cluster.Addons
-	charts := make([]clusteragentv1alpha1.HelmChart, 0, len(buildInAddons)+len(addons))
+	helmAddons := runtime.Spec.Cluster.Addons.Helm
+
+	declared := make(map[string]controlplanev1alpha1.AddonChartSpec, len(helmAddons.Charts))
+	for _, c := range helmAddons.Charts {
+		declared[c.Name] = c
+	}
+
+	charts := make([]clusteragentv1alpha1.HelmChart, 0, len(buildInAddons)+len(declared))
 
 	for name, buildIn := range buildInAddons {
-		addon, declared := addons[name]
+		addon, isDeclared := declared[name]
 
-		if declared && addon.Install != nil {
-			// A full Install spec replaces the built-in default entirely.
+		if isDeclared && addon.Install != nil {
+			// A full install spec replaces the built-in default entirely.
 			charts = append(charts, installedChart(name, *addon.Install))
 			continue
 		}
-		if declared && addon.Enabled != nil && !*addon.Enabled {
+		if isDeclared && addon.Enabled != nil && !*addon.Enabled {
 			// Removed: excluded from the returned array.
 			log.WithField("chart", name).Debug("addon disabled")
 			continue
@@ -151,7 +157,7 @@ func ConsolidateAddons(runtime *controlplanev1alpha1.Runtime) ([]clusteragentv1a
 		if buildIn.values != nil {
 			chart = withValues(chart, buildIn.values(runtime))
 		}
-		if declared && addon.Override != nil {
+		if isDeclared && addon.Override != nil {
 			// Only replace the built-in's own default values when the user actually
 			// declared an override
 			log.WithFields(log.Fields{
@@ -163,7 +169,7 @@ func ConsolidateAddons(runtime *controlplanev1alpha1.Runtime) ([]clusteragentv1a
 		charts = append(charts, chart)
 	}
 
-	for name, addon := range addons {
+	for name, addon := range declared {
 		if _, isBuiltIn := buildInAddons[name]; isBuiltIn {
 			continue // already handled above
 		}
@@ -172,6 +178,13 @@ func ConsolidateAddons(runtime *controlplanev1alpha1.Runtime) ([]clusteragentv1a
 		}
 		charts = append(charts, installedChart(name, *addon.Install))
 	}
+
+	if image := helmAddons.Runtime.Image; image != "" {
+		for i := range charts {
+			charts[i].Spec.Runtime.Image = image
+		}
+	}
+
 	log.WithField("len", len(charts)).Info("addons to be installed")
 	return charts, nil
 }
