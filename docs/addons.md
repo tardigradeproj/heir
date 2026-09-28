@@ -2,13 +2,10 @@
 
 ## Background
 
-Today, addons such as CoreDNS, the CNI plugin, nodeProfile, and others are provisioned using
-Kubernetes manifests defined in YAML files. Because these manifests are rendered from scratch,
-the `Runtime` CRD has grown bespoke fields to expose the handful of settings each component
-needs, for example `NetworkSpec.Coredns` (`CorednsSpec.Replicas`, `RegistrySettings`,
-`ClusterDNSIP` in `api/v1alpha1/coredns.go`) and `NetworkSpec.CNI`.
-
-As more addons are added, this CRD surface will keep growing.
+Historically, addons such as CoreDNS and the CNI plugin were provisioned using Kubernetes
+manifests rendered from scratch, which meant the `Runtime` CRD grew bespoke fields to expose the
+handful of settings each component needed (e.g. the old `CorednsSpec`). As more addons were
+added, this CRD surface would have kept growing.
 
 ## Helm Based Addons
 
@@ -17,8 +14,12 @@ Addons ship with default Helm configuration and values, and users can override t
 as needed. The cluster agent is configured to apply all bootstrap Helm charts on startup, and
 it installs the chart CRD on the upstream cluster at the same time.
 
-By default, Heir boots the cluster with kube proxy, RKE2, Flannel CNI and more, each installed
-as a Helm chart. Users can disable any of these through the `Runtime` manifest:
+By default, Heir boots the cluster with CoreDNS, Flannel CNI and more, each installed as a
+Helm chart. Addons are configured under `cluster.addons.helm`, keyed by name in the `charts`
+list. `charts` entries are uniquely identified by `name` — declaring the same name twice is
+rejected by the API server. Use `enabled: false` to disable one of Heir's built-in addons,
+`install` to add an entirely new chart to the bootstrap phase, or `override` to customize a
+built-in addon's Helm values without replacing its chart source:
 
 ```yaml
 kind: Runtime
@@ -29,29 +30,23 @@ spec:
   controlPlane: ...
   cluster:
     addons:
-      coredns:
-        enabled: false
-```
-
-To add an entirely new chart to the bootstrap phase, or to override an existing addon's
-configuration, set `install` for a new addon or `override` for an existing one:
-
-```yaml
-kind: Runtime
-metadata:
-  name: my-cluster
-  namespace: default
-spec:
-  controlPlane: ...
-  cluster:
-    addons:
-      cilium: # user defined addon
-        install:
-          ...
-      metrics-server: # override addon default value
-        override:
-          values: |
-            replicas: 2
+      helm:
+        runtime:
+          image: <image> # overrides spec.runtime.image for every addon's HelmChart
+        charts:
+        - name: coredns
+          enabled: false
+        - name: cilium # user defined addon
+          install:
+            chart:
+              name: cilium
+              repo: https://helm.cilium.io/
+              version: "1.15.0"
+        - name: metrics-server # override addon default value
+          override:
+            values:
+              content: |
+                replicas: 2
 ```
 
 ## Chart Controller

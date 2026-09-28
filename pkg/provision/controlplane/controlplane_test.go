@@ -488,25 +488,6 @@ func TestParseConfig(t *testing.T) {
 			},
 		},
 		{
-			name: "CRD default: coredns.clusterDNSIP is 10.96.0.10 when omitted",
-			makeConfig: func(t *testing.T) string {
-				return writeTempRuntimeConfig(t, minimalRuntimeConfig)
-			},
-			validate: func(t *testing.T, r *v1alpha1.Runtime) {
-				assert.Equal(t, "10.96.0.10", r.Spec.Cluster.Network.Coredns.ClusterDNSIP)
-			},
-		},
-		{
-			name: "CRD default: coredns.replicas is 2 when omitted",
-			makeConfig: func(t *testing.T) string {
-				return writeTempRuntimeConfig(t, minimalRuntimeConfig)
-			},
-			validate: func(t *testing.T, r *v1alpha1.Runtime) {
-				require.NotNil(t, r.Spec.Cluster.Network.Coredns.Replicas)
-				assert.Equal(t, int32(2), *r.Spec.Cluster.Network.Coredns.Replicas)
-			},
-		},
-		{
 			name: "CRD default: deployment.replicas is 2 when omitted",
 			makeConfig: func(t *testing.T) string {
 				return writeTempRuntimeConfig(t, `apiVersion: controlplane.tardigrade.runtime.io/v1alpha1
@@ -558,36 +539,6 @@ spec:
 			},
 			validate: func(t *testing.T, r *v1alpha1.Runtime) {
 				assert.Equal(t, "192.168.0.0/16", r.Spec.Cluster.Network.PodCIDR)
-			},
-		},
-		{
-			name: "explicit coredns replicas overrides default",
-			makeConfig: func(t *testing.T) string {
-				return writeTempRuntimeConfig(t, `apiVersion: controlplane.tardigrade.runtime.io/v1alpha1
-kind: Runtime
-metadata:
-  name: test-cluster
-  namespace: default
-spec:
-  controlPlane:
-    heir:
-      image: "heir:test"
-    deployment:
-      replicas: 1
-      serviceAccountName: default
-    service:
-      serviceType: ClusterIP
-  cluster:
-    storage:
-      type: kine
-    network:
-      coredns:
-        replicas: 3
-`)
-			},
-			validate: func(t *testing.T, r *v1alpha1.Runtime) {
-				require.NotNil(t, r.Spec.Cluster.Network.Coredns.Replicas)
-				assert.Equal(t, int32(3), *r.Spec.Cluster.Network.Coredns.Replicas)
 			},
 		},
 		{

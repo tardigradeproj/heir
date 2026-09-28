@@ -46,7 +46,7 @@ spec:
                 properties:
                   addons:
                     default: {}
-                    description: Addons configures cluster addons — see AddonsSpec.
+                    description: Addons configures cluster addons
                     properties:
                       helm:
                         default: {}
@@ -54,8 +54,7 @@ spec:
                           the HelmChart controller.
                         properties:
                           charts:
-                            description: Charts configures cluster addons — see AddonChartSpec.
-                              A name can appear at most once.
+                            description: Charts configures cluster addons
                             items:
                               description: |-
                                 AddonChartSpec configures a single cluster addon, named by Name. Enabled only applies to one
@@ -450,6 +449,7 @@ spec:
                               HelmChart.
                             properties:
                               image:
+                                default: ghcr.io/tardigradeproj/helmer:latest
                                 description: |-
                                   Image overrides the image (HelmChart.Spec.Runtime.Image) that runs `helm` for every
                                   addon's installer Job.
@@ -587,54 +587,6 @@ spec:
                       Network configures pod CIDR, service CIDR, CNI plugin, kube-proxy, and CoreDNS
                       for the tenant cluster.
                     properties:
-                      cni:
-                        default: {}
-                        description: CNI configures the Container Network Interface
-                          plugin installed in the tenant cluster.
-                        properties:
-                          supplier:
-                            default: flannel
-                            description: Supplier is the CNI plugin to install.
-                            enum:
-                            - flannel
-                            - custom
-                            type: string
-                        type: object
-                      coredns:
-                        default: {}
-                        description: Coredns configures CoreDNS in the tenant cluster.
-                        properties:
-                          clusterDNSIP:
-                            default: 10.96.0.10
-                            type: string
-                          registrySettings:
-                            default:
-                              image: coredns/coredns:v1.13.1
-                              registry: registry.k8s.io
-                            description: |-
-                              RegistrySettings configures a container image registry reference,
-                              including the registry host, image name, and pull policy.
-                            properties:
-                              image:
-                                description: Image is the image name within the registry,
-                                  without the tag or digest.
-                                type: string
-                              pullPolicy:
-                                description: PullPolicy controls when the kubelet
-                                  pulls the image.
-                                type: string
-                              registry:
-                                default: registry.k8s.io
-                                description: Registry is the container registry hostname,
-                                  e.g. registry.k8s.io.
-                                type: string
-                            type: object
-                          replicas:
-                            default: 2
-                            format: int32
-                            minimum: 1
-                            type: integer
-                        type: object
                       dnsDomain:
                         default: cluster.local
                         description: DNSDomain is the DNS domain suffix for the tenant

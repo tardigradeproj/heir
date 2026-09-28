@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/utils/ptr"
 	sigsyaml "sigs.k8s.io/yaml"
 
 	controlplanev1alpha1 "github.com/tardigradeproj/heir/api/controlplane/v1alpha1"
@@ -16,18 +17,16 @@ func defaultNodeProfileRuntime(kubelet controlplanev1alpha1.KubeletSpec) *contro
 	return &controlplanev1alpha1.Runtime{
 		Spec: controlplanev1alpha1.RuntimeSpec{
 			Cluster: controlplanev1alpha1.ClusterSpec{
-				Network: controlplanev1alpha1.NetworkSpec{
-					Coredns: controlplanev1alpha1.CorednsSpec{
-						ClusterDNSIP: "10.96.0.10",
-					},
-					CNI: controlplanev1alpha1.CNISpec{
-						Supplier: "flannel",
-					},
-				},
 				Kubelet: kubelet,
 			},
 		},
 	}
+}
+
+func nodeProfileRuntimeWithAddons(charts ...controlplanev1alpha1.AddonChartSpec) *controlplanev1alpha1.Runtime {
+	runtime := defaultNodeProfileRuntime(controlplanev1alpha1.KubeletSpec{})
+	runtime.Spec.Cluster.Addons.Helm.Charts = charts
+	return runtime
 }
 
 func defaultNodeProfileWrkCtx() *typ.WorkerContext {
@@ -155,6 +154,35 @@ func TestCreateNodeProfileManifest(t *testing.T) {
 				var extraArgs map[string]string
 				require.NoError(t, sigsyaml.Unmarshal([]byte(raw), &extraArgs))
 				assert.Empty(t, extraArgs)
+			},
+		},
+		{
+			name:    "cni.provider defaults to flannel when the flannel addon isn't declared",
+			wrkCtx:  defaultNodeProfileWrkCtx(),
+			runtime: defaultNodeProfileRuntime(controlplanev1alpha1.KubeletSpec{}),
+			validate: func(t *testing.T, cm corev1.ConfigMap) {
+				assert.Equal(t, "flannel", cm.Data["cni.provider"])
+			},
+		},
+		{
+			name:   "cni.provider defaults to flannel when the flannel addon is declared but not disabled",
+			wrkCtx: defaultNodeProfileWrkCtx(),
+			runtime: nodeProfileRuntimeWithAddons(controlplanev1alpha1.AddonChartSpec{
+				Name: "flannel",
+			}),
+			validate: func(t *testing.T, cm corev1.ConfigMap) {
+				assert.Equal(t, "flannel", cm.Data["cni.provider"])
+			},
+		},
+		{
+			name:   "cni.provider becomes custom when the flannel addon is disabled",
+			wrkCtx: defaultNodeProfileWrkCtx(),
+			runtime: nodeProfileRuntimeWithAddons(controlplanev1alpha1.AddonChartSpec{
+				Name:    "flannel",
+				Enabled: ptr.To(false),
+			}),
+			validate: func(t *testing.T, cm corev1.ConfigMap) {
+				assert.Equal(t, "custom", cm.Data["cni.provider"])
 			},
 		},
 	}

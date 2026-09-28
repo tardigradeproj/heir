@@ -18,9 +18,11 @@ type buildInChart struct {
 	values  func(runtime *controlplanev1alpha1.Runtime) clusteragentv1alpha1.ValuesSpec
 }
 
-const defaultCorednsValues = `
+var defaultCorednsValues = fmt.Sprintf(`
 replicaCount: 1
-`
+service:
+  clusterIP: %q
+`, clusterDNSIP)
 
 func flannelValues(runtime *controlplanev1alpha1.Runtime) clusteragentv1alpha1.ValuesSpec {
 	return clusteragentv1alpha1.ValuesSpec{
@@ -60,7 +62,7 @@ var buildInAddons = map[string]buildInChart{
 					Bootstrap: true,
 				},
 				Helm: clusteragentv1alpha1.HelmOptions{
-					BackOffLimit: new(int32(100)),
+					BackOffLimit: new(int32(1000)),
 					Atomic:       true,
 					Timeout:      v1.Duration{Duration: time.Minute * 10},
 				},
@@ -80,7 +82,7 @@ var buildInAddons = map[string]buildInChart{
 			},
 			ObjectMeta: v1.ObjectMeta{
 				Name:      "flannel",
-				Namespace: "kube-flannel",
+				Namespace: "kube-system",
 			},
 			Spec: clusteragentv1alpha1.HelmChartSpec{
 				Chart: clusteragentv1alpha1.ChartSpec{
@@ -94,7 +96,7 @@ var buildInAddons = map[string]buildInChart{
 					Bootstrap: true,
 				},
 				Helm: clusteragentv1alpha1.HelmOptions{
-					BackOffLimit: new(int32(100)),
+					BackOffLimit: new(int32(1000)),
 					Atomic:       true,
 					Timeout:      v1.Duration{Duration: time.Minute * 10},
 				},

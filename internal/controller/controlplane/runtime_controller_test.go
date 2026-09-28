@@ -198,7 +198,6 @@ var _ = Describe("Runtime Controller", func() {
 			Expect(configMap.Data).To(HaveKey(layout.Config.EgressSelector.SecretKey))
 			Expect(configMap.Data).To(HaveKey(layout.StaticManifest.Bootstrap.SecretKey))
 			Expect(configMap.Data).To(HaveKey(layout.StaticManifest.NodeProfile.SecretKey))
-			Expect(configMap.Data).To(HaveKey(layout.StaticManifest.Coredns.SecretKey))
 			Expect(configMap.Data).To(HaveKey(layout.StaticManifest.KubeProxy.SecretKey))
 
 			By("verifying the control-plane Service is created")
