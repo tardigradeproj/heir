@@ -1,0 +1,25 @@
+apiVersion: clusteragent.tardigrade.runtime.io/v1alpha1
+kind: HelmChart
+metadata:
+  name: cilium
+  namespace: kube-system
+spec:
+  chart:
+    name: cilium
+    repo: https://helm.cilium.io/
+    targetNamespace: kube-system
+    createNamespace: false
+    version: "1.20.0"
+  helm:
+    version: v3
+    backOffLimit: 30
+    timeout: 260s
+    atomic: true
+  runtime:
+    image: kind-registry:5000/helmer:latest
+    bootstrap: true
+#  values:
+#    content: |
+#      new: set
+#    set:
+#      replicaCount: "1"
