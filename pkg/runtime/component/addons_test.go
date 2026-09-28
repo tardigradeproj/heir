@@ -54,7 +54,8 @@ func TestConsolidateAddons(t *testing.T) {
 
 				flannel, ok := findChart(charts, "flannel")
 				require.True(t, ok, "expected flannel chart")
-				assert.Equal(t, "kube-flannel", flannel.Namespace)
+				assert.Equal(t, "kube-system", flannel.Namespace)
+				assert.Equal(t, "kube-flannel", flannel.Spec.Chart.TargetNamespace)
 				assert.Contains(t, flannel.Spec.Values.Content, `podCidr: "10.244.0.0/16"`)
 			},
 		},
