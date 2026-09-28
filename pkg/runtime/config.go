@@ -32,10 +32,6 @@ func GenerateControlPlaneConfig(runtime *controlplanev1alpha1.Runtime, layout Co
 		return nil, "", err
 	}
 	tlsbootstrap := component.CreateBootstrapManifest()
-	coredns, err := component.CreateCorednsManifest(runtime)
-	if err != nil {
-		return nil, "", err
-	}
 	egressSelectorConfiguration, err := component.CreateEgressSelectorConfiguration(component.EgressSelectorConfig{
 		EgressURL: fmt.Sprintf("https://%s:%d",
 			PlaneTunnelEgressName(runtime.Name),
@@ -119,15 +115,7 @@ func GenerateControlPlaneConfig(runtime *controlplanev1alpha1.Runtime, layout Co
 		layout.Config.EgressSelector.SecretKey:      string(egressSelectorConfiguration),
 		layout.StaticManifest.Bootstrap.SecretKey:   string(tlsbootstrap),
 		layout.StaticManifest.NodeProfile.SecretKey: string(nodeProfile),
-		layout.StaticManifest.Coredns.SecretKey:     string(coredns),
 		layout.StaticManifest.KubeProxy.SecretKey:   string(kubeProxyManifest),
-	}
-	if runtime.Spec.Cluster.Network.CNI.Supplier == "flannel" {
-		flannelConfig, err := component.CreateFlannelCNIManifest(runtime)
-		if err != nil {
-			return nil, "", err
-		}
-		data[layout.StaticManifest.FlannelCNI.SecretKey] = string(flannelConfig)
 	}
 
 	desiredHash, err := HashConfigData(data)

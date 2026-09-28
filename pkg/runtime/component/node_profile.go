@@ -45,10 +45,10 @@ func CreateNodeProfileManifest(wrkCtx *typ.WorkerContext, runtime *controlplanev
 	return yaml.Marshal(cm)
 }
 
+const clusterDNSIP = "10.96.0.10"
+
 func getNodeProfileConfig(wrkCtx *typ.WorkerContext, runtime *controlplanev1alpha1.Runtime) (*NodeProfileConfig, error) {
-	coredns := runtime.Spec.Cluster.Network.Coredns
 	kubelet := runtime.Spec.Cluster.Kubelet
-	cni := runtime.Spec.Cluster.Network.CNI
 	controlPlaneEndpoint, err := json.Marshal(runtime.Spec.Cluster.ControlPlaneExternalEndpoint)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal API server external addresses: %w", err)
@@ -65,7 +65,7 @@ func getNodeProfileConfig(wrkCtx *typ.WorkerContext, runtime *controlplanev1alph
 	return &NodeProfileConfig{
 		NodeProfileConfigMapName: wrkCtx.WorkerProfileConfigMapName,
 		ClientCAFile:             wrkCtx.KubeletPKICaCertPath,
-		ClusterDNS:               coredns.ClusterDNSIP,
+		ClusterDNS:               clusterDNSIP,
 		ContainerRuntimeEndpoint: wrkCtx.ContainerdAddress,
 		KubeletStaticPodPath:     wrkCtx.KubeletStaticPodPath,
 		KubeletConfigurationKey:  wrkCtx.KubeletConfigurationNodeProfileConfigmapKey,
@@ -73,9 +73,18 @@ func getNodeProfileConfig(wrkCtx *typ.WorkerContext, runtime *controlplanev1alph
 		KubeletExtraArgs:         string(extraArgsYAML),
 		ControlPlaneEndpointKey:  wrkCtx.ControlPlaneEndpointNodeProfileConfigmapKey,
 		ControlPlaneEndpoint:     string(controlPlaneEndpoint),
-		CNIProvider:              cni.Supplier,
+		CNIProvider:              cniProvider(runtime),
 		CNIProviderKey:           wrkCtx.CNIEnableProviderNodeProfileConfigmapKey,
 	}, nil
+}
+
+func cniProvider(runtime *controlplanev1alpha1.Runtime) string {
+	for _, c := range runtime.Spec.Cluster.Addons.Helm.Charts {
+		if c.Name == "flannel" && c.Enabled != nil && !*c.Enabled {
+			return "custom"
+		}
+	}
+	return "flannel"
 }
 
 type NodeProfileConfig struct {

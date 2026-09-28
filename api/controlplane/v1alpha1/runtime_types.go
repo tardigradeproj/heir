@@ -55,6 +55,9 @@ type ClusterSpec struct {
 	// tenant cluster once its API server becomes available.
 	// +kubebuilder:default={}
 	ExtraResources ExtraResourcesSpec `json:"extraResources,omitempty"`
+	// Addons configures cluster addons
+	// +kubebuilder:default={}
+	Addons AddonsSpec `json:"addons,omitempty"`
 }
 
 // PlaneTunnelSpec configures the plane tunnel TCP multiplexer, which tunnels traffic
@@ -153,23 +156,9 @@ type NetworkSpec struct {
 	//+kubebuilder:default="cluster.local"
 	// +optional
 	DNSDomain string `json:"dnsDomain,omitempty"`
-	// CNI configures the Container Network Interface plugin installed in the tenant cluster.
-	// +kubebuilder:default={}
-	CNI CNISpec `json:"cni,omitempty"`
 	// KubeProxy configures kube-proxy in the tenant cluster.
 	// +kubebuilder:default={}
 	KubeProxy KubeProxySpec `json:"kubeProxy,omitempty"`
-	// Coredns configures CoreDNS in the tenant cluster.
-	// +kubebuilder:default={}
-	Coredns CorednsSpec `json:"coredns,omitempty"`
-}
-
-// CNISpec selects the Container Network Interface plugin to install in the tenant cluster.
-type CNISpec struct {
-	// Supplier is the CNI plugin to install.
-	// +kubebuilder:validation:Enum=flannel;custom
-	//+kubebuilder:default="flannel"
-	Supplier string `json:"supplier,omitempty"`
 }
 
 // StorageSpec configures the storage backend used by the tenant API server.

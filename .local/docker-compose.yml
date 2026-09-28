@@ -7,7 +7,7 @@ name: heir-dev
 
 x-worker: &worker
   image: quay.io/k0sproject/bootloose-ubuntu24.04
-  command: ["/sbin/init"]
+  command: ["/bin/sh", "-c", "mount --make-rshared / && exec /sbin/init"]
   stop_signal: SIGRTMIN+3
   privileged: true
   cgroup: host

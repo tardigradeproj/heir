@@ -11,3 +11,5 @@ crictl: v1.35.0
 cni: v1.9.1
 calico: 3.31.4
 helm: v3.17.3
+coredns-chart: 1.47.1
+flannel-chart: v0.28.9
