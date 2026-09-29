@@ -19,6 +19,7 @@ package clusteragent
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"github.com/go-logr/logr"
 	batchv1 "k8s.io/api/batch/v1"
@@ -111,6 +112,26 @@ func (r *HelmChartReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 		if err := r.Create(ctx, newJob); err != nil && !apierrors.IsAlreadyExists(err) {
 			return ctrl.Result{}, fmt.Errorf("failed to create install job: %w", err)
+		}
+		return ctrl.Result{}, nil
+	}
+
+	// spec change (new chart version) can't just be applied to it in place: Jobs are immutable once created.
+	// Instead, delete the stale Job, once the API server finishes removing it, the Owns
+	// watch on Job re-triggers Reconcile
+	wantGeneration := strconv.FormatInt(helmChart.Generation, 10)
+	if installJob.Labels[heirruntime.ObservedGenerationLabel] != wantGeneration {
+		// only delete completed jobs, never delete jobs in progress since can leave the release's Helm lock stuck in pending-upgrad
+		if jobCondition(installJob, batchv1.JobComplete) == nil && jobCondition(installJob, batchv1.JobFailed) == nil {
+			return ctrl.Result{}, nil
+		}
+		log.Info("helmchart spec changed since its install job was created; deleting the stale job",
+			"job", installJob.Name,
+			"jobGeneration", installJob.Labels[heirruntime.ObservedGenerationLabel],
+			"wantGeneration", wantGeneration)
+
+		if err := r.Delete(ctx, installJob, client.PropagationPolicy(metav1.DeletePropagationBackground)); err != nil && !apierrors.IsNotFound(err) {
+			return ctrl.Result{}, fmt.Errorf("failed to delete stale install job: %w", err)
 		}
 		return ctrl.Result{}, nil
 	}
