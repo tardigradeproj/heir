@@ -366,7 +366,7 @@ func TestGenerateJob(t *testing.T) {
 			},
 		},
 		{
-			name: "labels identify the chart and are shared by the job and its pod template",
+			name: "pod template labels identify the chart, without the job's observed-generation label",
 			chart: &clusteragentv1alpha1.HelmChart{
 				ObjectMeta: metav1.ObjectMeta{Name: "podinfo", Namespace: "default"},
 			},
@@ -376,8 +376,22 @@ func TestGenerateJob(t *testing.T) {
 					"app.kubernetes.io/name":       "podinfo",
 					"app.kubernetes.io/managed-by": "heir",
 				}
-				assert.Equal(t, want, job.Labels)
 				assert.Equal(t, want, job.Spec.Template.Labels)
+			},
+		},
+		{
+			name: "job labels identify the chart and record the chart's generation",
+			chart: &clusteragentv1alpha1.HelmChart{
+				ObjectMeta: metav1.ObjectMeta{Name: "podinfo", Namespace: "default", Generation: 3},
+			},
+			operation: JobOperationInstall,
+			validate: func(t *testing.T, job *batchv1.Job) {
+				want := map[string]string{
+					"app.kubernetes.io/name":       "podinfo",
+					"app.kubernetes.io/managed-by": "heir",
+					ObservedGenerationLabel:        "3",
+				}
+				assert.Equal(t, want, job.Labels)
 			},
 		},
 		{
@@ -442,20 +456,6 @@ func TestGenerateJob(t *testing.T) {
 			operation: JobOperationInstall,
 			validate: func(t *testing.T, job *batchv1.Job) {
 				assert.Nil(t, job.Spec.ActiveDeadlineSeconds)
-			},
-		},
-		{
-			name: "activeDeadlineSeconds pads helm.timeout by 10s when set",
-			chart: &clusteragentv1alpha1.HelmChart{
-				ObjectMeta: metav1.ObjectMeta{Name: "podinfo", Namespace: "default"},
-				Spec: clusteragentv1alpha1.HelmChartSpec{
-					Helm: clusteragentv1alpha1.HelmOptions{Timeout: metav1.Duration{Duration: 2 * time.Minute}},
-				},
-			},
-			operation: JobOperationInstall,
-			validate: func(t *testing.T, job *batchv1.Job) {
-				require.NotNil(t, job.Spec.ActiveDeadlineSeconds)
-				assert.Equal(t, int64(130), *job.Spec.ActiveDeadlineSeconds)
 			},
 		},
 		{

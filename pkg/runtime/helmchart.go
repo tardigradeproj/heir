@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	clusteragentv1alpha1 "github.com/tardigradeproj/heir/api/clusteragent/v1alpha1"
@@ -16,6 +17,9 @@ import (
 const (
 	helmValuesEnvVar = "HELM_VALUES"
 	helmValuesFile   = "/tmp/values.yaml"
+
+	// ObservedGenerationLabel records which HelmChart generation a Job was generated from.
+	ObservedGenerationLabel = "clusteragent.tardigrade.runtime.io/observed-generation"
 )
 
 // JobOperation identifies which Helm operation a HelmChart Job runs.
@@ -155,11 +159,6 @@ func GenerateJob(helmChart *clusteragentv1alpha1.HelmChart, operation JobOperati
 		"app.kubernetes.io/managed-by": "heir",
 	}
 
-	var activeDeadlineSeconds *int64
-	if timeout := helmChart.Spec.Helm.Timeout.Duration; timeout > 0 {
-		activeDeadlineSeconds = new(int64(timeout.Seconds() + 10))
-	}
-
 	var tolerations []corev1.Toleration
 	if helmChart.Spec.Runtime.Bootstrap {
 		tolerations = []corev1.Toleration{
@@ -183,18 +182,23 @@ func GenerateJob(helmChart *clusteragentv1alpha1.HelmChart, operation JobOperati
 
 	command := containerCommand(decode, Command(helmChart, operation))
 
+	jobLabels := make(map[string]string, len(labels)+1)
+	for k, v := range labels {
+		jobLabels[k] = v
+	}
+	jobLabels[ObservedGenerationLabel] = strconv.FormatInt(helmChart.Generation, 10)
+
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      JobName(helmChart.Name, operation),
 			Namespace: helmChart.Namespace,
-			Labels:    labels,
+			Labels:    jobLabels,
 		},
 		Spec: batchv1.JobSpec{
-			BackoffLimit:          helmChart.Spec.Helm.BackOffLimit,
-			Completions:           new(int32(1)),
-			CompletionMode:        new(batchv1.NonIndexedCompletion),
-			Parallelism:           new(int32(1)),
-			ActiveDeadlineSeconds: activeDeadlineSeconds,
+			BackoffLimit:   helmChart.Spec.Helm.BackOffLimit,
+			Completions:    new(int32(1)),
+			CompletionMode: new(batchv1.NonIndexedCompletion),
+			Parallelism:    new(int32(1)),
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: labels,

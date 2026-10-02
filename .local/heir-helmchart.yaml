@@ -9,6 +9,7 @@ spec:
     repo: https://stefanprodan.github.io/podinfo
     targetNamespace: default
     createNamespace: true
+    version: "6.15.0"
   helm:
     version: v3
     backOffLimit: 3
@@ -18,7 +19,7 @@ spec:
     image: kind-registry:5000/helmer:latest
     bootstrap: true
   values:
-#    content: |
-#      new: set
-    set:
-      replicaCount: "1"
+    content: |
+      replicaCount: 4
+#    set:
+#      replicaCount: "2"

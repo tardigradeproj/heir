@@ -64,7 +64,7 @@ spec:
               helm:
                 version: v3
                 backOffLimit: 30
-                timeout: 260s
+                timeout: 360s
                 atomic: true
               runtime:
                 image: kind-registry:5000/helmer:latest
