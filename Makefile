@@ -54,7 +54,6 @@ manifests: manifests-controlplane manifests-clusteragent ## Generate WebhookConf
 .PHONY: manifests-controlplane
 manifests-controlplane: controller-gen ## Generate manifests for the controlplane manager.
 	"$(CONTROLLER_GEN)" rbac:roleName=manager-role crd webhook paths="./api/controlplane/..." paths="./internal/controller/controlplane/..." output:crd:artifacts:config=config/controlplane/crd/bases output:rbac:artifacts:config=config/controlplane/rbac
-	cp config/controlplane/crd/bases/controlplane.tardigrade.runtime.io_runtimes.yaml pkg/provision/controlplane/
 
 .PHONY: manifests-clusteragent
 manifests-clusteragent: controller-gen ## Generate manifests for the clusteragent controller.

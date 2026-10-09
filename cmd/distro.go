@@ -5,7 +5,6 @@ import (
 
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
-	"github.com/tardigradeproj/heir/pkg/cmd/build"
 	cmddel "github.com/tardigradeproj/heir/pkg/cmd/delete"
 	"github.com/tardigradeproj/heir/pkg/cmd/provision"
 	"github.com/tardigradeproj/heir/pkg/cmd/token"
@@ -38,7 +37,6 @@ func main() {
 		Long:  "heir creates and operates kubernetes clusters",
 	}
 
-	root.AddCommand(build.NewCommand())
 	root.AddCommand(cmddel.NewCommand())
 	root.AddCommand(token.NewCommand())
 	root.AddCommand(provision.NewCommand())
