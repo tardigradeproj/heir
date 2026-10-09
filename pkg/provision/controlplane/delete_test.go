@@ -3,6 +3,7 @@ package controlplane
 import (
 	"context"
 	"fmt"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -11,9 +12,103 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8sruntime "k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
 )
+
+// withClient is a test-only Option that injects a pre-built client, bypassing buildClient.
+func withClient(client kubernetes.Interface) Option {
+	return func(p *provisionContext) {
+		p.client = client
+	}
+}
+
+// verbCount returns how many recorded actions match the given verb.
+func verbCount(fakeClient *fake.Clientset, verb string) int {
+	n := 0
+	for _, a := range fakeClient.Actions() {
+		if a.GetVerb() == verb {
+			n++
+		}
+	}
+	return n
+}
+
+// minimalKubeconfig is a syntactically valid kubeconfig pointing at a dummy server.
+const minimalKubeconfig = `apiVersion: v1
+kind: Config
+clusters:
+- cluster:
+    server: https://127.0.0.1:9999
+  name: test
+contexts:
+- context:
+    cluster: test
+    user: test
+  name: test
+current-context: test
+users:
+- name: test
+  user:
+    token: test-token
+`
+
+// writeTempKubeconfig writes content to a temp file and registers cleanup.
+func writeTempKubeconfig(t *testing.T, content string) string {
+	t.Helper()
+	f, err := os.CreateTemp("", "kubeconfig-*.yaml")
+	require.NoError(t, err)
+	t.Cleanup(func() { os.Remove(f.Name()) })
+	_, err = f.WriteString(content)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+	return f.Name()
+}
+
+func TestBuildClient(t *testing.T) {
+	tests := []struct {
+		name    string
+		setup   func(t *testing.T) string
+		wantErr bool
+	}{
+		{
+			name: "valid kubeconfig returns a non-nil client",
+			setup: func(t *testing.T) string {
+				return writeTempKubeconfig(t, minimalKubeconfig)
+			},
+			wantErr: false,
+		},
+		{
+			name: "non-existent path returns error",
+			setup: func(t *testing.T) string {
+				return "/tmp/heir-test-no-such-kubeconfig.yaml"
+			},
+			wantErr: true,
+		},
+		{
+			name: "malformed kubeconfig returns error",
+			setup: func(t *testing.T) string {
+				return writeTempKubeconfig(t, "not: valid: [unclosed bracket")
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := tt.setup(t)
+			client, err := buildClient(path)
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Nil(t, client)
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, client)
+			}
+		})
+	}
+}
 
 func TestDelete(t *testing.T) {
 	const (

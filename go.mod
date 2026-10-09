@@ -3,7 +3,6 @@ module github.com/tardigradeproj/heir
 go 1.26.2
 
 require (
-	al.essio.dev/pkg/shellescape v1.6.0
 	github.com/BurntSushi/toml v1.5.0
 	github.com/DeRuina/timberjack v1.4.2
 	github.com/avast/retry-go v3.0.0+incompatible

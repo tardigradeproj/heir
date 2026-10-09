@@ -5,24 +5,15 @@ import "k8s.io/client-go/kubernetes"
 type Option func(*provisionContext)
 
 type provisionContext struct {
-	name                string
-	config              string
-	kubeconfig          string
-	clusterKubeconfig   string
-	namespace           string
-	useLocalHostContext bool
-	client              kubernetes.Interface // if set, skips buildClient (used in tests)
+	name       string
+	kubeconfig string
+	namespace  string
+	client     kubernetes.Interface // if set, skips buildClient (used in tests)
 }
 
 func WithName(name string) Option {
 	return func(p *provisionContext) {
 		p.name = name
-	}
-}
-
-func WithConfig(config string) Option {
-	return func(p *provisionContext) {
-		p.config = config
 	}
 }
 
@@ -32,23 +23,8 @@ func WithKubeconfig(kubeconfig string) Option {
 	}
 }
 
-func WithClusterKubeconfig(clusterKubeconfig string) Option {
-	return func(p *provisionContext) {
-		p.clusterKubeconfig = clusterKubeconfig
-	}
-}
-
 func WithNamespace(namespace string) Option {
 	return func(p *provisionContext) {
 		p.namespace = namespace
-	}
-}
-
-// WithUseLocalHostContext sets the current context in the written upstream-kubeconfig to
-// the localhost context (https://127.0.0.1:<port>) instead of the remote context.
-// Use this when kubectl will be run directly on the installation host.
-func WithUseLocalHostContext(useLocalHostContext bool) Option {
-	return func(p *provisionContext) {
-		p.useLocalHostContext = useLocalHostContext
 	}
 }

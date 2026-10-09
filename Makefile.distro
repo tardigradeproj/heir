@@ -120,10 +120,6 @@ build-base: ## Build the base container image
 		-t $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG) \
 		images/base
 
-.PHONY: build-controlplane-image
-build-controlplane-image:
-	go run cmd/distro.go build control-plane-image --base-image $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG) --image=$(IMAGE_NAME):v0.0.1 --type=file $(ARTIFACTS_DIR)/control-plane-artifact-$(OS)-$(ARCH).tar.gz
-
 .PHONY: build-masteragent
 build-masteragent: ## Build masteragent natively with CGO (run from vagrant); binary lands in artifacts/
 	@mkdir -p "$(ARTIFACTS_DIR)"
