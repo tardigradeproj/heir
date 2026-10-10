@@ -10,7 +10,7 @@ x-worker: &worker
   command: ["/bin/sh", "-c", "mount --make-rshared / && exec /sbin/init"]
   stop_signal: SIGRTMIN+3
   privileged: true
-  cgroup: host
+  #cgroup: host
   cgroup_parent: bootloose.slice
   tmpfs:
     - /run
@@ -23,7 +23,7 @@ services:
     container_name: dev-worker0
     hostname: worker0
     volumes:
-      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    #  - /sys/fs/cgroup:/sys/fs/cgroup:rw
       - ${HEIR_BINARY:-../dist/distro_linux_arm64_v8.0/heir}:/usr/local/bin/heir
       - worker0-var-lib-heir:/var/lib/heir
       - /usr/lib/modules:/usr/lib/modules:ro
@@ -39,7 +39,7 @@ services:
     container_name: dev-worker1
     hostname: worker1
     volumes:
-      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+     # - /sys/fs/cgroup:/sys/fs/cgroup:rw
       - ${HEIR_BINARY:-../dist/distro_linux_arm64_v8.0/heir}:/usr/local/bin/heir
       - worker1-var-lib-heir:/var/lib/heir
       - /usr/lib/modules:/usr/lib/modules:ro
