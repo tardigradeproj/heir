@@ -54,12 +54,11 @@ func (k *Kubelet) Setup() error {
 func (k *Kubelet) Run(ctx context.Context) error {
 
 	defaultArgs := map[string]string{
-		"kubeconfig":      k.wrkCtx.KubeletKubeConfigPath,
-		"config":          k.wrkCtx.KubeletConfigFile,
-		"containerd":      k.wrkCtx.ContainerdAddress,
-		"cert-dir":        k.wrkCtx.KubeletPKIPath,
-		"runtime-cgroups": "/system.slice/containerd.service",
-		"v":               "2",
+		"kubeconfig": k.wrkCtx.KubeletKubeConfigPath,
+		"config":     k.wrkCtx.KubeletConfigFile,
+		"containerd": k.wrkCtx.ContainerdAddress,
+		"cert-dir":   k.wrkCtx.KubeletPKIPath,
+		"v":          "2",
 	}
 	// start with control plane KubeletExtraArgs since they don't have priority over CLI
 	for k, v := range k.nodeProfile.KubeletExtraArgs {
