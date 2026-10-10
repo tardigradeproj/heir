@@ -66,7 +66,7 @@ type WorkerContext struct {
 	ContainerdState          string        `default:"/run/heir/containerd"`
 	ContainerdRoot           string        `default:"/var/lib/heir/containerd"`
 	ContainerdConfig         string        `default:"/etc/lib/heir/containerd/config.toml"`
-	ContainerdLogFile        string        `json:"/var/log/heir/containerd.log"`
+	ContainerdLogFile        string        `default:"/var/log/heir/containerd.log"`
 	ContainerdStartupTimeout time.Duration // default: 90s, set in NewWorkerContextWithDefaults
 
 	ApiServerLocalAddress string `default:"https://127.0.0.1:6443"`
