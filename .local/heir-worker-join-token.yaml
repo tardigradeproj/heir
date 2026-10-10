@@ -5,3 +5,11 @@ metadata:
   namespace: default
 spec:
   ttl: 3h
+---
+apiVersion: clusteragent.tardigrade.runtime.io/v1alpha1
+kind: WorkerJoinToken
+metadata:
+  name: new-node-one
+  namespace: default
+spec:
+  ttl: 3h
