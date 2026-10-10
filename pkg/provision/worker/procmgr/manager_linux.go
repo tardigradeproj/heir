@@ -42,16 +42,30 @@ type Component struct {
 	// SIGTERM before sending SIGKILL. Defaults to 10 seconds.
 	StopTimeout time.Duration
 
-	log      log.FieldLogger
-	mu       sync.Mutex
-	proc     *os.Process
-	stopping bool
+	log        log.FieldLogger
+	fileLogOut *timberjack.Logger
+	mu         sync.Mutex
+	proc       *os.Process
+	stopping   bool
 }
 
 // Run starts the component and restarts it on failure up to MaxRetries times.
 // It blocks until the retry budget is exhausted or ctx is cancelled.
 func (c *Component) Run(ctx context.Context) error {
 	c.log = log.WithField("component", c.Name)
+	c.fileLogOut = &timberjack.Logger{
+		Filename:           c.LogFilePath,
+		MaxSize:            40,
+		MaxBackups:         3,
+		MaxAge:             28,
+		Compression:        "gzip",
+		LocalTime:          true,
+		RotationInterval:   24 * time.Hour,
+		RotateAt:           []string{"00:00", "12:00"},
+		BackupTimeFormat:   "2006-01-02-15-04-05",
+		AppendTimeAfterExt: true,
+		FileMode:           0o644,
+	}
 	return retry.Do(
 		func() error { return c.runOnce(ctx) },
 		retry.Attempts(uint(c.MaxRetries)+1),
@@ -72,26 +86,12 @@ func (c *Component) runOnce(ctx context.Context) error {
 	cmd := exec.CommandContext(ctx, c.BinPath, c.Args...)
 	cmd.Env = c.buildEnv()
 
-	fileLogOut := &timberjack.Logger{
-		Filename:           c.LogFilePath,
-		MaxSize:            80,
-		MaxBackups:         3,
-		MaxAge:             28,
-		Compression:        "gzip",
-		LocalTime:          true,
-		RotationInterval:   24 * time.Hour,
-		RotateAtMinutes:    []int{0, 15, 30, 45},
-		RotateAt:           []string{"00:00", "12:00"},
-		BackupTimeFormat:   "2006-01-02-15-04-05",
-		AppendTimeAfterExt: true,
-		FileMode:           0o644,
-	}
 	if c.LogLevel == log.DebugLevel {
-		cmd.Stdout = io.MultiWriter(os.Stdout, fileLogOut)
-		cmd.Stderr = io.MultiWriter(os.Stderr, fileLogOut)
+		cmd.Stdout = io.MultiWriter(os.Stdout, c.fileLogOut)
+		cmd.Stderr = io.MultiWriter(os.Stderr, c.fileLogOut)
 	} else {
-		cmd.Stdout = fileLogOut
-		cmd.Stderr = fileLogOut
+		cmd.Stdout = c.fileLogOut
+		cmd.Stderr = c.fileLogOut
 	}
 
 	// Ensure the child process is killed when the parent dies.

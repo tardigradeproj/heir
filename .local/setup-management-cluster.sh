@@ -175,6 +175,13 @@ spec:
               key: password
         ports:
         - containerPort: 5432
+        resources:
+          requests:
+            cpu: 500m
+            memory: 512Mi
+          limits:
+            cpu: "2"
+            memory: 1Gi
 ---
 apiVersion: v1
 kind: Service

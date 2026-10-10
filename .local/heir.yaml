@@ -51,24 +51,24 @@ spec:
           image: kind-registry:5000/helmer:latest
         charts:
           - name: flannel
-            enabled: false
-          - name: cilium
             enabled: true
-            install:
-              chart:
-                name: cilium
-                repo: https://helm.cilium.io/
-                targetNamespace: kube-system
-                version: "1.20.0"
-                createNamespace: false
-              helm:
-                version: v3
-                backOffLimit: 30
-                timeout: 360s
-                atomic: true
-              runtime:
-                image: kind-registry:5000/helmer:latest
-                bootstrap: true
+#          - name: cilium
+#            enabled: false
+#            install:
+#              chart:
+#                name: cilium
+#                repo: https://helm.cilium.io/
+#                targetNamespace: kube-system
+#                version: "1.20.0"
+#                createNamespace: false
+#              helm:
+#                version: v3
+#                backOffLimit: 30
+#                timeout: 360s
+#                atomic: true
+#              runtime:
+#                image: kind-registry:5000/helmer:latest
+#                bootstrap: true
           - name: coredns
             override:
               values:

@@ -4,7 +4,7 @@ go 1.26.2
 
 require (
 	github.com/BurntSushi/toml v1.5.0
-	github.com/DeRuina/timberjack v1.4.2
+	github.com/DeRuina/timberjack v1.4.8
 	github.com/avast/retry-go v3.0.0+incompatible
 	github.com/cloudflare/cfssl v1.6.5
 	github.com/containerd/containerd v1.7.31
@@ -15,7 +15,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/k0sproject/bootloose v0.9.6
 	github.com/k3s-io/kine v1.14.2
-	github.com/klauspost/compress v1.18.5
+	github.com/klauspost/compress v1.18.7
 	github.com/onsi/ginkgo/v2 v2.28.1
 	github.com/onsi/gomega v1.39.1
 	github.com/sirupsen/logrus v1.9.4
