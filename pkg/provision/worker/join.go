@@ -93,6 +93,13 @@ func installSystemdUnit(ctx context.Context, workerCtx *typ.WorkerContext) error
 		sdunit.NewUnitOption("Service", "ExecStart", execStart),
 		sdunit.NewUnitOption("Service", "Restart", "always"),
 		sdunit.NewUnitOption("Service", "RestartSec", "5"),
+		// Default KillMode (control-group) signals every process in the unit's cgroup on
+		// stop/restart, which would kill containerd, its shims, and every running container
+		// along with heir itself.
+		sdunit.NewUnitOption("Service", "KillMode", "process"),
+		// Required for kubelet/containerd to manage
+		// per-pod cgroups (cpu/memory limits, cgroupDriver=systemd) under this unit's cgroup.
+		sdunit.NewUnitOption("Service", "Delegate", "yes"),
 		sdunit.NewUnitOption("Install", "WantedBy", "multi-user.target"),
 	}
 
