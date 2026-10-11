@@ -39,6 +39,9 @@ func (c *Containerd) Setup() error {
 	}
 	containerdConf, err := toml.Marshal(map[string]any{
 		"version": 4,
+		"imports": []string{
+			path.Join(c.wrkCtx.ContainerdDropInConfiguration, "*.toml"),
+		},
 		"plugins": map[string]any{
 			"io.containerd.cri.v1.runtime": map[string]any{
 				"containerd": map[string]any{
@@ -57,7 +60,9 @@ func (c *Containerd) Setup() error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal cri config: %w", err)
 	}
-	if err := os.WriteFile(c.wrkCtx.ContainerdConfig, containerdConf, 0644); err != nil {
+	header := "# This file is managed by Heir. Do not edit it manually; your changes will be overwritten.\n" +
+		"# Drop additional config files into " + c.wrkCtx.ContainerdDropInConfiguration + " instead.\n"
+	if err := os.WriteFile(c.wrkCtx.ContainerdConfig, append([]byte(header), containerdConf...), 0644); err != nil {
 		return fmt.Errorf("failed to write containerd config: %w", err)
 	}
 	return nil

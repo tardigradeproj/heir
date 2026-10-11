@@ -229,6 +229,7 @@ func createDirectories(workerCtx *typ.WorkerContext) error {
 		workerCtx.KubeletStaticPodPath,
 		workerCtx.ContainerdState,
 		workerCtx.ContainerdRoot,
+		workerCtx.ContainerdDropInConfiguration,
 		workerCtx.CNIBinFolderPath,
 		filepath.Dir(workerCtx.KubeletPKICaCertPath),
 		filepath.Dir(workerCtx.KubeletConfigFile),

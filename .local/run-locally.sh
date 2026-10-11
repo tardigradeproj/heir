@@ -33,7 +33,10 @@ echo "==> [5/10] Fetching the tenant cluster's kubeconfig"
 kubectl get secret my-cluster-kubeconfig -o jsonpath='{.data.kubeconfig}' | base64 -d > "${tenant_kubeconfig}"
 kubectl --kubeconfig "${tenant_kubeconfig}" config set-cluster my-cluster --server=https://127.0.0.1:30080
 
-echo "==> [6/10] Issuing a worker join token for each worker node"
+echo "==> [6/10] Waiting for the cluster agent to be ready"
+kubectl -n default wait --for=condition=Available deployment/my-cluster-cluster-agent --timeout=120s
+
+echo "==> [7/10] Issuing a worker join token for each worker node"
 kubectl --kubeconfig "${tenant_kubeconfig}" apply -f .local/heir-worker-join-token.yaml
 for pair in ${workers}; do
   token_name="${pair%%:*}"
@@ -45,20 +48,12 @@ for pair in ${workers}; do
   token_name="${pair%%:*}"
   container_name="${pair##*:}"
 
-  echo "==> [7/10] Copying the join token onto ${container_name}"
+  echo "==> [8/10] Copying the join token onto ${container_name}"
   kubectl --kubeconfig "${tenant_kubeconfig}" -n kube-system get secret "${token_name}-jointoken" -o jsonpath='{.data.jointoken}' \
     | docker exec -i "${container_name}" sh -c 'cat > /tmp/token'
 
-  echo "==> [8/10] Joining ${container_name}"
+  echo "==> [9/10] Joining ${container_name}"
   docker exec "${container_name}" heir provision worker --token="$(docker exec "${container_name}" cat /tmp/token)"
-
-  echo "==> [9/10] Letting ${container_name} pull images from the local registry"
-  docker exec "${container_name}" sh -c 'cat >> /etc/lib/heir/containerd/config.toml <<EOF
-
-[plugins."io.containerd.cri.v1.images".registry.mirrors."kind-registry:5000"]
-  endpoint = ["http://kind-registry:5000"]
-EOF
-pkill -x containerd'
 done
 
 echo "==> [10/10] Validating that both nodes joined"

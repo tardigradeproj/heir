@@ -2,11 +2,13 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/coreos/go-systemd/v22/dbus"
 	sdunit "github.com/coreos/go-systemd/v22/unit"
@@ -37,7 +39,7 @@ func Join(ctx context.Context, token string, opts ...typ.Option) error {
 	}
 
 	log.WithField("dst", workerCtx.HeirRuntimeBin).Info("installing binary")
-	if err := installSelf(workerCtx.HeirRuntimeBin); err != nil {
+	if err := installSelf(workerCtx.HeirRuntimeBin, log); err != nil {
 		return fmt.Errorf("failed to install binary: %w", err)
 	}
 
@@ -49,7 +51,17 @@ func Join(ctx context.Context, token string, opts ...typ.Option) error {
 	return nil
 }
 
-func installSelf(dst string) error {
+func installSelf(dst string, log *logrus.Entry) error {
+	if _, err := os.Stat(dst); err == nil {
+		log.WithFields(logrus.Fields{
+			"dst":  dst,
+			"busy": isBusy(dst),
+		}).Info("binary already installed, skipping install")
+		return nil
+	} else if !os.IsNotExist(err) {
+		log.WithError(err).Errorf("could not stat %s", dst)
+	}
+
 	src, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("could not determine executable path: %w", err)
@@ -78,6 +90,17 @@ func installSelf(dst string) error {
 		return err
 	}
 	return out.Close()
+}
+
+// isBusy reports whether path is currently executing, i.e. opening it for
+// writing would fail with ETXTBSY.
+func isBusy(path string) bool {
+	f, err := os.OpenFile(path, os.O_WRONLY, 0)
+	if err != nil {
+		return errors.Is(err, syscall.ETXTBSY)
+	}
+	f.Close()
+	return false
 }
 
 func installSystemdUnit(ctx context.Context, workerCtx *typ.WorkerContext) error {
@@ -133,7 +156,6 @@ func installSystemdUnit(ctx context.Context, workerCtx *typ.WorkerContext) error
 	if result := <-resultCh; result != "done" {
 		return fmt.Errorf("unit %q start job finished with result %q", unitName, result)
 	}
-
 	return nil
 }
 

@@ -28,6 +28,7 @@ services:
       - worker0-var-lib-heir:/var/lib/heir
       - /usr/lib/modules:/usr/lib/modules:ro
       - /lib/modules:/lib/modules:ro
+      - ./containerd-conf.d:/etc/lib/heir/containerd/conf.d:ro
     ports:
       - "2200:22"
     networks:
@@ -44,6 +45,7 @@ services:
       - worker1-var-lib-heir:/var/lib/heir
       - /usr/lib/modules:/usr/lib/modules:ro
       - /lib/modules:/lib/modules:ro
+      - ./containerd-conf.d:/etc/lib/heir/containerd/conf.d:ro
     ports:
       - "2201:22"
     networks:

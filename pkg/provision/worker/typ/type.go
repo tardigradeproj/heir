@@ -62,12 +62,13 @@ type WorkerContext struct {
 	KubeletLogFile                 string `default:"/var/log/heir/kubelet.log"`
 	KubeletStaticPodPath           string `default:"/etc/heir/manifests"`
 
-	ContainerdAddress        string        `default:"/run/heir/containerd.sock"`
-	ContainerdState          string        `default:"/run/heir/containerd"`
-	ContainerdRoot           string        `default:"/var/lib/heir/containerd"`
-	ContainerdConfig         string        `default:"/etc/lib/heir/containerd/config.toml"`
-	ContainerdLogFile        string        `default:"/var/log/heir/containerd.log"`
-	ContainerdStartupTimeout time.Duration // default: 90s, set in NewWorkerContextWithDefaults
+	ContainerdAddress             string        `default:"/run/heir/containerd.sock"`
+	ContainerdState               string        `default:"/run/heir/containerd"`
+	ContainerdRoot                string        `default:"/var/lib/heir/containerd"`
+	ContainerdConfig              string        `default:"/etc/lib/heir/containerd/config.toml"`
+	ContainerdDropInConfiguration string        `default:"/etc/lib/heir/containerd/conf.d"`
+	ContainerdLogFile             string        `default:"/var/log/heir/containerd.log"`
+	ContainerdStartupTimeout      time.Duration // default: 90s, set in NewWorkerContextWithDefaults
 
 	ApiServerLocalAddress string `default:"https://127.0.0.1:6443"`
 

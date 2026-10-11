@@ -1,0 +1,8 @@
+# Lets dev-worker0 and dev-worker1 pull "kind-registry:5000/<name>" images over plain HTTP,
+# since containerd's CRI plugin otherwise assumes HTTPS for every registry host except
+# "localhost", and the registry:2 container behind kind-registry:5000 only serves HTTP.
+#
+# Mounted into /etc/lib/heir/containerd/conf.d by .local/docker-compose.yml, where heir's
+# generated config.toml imports it automatically.
+[plugins."io.containerd.cri.v1.images".registry.mirrors."kind-registry:5000"]
+  endpoint = ["http://kind-registry:5000"]
