@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
-	criconfig "github.com/containerd/containerd/pkg/cri/config"
 	log "github.com/sirupsen/logrus"
 	"github.com/tardigradeproj/heir/pkg/provision/worker/procmgr"
 	"github.com/tardigradeproj/heir/pkg/provision/worker/typ"
@@ -38,23 +37,21 @@ func (c *Containerd) Setup() error {
 			return fmt.Errorf("failed to extract %s: %w", b.src, err)
 		}
 	}
-	criPluginConfig := criconfig.DefaultConfig()
-	if criPluginConfig.ContainerdConfig.Runtimes == nil {
-		criPluginConfig.ContainerdConfig.Runtimes = make(map[string]criconfig.Runtime)
-	}
-	criPluginConfig.ContainerdConfig.Runtimes["runc"] = criconfig.Runtime{
-		Type: "io.containerd.runc.v2",
-		Options: map[string]any{
-			"SystemdCgroup": true,
-		},
-	}
-	// Set pause image
-	// #TOOD: sandboxContainerImage
-	// criPluginConfig.SandboxImage = "custom-image"
 	containerdConf, err := toml.Marshal(map[string]any{
-		"version": 2,
+		"version": 4,
 		"plugins": map[string]any{
-			"io.containerd.grpc.v1.cri": criPluginConfig,
+			"io.containerd.cri.v1.runtime": map[string]any{
+				"containerd": map[string]any{
+					"runtimes": map[string]any{
+						"runc": map[string]any{
+							"runtime_type": "io.containerd.runc.v2",
+							"options": map[string]any{
+								"SystemdCgroup": true,
+							},
+						},
+					},
+				},
+			},
 		},
 	})
 	if err != nil {

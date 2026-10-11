@@ -159,7 +159,7 @@ would regenerate the file and undo this) to pick up the change:
 ```sh
 docker exec dev-worker0 sh -c 'cat >> /etc/lib/heir/containerd/config.toml <<EOF
 
-[plugins."io.containerd.grpc.v1.cri".registry.mirrors."kind-registry:5000"]
+[plugins."io.containerd.cri.v1.images".registry.mirrors."kind-registry:5000"]
   endpoint = ["http://kind-registry:5000"]
 EOF
 pkill -x containerd'

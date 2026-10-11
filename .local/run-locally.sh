@@ -55,7 +55,7 @@ for pair in ${workers}; do
   echo "==> [9/10] Letting ${container_name} pull images from the local registry"
   docker exec "${container_name}" sh -c 'cat >> /etc/lib/heir/containerd/config.toml <<EOF
 
-[plugins."io.containerd.grpc.v1.cri".registry.mirrors."kind-registry:5000"]
+[plugins."io.containerd.cri.v1.images".registry.mirrors."kind-registry:5000"]
   endpoint = ["http://kind-registry:5000"]
 EOF
 pkill -x containerd'
