@@ -10,8 +10,8 @@ import (
 func NewCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "provision",
-		Short: "Provision one of [worker]",
-		Long:  "Manage one of [worker]",
+		Short: "Provision one of [controlplane, worker]",
+		Long:  "Manage one of [controlplane, worker]",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			err := cmd.Help()
 			if err != nil {
@@ -23,5 +23,6 @@ func NewCommand() *cobra.Command {
 	// add subcommands
 	cmd.AddCommand(generate.NewCommand())
 	cmd.AddCommand(workerProvisionCommand())
+	cmd.AddCommand(controlplaneProvisionCommand())
 	return cmd
 }

@@ -1,6 +1,11 @@
 package controlplane
 
-import "k8s.io/client-go/kubernetes"
+import (
+	"time"
+
+	"k8s.io/client-go/kubernetes"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+)
 
 type Option func(*provisionContext)
 
@@ -8,7 +13,11 @@ type provisionContext struct {
 	name       string
 	kubeconfig string
 	namespace  string
+	set        []string
+	wait       bool
+	timeout    time.Duration
 	client     kubernetes.Interface // if set, skips buildClient (used in tests)
+	ctrlClient client.Client        // if set, skips buildControllerClient (used in tests)
 }
 
 func WithName(name string) Option {
@@ -26,5 +35,23 @@ func WithKubeconfig(kubeconfig string) Option {
 func WithNamespace(namespace string) Option {
 	return func(p *provisionContext) {
 		p.namespace = namespace
+	}
+}
+
+func WithSet(set []string) Option {
+	return func(p *provisionContext) {
+		p.set = set
+	}
+}
+
+func WithWait(wait bool) Option {
+	return func(p *provisionContext) {
+		p.wait = wait
+	}
+}
+
+func WithTimeout(timeout time.Duration) Option {
+	return func(p *provisionContext) {
+		p.timeout = timeout
 	}
 }
