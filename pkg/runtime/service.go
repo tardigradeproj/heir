@@ -5,6 +5,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/utils/ptr"
 )
 
 // GenerateService builds the control-plane Service for the given Runtime. No API calls are made;
@@ -22,7 +23,7 @@ func GenerateService(runtime *controlplanev1alpha1.Runtime) (*corev1.Service, er
 			Port:       6443,
 			TargetPort: intstr.FromInt32(6443),
 			Protocol:   corev1.ProtocolTCP,
-			NodePort:   svcSpec.ApiServerNodePort,
+			NodePort:   ptr.Deref(svcSpec.ApiServerNodePort, 0),
 		},
 	}
 	for _, p := range svcSpec.AdditionalPorts {

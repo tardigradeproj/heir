@@ -33,6 +33,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	controlplanev1alpha1 "github.com/tardigradeproj/heir/api/controlplane/v1alpha1"
@@ -87,7 +88,10 @@ var _ = Describe("Runtime Controller", func() {
 						ControlPlane: controlplanev1alpha1.ControlPlaneSpec{
 							Heir:         controlplanev1alpha1.HeirSpec{Image: "registry.example.com/heir:latest"},
 							ClusterAgent: controlplanev1alpha1.ClusterAgentSpec{Image: "registry.example.com/clusteragent:latest"},
-							Service:      controlplanev1alpha1.ServiceSpec{ServiceType: corev1.ServiceTypeClusterIP},
+							Service: controlplanev1alpha1.ServiceSpec{
+								ServiceType:       corev1.ServiceTypeClusterIP,
+								ApiServerNodePort: ptr.To(int32(0)),
+							},
 						},
 						Cluster: controlplanev1alpha1.ClusterSpec{
 							ControlPlaneExternalEndpoint: controlplanev1alpha1.ControlPlaneExternalEndpointSpec{

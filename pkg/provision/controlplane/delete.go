@@ -8,6 +8,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
@@ -16,14 +17,18 @@ const (
 	annotationDeletionProtection = "controlplane.tardigrade.runtime.io/deletion-protection"
 )
 
-func buildClient(kubeconfig string) (*kubernetes.Clientset, error) {
+func buildRestConfig(kubeconfig string) (*rest.Config, error) {
 	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
 	if kubeconfig != "" {
 		loadingRules.ExplicitPath = kubeconfig
 	}
-	restConfig, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+	return clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
 		loadingRules, &clientcmd.ConfigOverrides{},
 	).ClientConfig()
+}
+
+func buildClient(kubeconfig string) (*kubernetes.Clientset, error) {
+	restConfig, err := buildRestConfig(kubeconfig)
 	if err != nil {
 		return nil, err
 	}

@@ -32,9 +32,10 @@ func init() {
 
 func main() {
 	root := &cobra.Command{
-		Use:   "heir",
-		Short: "heir creates and operates kubernetes clusters",
-		Long:  "heir creates and operates kubernetes clusters",
+		Use:          "heir",
+		Short:        "heir creates and operates kubernetes clusters",
+		Long:         "heir creates and operates kubernetes clusters",
+		SilenceUsage: true,
 	}
 
 	root.AddCommand(cmddel.NewCommand())

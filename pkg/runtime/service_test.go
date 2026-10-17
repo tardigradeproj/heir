@@ -9,6 +9,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/utils/ptr"
 )
 
 func serviceRuntime(name, namespace string, svc controlplanev1alpha1.ServiceSpec) *controlplanev1alpha1.Runtime {
@@ -103,6 +104,26 @@ func TestGenerateService(t *testing.T) {
 			validate: func(t *testing.T, svc *corev1.Service) {
 				assert.Equal(t, "prod", svc.Labels["env"])
 				assert.Equal(t, "value", svc.Annotations["custom/annotation"])
+			},
+		},
+		{
+			name: "nil ApiServerNodePort produces NodePort 0 (not the CRD's own default)",
+			runtime: serviceRuntime("my-cluster", "default", controlplanev1alpha1.ServiceSpec{
+				ServiceType:       corev1.ServiceTypeClusterIP,
+				ApiServerNodePort: nil,
+			}),
+			validate: func(t *testing.T, svc *corev1.Service) {
+				assert.Equal(t, int32(0), svc.Spec.Ports[0].NodePort)
+			},
+		},
+		{
+			name: "explicit ApiServerNodePort is propagated",
+			runtime: serviceRuntime("my-cluster", "default", controlplanev1alpha1.ServiceSpec{
+				ServiceType:       corev1.ServiceTypeNodePort,
+				ApiServerNodePort: ptr.To(int32(30080)),
+			}),
+			validate: func(t *testing.T, svc *corev1.Service) {
+				assert.Equal(t, int32(30080), svc.Spec.Ports[0].NodePort)
 			},
 		},
 		{
