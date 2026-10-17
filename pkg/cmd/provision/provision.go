@@ -10,8 +10,8 @@ import (
 func NewCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "provision",
-		Short: "Provision one of [runtimeCluster, worker, cluster-kubeconfig, workerJoinToken]",
-		Long:  "Manage one of [runtimeCluster, worker, cluster-kubeconfig, workerJoinToken]",
+		Short: "Provision one of [runtimeCluster, worker, clusterKubeconfig, workerJoinToken]",
+		Long:  "Manage one of [runtimeCluster, worker, clusterKubeconfig, workerJoinToken]",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			err := cmd.Help()
 			if err != nil {

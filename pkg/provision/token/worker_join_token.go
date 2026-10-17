@@ -14,6 +14,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8sruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -65,6 +66,9 @@ func buildControllerClient(kubeconfig string) (client.Client, error) {
 		return nil, fmt.Errorf("failed to build rest config: %w", err)
 	}
 	scheme := k8sruntime.NewScheme()
+	if err := clientgoscheme.AddToScheme(scheme); err != nil {
+		return nil, fmt.Errorf("failed to register core scheme: %w", err)
+	}
 	if err := clusteragentv1alpha1.AddToScheme(scheme); err != nil {
 		return nil, fmt.Errorf("failed to register clusteragent scheme: %w", err)
 	}
@@ -92,6 +96,6 @@ func waitReady(ctx context.Context, c client.Client, token *clusteragentv1alpha1
 		}
 		return fmt.Errorf("failed waiting for worker join token %q to become ready: %w", token.Name, err)
 	}
-	fmt.Printf("worker join token %q is ready\n", token.Name)
+	fmt.Printf("worker join token %q is ready to be used\n", token.Name)
 	return nil
 }
