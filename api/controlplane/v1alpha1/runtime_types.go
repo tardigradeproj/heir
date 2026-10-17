@@ -28,8 +28,9 @@ import (
 // individual component settings.
 type ClusterSpec struct {
 	// ControlPlaneExternalEndpoint describes the per-component host and port through which
-	// worker nodes reach the API server and plane tunnel.
-	// +kubebuilder:default={}
+	// worker nodes reach the API server and plane tunnel. No default: {} would no longer satisfy
+	// ControlPlaneExternalEndpointSpec's own required apiServer/planeTunnel fields, and a
+	// CRD-declared default must itself validate against the schema it defaults into.
 	ControlPlaneExternalEndpoint ControlPlaneExternalEndpointSpec `json:"controlPlaneExternalEndpoint,omitempty"`
 	// APIServer holds flags and SANs passed to the tenant kube-apiserver.
 	// +kubebuilder:default={}
@@ -97,12 +98,13 @@ type KubeletSpec struct {
 // nodes use to reach the tenant control plane. Each component can be exposed on a different host,
 // allowing the API server and plane tunnel to sit behind separate load balancers.
 type ControlPlaneExternalEndpointSpec struct {
-	// APIServer defines the host and port that expose the Kubernetes API server.
-	//+kubebuilder:default={port:30080}
-	APIServer ComponentEndpoint `json:"apiServer,omitempty"`
-	// PlaneTunnel defines the host and port that expose the PlaneTunnel proxy server.
-	//+kubebuilder:default={port:30081}
-	PlaneTunnel ComponentEndpoint `json:"planeTunnel,omitempty"`
+	// APIServer defines the host and port that expose the Kubernetes API server. Required: there
+	// is no sane cluster-wide default for an externally-reachable address, so this must be set
+	// explicitly rather than silently falling back to an unreachable zero value.
+	APIServer ComponentEndpoint `json:"apiServer"`
+	// PlaneTunnel defines the host and port that expose the PlaneTunnel proxy server. Required,
+	// for the same reason as APIServer above.
+	PlaneTunnel ComponentEndpoint `json:"planeTunnel"`
 }
 
 // ComponentEndpoint holds the host and port of a single control-plane component endpoint.
@@ -112,7 +114,11 @@ type ComponentEndpoint struct {
 	// the port is configured separately via the Port field below.
 	// +kubebuilder:validation:XValidation:rule="self == '' || self.matches('^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?([.][a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$')",message="host must be a valid hostname or IP address, without a URL scheme or port"
 	Host string `json:"host,omitempty"`
-	// Port is the TCP port number on the remote endpoint.
+	// Port is the TCP port number on the remote endpoint. Required and must be a real port
+	// (1-65535): this has no default, since 0 is never a usable endpoint and the zero value
+	// must not be allowed to pass silently.
+	//+kubebuilder:validation:Minimum=1
+	//+kubebuilder:validation:Maximum=65535
 	Port int32 `json:"port"`
 }
 
@@ -205,6 +211,7 @@ type RuntimeSpec struct {
 // including the container image, Deployment, and Service configuration.
 type ControlPlaneSpec struct {
 	// Heir specifies the Heir distribution image to run as the heir control plane.
+	// +kubebuilder:default={}
 	Heir HeirSpec `json:"heir,omitempty"`
 	// ClusterAgent specifies Heir ClusterAgent Image
 	ClusterAgent ClusterAgentSpec `json:"clusterAgent,omitempty"`
@@ -221,11 +228,13 @@ type ControlPlaneSpec struct {
 type HeirSpec struct {
 	// Image is the fully qualified container image reference (including tag or digest)
 	// for the Heir control plane, e.g. ghcr.io/tardigradeproj/heir:v1.2.3.
+	//+kubebuilder:default="ghcr.io/tardigradeproj/heir:latest"
 	Image string `json:"image,omitempty"`
 }
 type ClusterAgentSpec struct {
 	// Image is the fully qualified container image reference (including tag or digest)
 	// for the Heir control plane, e.g. ghcr.io/tardigradeproj/clusteragent:v1.2.3.
+	//+kubebuilder:default="ghcr.io/tardigradeproj/clusteragent:latest"
 	Image string `json:"image,omitempty"`
 }
 
@@ -238,11 +247,13 @@ type ServiceSpec struct {
 	// ServiceType controls how the Service is exposed.
 	//+kubebuilder:validation:Enum=NodePort;ClusterIP;LoadBalancer;ExternalName
 	//+kubebuilder:default="NodePort"
-	ServiceType corev1.ServiceType `json:"serviceType"`
+	ServiceType corev1.ServiceType `json:"serviceType,omitempty"`
 	// ApiServerNodePort is the NodePort assigned to the API server port.
-	// Only used when serviceType is NodePort.
+	// Only used when serviceType is NodePort. A pointer so that an explicit 0 (e.g. when
+	// serviceType is ClusterIP and no node port applies) can be told apart from "unset" —
+	// only the latter picks up the default below.
 	//+kubebuilder:default=30080
-	ApiServerNodePort int32 `json:"apiServerNodePort"`
+	ApiServerNodePort *int32 `json:"apiServerNodePort,omitempty"`
 }
 
 // PlaneTunnelServiceSpec configures the Kubernetes Service that exposes the plane tunnel server.
@@ -254,9 +265,10 @@ type PlaneTunnelServiceSpec struct {
 	//+kubebuilder:default="NodePort"
 	ServiceType corev1.ServiceType `json:"serviceType,omitempty"`
 	// NodePort is the NodePort assigned to the plane tunnel port.
-	// Only used when serviceType is NodePort.
+	// Only used when serviceType is NodePort. A pointer for the same reason as
+	// ServiceSpec.ApiServerNodePort: an explicit 0 must be distinguishable from "unset".
 	//+kubebuilder:default=30081
-	NodePort int32 `json:"nodePort,omitempty"`
+	NodePort *int32 `json:"nodePort,omitempty"`
 }
 
 // AdditionalPort defines an extra port to add to a Service.

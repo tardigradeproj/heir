@@ -9,6 +9,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/utils/ptr"
 )
 
 func PlaneTunnelName(runtimeName string) string {
@@ -72,7 +73,7 @@ func GeneratePlaneTunnelService(wrkCtx typ.WorkerContext, runtime *controlplanev
 					Port:       tunnelPort,
 					TargetPort: intstr.FromInt32(tunnelPort),
 					Protocol:   corev1.ProtocolTCP,
-					NodePort:   tunnelSvcSpec.NodePort,
+					NodePort:   ptr.Deref(tunnelSvcSpec.NodePort, 0),
 				},
 			},
 		},
