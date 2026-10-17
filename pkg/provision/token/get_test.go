@@ -61,7 +61,7 @@ func TestFetchSecret(t *testing.T) {
 		_, err := FetchSecret(context.Background(), WithName("new-node"), withControllerClient(fakeClient))
 		require.Error(t, err)
 		assert.Equal(t, `worker join token secret for "new-node" was not found, this might be because:
-  (1) the WorkerJoinToken is not Ready yet — check with 'heir get workerJoinToken new-node'
+  (1) the WorkerJoinToken is not Ready yet, check with 'heir get workerJoinToken new-node'
   (2) you're targeting the wrong tenant cluster (use --kubeconfig to point at the right one)`, err.Error())
 	})
 
