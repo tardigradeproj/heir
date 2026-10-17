@@ -7,8 +7,7 @@ import (
 	"github.com/tardigradeproj/heir/pkg/provision/controlplane"
 )
 
-type controlplaneProvisionFlagpole struct {
-	Name       string
+type runtimeClusterProvisionFlagpole struct {
 	Namespace  string
 	Kubeconfig string
 	Set        []string
@@ -16,15 +15,17 @@ type controlplaneProvisionFlagpole struct {
 	Timeout    time.Duration
 }
 
-func controlplaneProvisionCommand() *cobra.Command {
-	flags := &controlplaneProvisionFlagpole{}
+func runtimeClusterProvisionCommand() *cobra.Command {
+	flags := &runtimeClusterProvisionFlagpole{}
 	cmd := &cobra.Command{
-		Use:   "controlplane",
-		Short: "Provision a control plane on the management cluster",
-		Long:  "Provision a control plane on the management cluster",
+		Use:     "runtimeCluster <name>",
+		Aliases: []string{"cluster"},
+		Short:   "Provision a control plane on the management cluster",
+		Long:    "Provision a control plane on the management cluster",
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return controlplane.Provision(cmd.Context(),
-				controlplane.WithName(flags.Name),
+				controlplane.WithName(args[0]),
 				controlplane.WithNamespace(flags.Namespace),
 				controlplane.WithKubeconfig(flags.Kubeconfig),
 				controlplane.WithSet(flags.Set),
@@ -33,12 +34,6 @@ func controlplaneProvisionCommand() *cobra.Command {
 			)
 		},
 	}
-	cmd.Flags().StringVar(
-		&flags.Name,
-		"name",
-		"",
-		"name of the Runtime to create",
-	)
 	cmd.Flags().StringVar(
 		&flags.Namespace,
 		"namespace",
@@ -70,6 +65,5 @@ func controlplaneProvisionCommand() *cobra.Command {
 		5*time.Minute,
 		"how long --wait blocks before giving up",
 	)
-	cobra.CheckErr(cmd.MarkFlagRequired("name"))
 	return cmd
 }

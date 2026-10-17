@@ -10,8 +10,8 @@ import (
 func NewCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "provision",
-		Short: "Provision one of [controlplane, worker, cluster-kubeconfig]",
-		Long:  "Manage one of [controlplane, worker, cluster-kubeconfig]",
+		Short: "Provision one of [runtimeCluster, worker, cluster-kubeconfig, workerJoinToken]",
+		Long:  "Manage one of [runtimeCluster, worker, cluster-kubeconfig, workerJoinToken]",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			err := cmd.Help()
 			if err != nil {
@@ -23,7 +23,8 @@ func NewCommand() *cobra.Command {
 	// add subcommands
 	cmd.AddCommand(generate.NewCommand())
 	cmd.AddCommand(workerProvisionCommand())
-	cmd.AddCommand(controlplaneProvisionCommand())
+	cmd.AddCommand(runtimeClusterProvisionCommand())
 	cmd.AddCommand(clusterKubeconfigCommand())
+	cmd.AddCommand(workerJoinTokenProvisionCommand())
 	return cmd
 }
