@@ -16,6 +16,7 @@ type provisionContext struct {
 	set        []string
 	wait       bool
 	timeout    time.Duration
+	server     string
 	client     kubernetes.Interface // if set, skips buildClient (used in tests)
 	ctrlClient client.Client        // if set, skips buildControllerClient (used in tests)
 }
@@ -53,5 +54,13 @@ func WithWait(wait bool) Option {
 func WithTimeout(timeout time.Duration) Option {
 	return func(p *provisionContext) {
 		p.timeout = timeout
+	}
+}
+
+// WithServer overrides the server URL baked into a fetched kubeconfig. Empty leaves it
+// untouched.
+func WithServer(server string) Option {
+	return func(p *provisionContext) {
+		p.server = server
 	}
 }

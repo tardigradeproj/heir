@@ -5,13 +5,13 @@ import (
 	"testing"
 	"time"
 
-	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	controlplanev1alpha1 "github.com/tardigradeproj/heir/api/controlplane/v1alpha1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8sruntime "k8s.io/apimachinery/pkg/runtime"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
@@ -27,6 +27,7 @@ func withControllerClient(c client.Client) Option {
 func newTestScheme(t *testing.T) *k8sruntime.Scheme {
 	t.Helper()
 	scheme := k8sruntime.NewScheme()
+	require.NoError(t, clientgoscheme.AddToScheme(scheme))
 	require.NoError(t, controlplanev1alpha1.AddToScheme(scheme))
 	return scheme
 }
@@ -162,7 +163,7 @@ func TestWaitAvailable(t *testing.T) {
 			}
 			fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(rt).Build()
 
-			err := waitAvailable(context.Background(), log.WithField("test", tt.name), fakeClient, rt, 100*time.Millisecond)
+			err := waitAvailable(context.Background(), fakeClient, rt, 100*time.Millisecond)
 			if tt.wantErr {
 				assert.Error(t, err)
 				return

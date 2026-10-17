@@ -8,13 +8,13 @@ import (
 	"time"
 
 	"github.com/charmbracelet/huh/spinner"
-	log "github.com/sirupsen/logrus"
 	controlplanev1alpha1 "github.com/tardigradeproj/heir/api/controlplane/v1alpha1"
 	"github.com/tardigradeproj/heir/pkg/strvals"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8sruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
 )
@@ -26,11 +26,7 @@ func Provision(ctx context.Context, opts ...Option) error {
 	for _, opt := range opts {
 		opt(pCtx)
 	}
-	lg := log.WithFields(log.Fields{
-		"namespace":    pCtx.namespace,
-		"cluster.name": pCtx.name,
-	})
-	lg.Info("provisioning control plane")
+	fmt.Printf("provisioning control plane %q (namespace %q)\n", pCtx.name, pCtx.namespace)
 
 	c := pCtx.ctrlClient
 	if c == nil {
@@ -59,12 +55,21 @@ func Provision(ctx context.Context, opts ...Option) error {
 	if err := c.Create(ctx, rt); err != nil {
 		return fmt.Errorf("failed to create runtime %s/%s: %w", pCtx.namespace, pCtx.name, err)
 	}
-	lg.Info("runtime created")
+	fmt.Printf("runtime %q created\n", pCtx.name)
 
 	if !pCtx.wait {
 		return nil
 	}
-	return waitAvailable(ctx, lg, c, rt, pCtx.timeout)
+	if err := waitAvailable(ctx, c, rt, pCtx.timeout); err != nil {
+		return err
+	}
+
+	hint := fmt.Sprintf("heir provision cluster-kubeconfig --name %q --namespace %q", rt.Name, rt.Namespace)
+	if pCtx.kubeconfig != "" {
+		hint += fmt.Sprintf(" --kubeconfig %q", pCtx.kubeconfig)
+	}
+	fmt.Printf("cluster successfully provisioned. Run '%s' to obtain its kubeconfig\n", hint)
+	return nil
 }
 
 func buildControllerClient(kubeconfig string) (client.Client, error) {
@@ -73,6 +78,9 @@ func buildControllerClient(kubeconfig string) (client.Client, error) {
 		return nil, err
 	}
 	scheme := k8sruntime.NewScheme()
+	if err := clientgoscheme.AddToScheme(scheme); err != nil {
+		return nil, fmt.Errorf("failed to register core scheme: %w", err)
+	}
 	if err := controlplanev1alpha1.AddToScheme(scheme); err != nil {
 		return nil, fmt.Errorf("failed to register controlplane scheme: %w", err)
 	}
@@ -106,7 +114,7 @@ func applySetValues(rt *controlplanev1alpha1.Runtime, assignments []string) erro
 	return yaml.Unmarshal(merged, &rt.Spec)
 }
 
-func waitAvailable(ctx context.Context, log *log.Entry, c client.Client, rt *controlplanev1alpha1.Runtime, timeout time.Duration) error {
+func waitAvailable(ctx context.Context, c client.Client, rt *controlplanev1alpha1.Runtime, timeout time.Duration) error {
 	err := spinner.New().
 		Title(fmt.Sprintf("waiting for runtime %q to become available (timeout %s)", rt.Name, timeout)).
 		Context(ctx).
@@ -127,6 +135,5 @@ func waitAvailable(ctx context.Context, log *log.Entry, c client.Client, rt *con
 		}
 		return fmt.Errorf("failed waiting for runtime %q to become available: %w", rt.Name, err)
 	}
-	log.Infof("cluster successfully provisioned. Run 'heir provision cluster-kubeconfig --name %q --namespace %q --output %q.yaml' to obtain cluster kubeconfig", rt.Name, rt.Namespace, rt.Name)
 	return nil
 }
