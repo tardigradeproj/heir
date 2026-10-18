@@ -15,8 +15,10 @@ import (
 )
 
 type runtimeClusterGetFlagpole struct {
-	Namespace  string
-	Kubeconfig string
+	Namespace      string
+	Kubeconfig     string
+	Server         string
+	SaveKubeconfig string
 }
 
 func runtimeClusterGetCommand() *cobra.Command {
@@ -29,6 +31,9 @@ func runtimeClusterGetCommand() *cobra.Command {
 		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
+				if flags.SaveKubeconfig != "" {
+					return fmt.Errorf("--save-kubeconfig requires a runtime cluster name")
+				}
 				runtimes, err := controlplane.List(cmd.Context(),
 					controlplane.WithNamespace(flags.Namespace),
 					controlplane.WithKubeconfig(flags.Kubeconfig),
@@ -40,8 +45,9 @@ func runtimeClusterGetCommand() *cobra.Command {
 				return nil
 			}
 
+			name := args[0]
 			rt, err := controlplane.Get(cmd.Context(),
-				controlplane.WithName(args[0]),
+				controlplane.WithName(name),
 				controlplane.WithNamespace(flags.Namespace),
 				controlplane.WithKubeconfig(flags.Kubeconfig),
 			)
@@ -49,6 +55,30 @@ func runtimeClusterGetCommand() *cobra.Command {
 				return err
 			}
 			printRuntimeClusters(os.Stdout, []controlplanev1alpha1.Runtime{*rt})
+
+			if flags.SaveKubeconfig == "" {
+				return nil
+			}
+
+			data, err := controlplane.FetchKubeconfig(cmd.Context(),
+				controlplane.WithName(name),
+				controlplane.WithNamespace(flags.Namespace),
+				controlplane.WithKubeconfig(flags.Kubeconfig),
+				controlplane.WithServer(flags.Server),
+			)
+			if err != nil {
+				return err
+			}
+			// This is an admin kubeconfig with client credentials in it — never world/group
+			// readable. WriteFile only applies this mode on create, so Chmod explicitly too in
+			// case --save-kubeconfig points at a pre-existing, more loosely-permissioned file.
+			if err := os.WriteFile(flags.SaveKubeconfig, data, 0o600); err != nil {
+				return fmt.Errorf("failed to write kubeconfig to %s: %w", flags.SaveKubeconfig, err)
+			}
+			if err := os.Chmod(flags.SaveKubeconfig, 0o600); err != nil {
+				return fmt.Errorf("failed to set permissions on %s: %w", flags.SaveKubeconfig, err)
+			}
+			fmt.Printf("wrote admin kubeconfig for cluster %q to %s\n", name, flags.SaveKubeconfig)
 			return nil
 		},
 	}
@@ -63,6 +93,19 @@ func runtimeClusterGetCommand() *cobra.Command {
 		"kubeconfig",
 		"",
 		"sets kubeconfig path of the management cluster instead of $KUBECONFIG or $HOME/.kube/config",
+	)
+	cmd.Flags().StringVar(
+		&flags.Server,
+		"server",
+		"",
+		"override the server URL baked into the saved kubeconfig (e.g. https://127.0.0.1:30080 for local dev)",
+	)
+	cmd.Flags().StringVarP(
+		&flags.SaveKubeconfig,
+		"save-kubeconfig",
+		"o",
+		"",
+		"save the named cluster's admin kubeconfig to this path; requires a name",
 	)
 	return cmd
 }

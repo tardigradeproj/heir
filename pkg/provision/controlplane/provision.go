@@ -64,7 +64,7 @@ func Provision(ctx context.Context, opts ...Option) error {
 		return err
 	}
 
-	hint := fmt.Sprintf("heir provision clusterKubeconfig %q --namespace %q", rt.Name, rt.Namespace)
+	hint := fmt.Sprintf("heir get runtimeCluster %q --namespace %q --save-kubeconfig %q-kubeconfig.yaml", rt.Name, rt.Namespace, rt.Name)
 	if pCtx.kubeconfig != "" {
 		hint += fmt.Sprintf(" --kubeconfig %q", pCtx.kubeconfig)
 	}
