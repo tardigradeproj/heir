@@ -9,8 +9,8 @@ import (
 func NewCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "get",
-		Short: "Get one of [workerJoinToken]",
-		Long:  "Get one of [workerJoinToken]",
+		Short: "Get one of [workerJoinToken, runtimeCluster]",
+		Long:  "Get one of [workerJoinToken, runtimeCluster]",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := cmd.Help(); err != nil {
 				return err
@@ -19,5 +19,6 @@ func NewCommand() *cobra.Command {
 		},
 	}
 	cmd.AddCommand(workerJoinTokenGetCommand())
+	cmd.AddCommand(runtimeClusterGetCommand())
 	return cmd
 }
