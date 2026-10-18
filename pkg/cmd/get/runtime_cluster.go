@@ -69,14 +69,8 @@ func runtimeClusterGetCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			// This is an admin kubeconfig with client credentials in it — never world/group
-			// readable. WriteFile only applies this mode on create, so Chmod explicitly too in
-			// case --save-kubeconfig points at a pre-existing, more loosely-permissioned file.
-			if err := os.WriteFile(flags.SaveKubeconfig, data, 0o600); err != nil {
-				return fmt.Errorf("failed to write kubeconfig to %s: %w", flags.SaveKubeconfig, err)
-			}
-			if err := os.Chmod(flags.SaveKubeconfig, 0o600); err != nil {
-				return fmt.Errorf("failed to set permissions on %s: %w", flags.SaveKubeconfig, err)
+			if err := writeKubeconfigFile(flags.SaveKubeconfig, data); err != nil {
+				return err
 			}
 			fmt.Printf("wrote admin kubeconfig for cluster %q to %s\n", name, flags.SaveKubeconfig)
 			return nil
@@ -108,6 +102,20 @@ func runtimeClusterGetCommand() *cobra.Command {
 		"save the named cluster's admin kubeconfig to this path; requires a name",
 	)
 	return cmd
+}
+
+// writeKubeconfigFile saves kubeconfig data to path. The data is an admin kubeconfig with
+// client credentials in it — never world/group readable. WriteFile only applies the given mode
+// on create, so Chmod explicitly too in case path points at a pre-existing, more
+// loosely-permissioned file.
+func writeKubeconfigFile(path string, data []byte) error {
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return fmt.Errorf("failed to write kubeconfig to %s: %w", path, err)
+	}
+	if err := os.Chmod(path, 0o600); err != nil {
+		return fmt.Errorf("failed to set permissions on %s: %w", path, err)
+	}
+	return nil
 }
 
 func printRuntimeClusters(w io.Writer, runtimes []controlplanev1alpha1.Runtime) {
