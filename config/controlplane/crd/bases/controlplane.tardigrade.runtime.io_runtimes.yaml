@@ -14,7 +14,23 @@ spec:
     singular: runtime
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .status.conditions[?(@.type=='Available')].status
+      name: Available
+      type: string
+    - jsonPath: .status.conditions[?(@.type=='Available')].reason
+      name: Reason
+      type: string
+    - jsonPath: .spec.cluster.controlPlaneExternalEndpoint.apiServer.host
+      name: Host
+      type: string
+    - jsonPath: .spec.cluster.controlPlaneExternalEndpoint.apiServer.port
+      name: Port
+      type: integer
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: Runtime is the Schema for the runtimes API
@@ -495,12 +511,14 @@ spec:
                             description: |-
                               Host is the IP address or hostname of the endpoint. It must be a bare domain
                               name or IPv4 address — no URL scheme (e.g. "https://") and no port suffix, since
-                              the port is configured separately via the Port field below.
+                              the port is configured separately via the Port field below. Required: an empty host is
+                              just as unreachable as port 0
+                            minLength: 1
                             type: string
                             x-kubernetes-validations:
                             - message: host must be a valid hostname or IP address,
                                 without a URL scheme or port
-                              rule: self == '' || self.matches('^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?([.][a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$')
+                              rule: self.matches('^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?([.][a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$')
                           port:
                             description: |-
                               Port is the TCP port number on the remote endpoint. Required and must be a real port
@@ -511,6 +529,7 @@ spec:
                             minimum: 1
                             type: integer
                         required:
+                        - host
                         - port
                         type: object
                       planeTunnel:
@@ -522,12 +541,14 @@ spec:
                             description: |-
                               Host is the IP address or hostname of the endpoint. It must be a bare domain
                               name or IPv4 address — no URL scheme (e.g. "https://") and no port suffix, since
-                              the port is configured separately via the Port field below.
+                              the port is configured separately via the Port field below. Required: an empty host is
+                              just as unreachable as port 0
+                            minLength: 1
                             type: string
                             x-kubernetes-validations:
                             - message: host must be a valid hostname or IP address,
                                 without a URL scheme or port
-                              rule: self == '' || self.matches('^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?([.][a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$')
+                              rule: self.matches('^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?([.][a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$')
                           port:
                             description: |-
                               Port is the TCP port number on the remote endpoint. Required and must be a real port
@@ -538,6 +559,7 @@ spec:
                             minimum: 1
                             type: integer
                         required:
+                        - host
                         - port
                         type: object
                     required:

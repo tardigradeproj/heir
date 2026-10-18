@@ -111,9 +111,11 @@ type ControlPlaneExternalEndpointSpec struct {
 type ComponentEndpoint struct {
 	// Host is the IP address or hostname of the endpoint. It must be a bare domain
 	// name or IPv4 address — no URL scheme (e.g. "https://") and no port suffix, since
-	// the port is configured separately via the Port field below.
-	// +kubebuilder:validation:XValidation:rule="self == '' || self.matches('^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?([.][a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$')",message="host must be a valid hostname or IP address, without a URL scheme or port"
-	Host string `json:"host,omitempty"`
+	// the port is configured separately via the Port field below. Required: an empty host is
+	// just as unreachable as port 0
+	// +kubebuilder:validation:XValidation:rule="self.matches('^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?([.][a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$')",message="host must be a valid hostname or IP address, without a URL scheme or port"
+	//+kubebuilder:validation:MinLength=1
+	Host string `json:"host"`
 	// Port is the TCP port number on the remote endpoint. Required and must be a real port
 	// (1-65535): this has no default, since 0 is never a usable endpoint and the zero value
 	// must not be allowed to pass silently.
@@ -368,6 +370,11 @@ type RuntimeStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Available",type="string",JSONPath=".status.conditions[?(@.type=='Available')].status"
+// +kubebuilder:printcolumn:name="Reason",type="string",JSONPath=".status.conditions[?(@.type=='Available')].reason"
+// +kubebuilder:printcolumn:name="Host",type="string",JSONPath=".spec.cluster.controlPlaneExternalEndpoint.apiServer.host"
+// +kubebuilder:printcolumn:name="Port",type="integer",JSONPath=".spec.cluster.controlPlaneExternalEndpoint.apiServer.port"
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // Runtime is the Schema for the runtimes API
 type Runtime struct {
