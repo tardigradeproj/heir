@@ -86,6 +86,8 @@ func TestControlPlaneExternalEndpointRequired(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "controlPlaneExternalEndpoint.apiServer.port")
 	assert.Contains(t, err.Error(), "controlPlaneExternalEndpoint.planeTunnel.port")
+	assert.Contains(t, err.Error(), "controlPlaneExternalEndpoint.apiServer.host")
+	assert.Contains(t, err.Error(), "controlPlaneExternalEndpoint.planeTunnel.host")
 }
 
 // TestRuntimeDefaults asserts that creating a Runtime (with only the now-required endpoint
@@ -101,8 +103,8 @@ func TestRuntimeDefaults(t *testing.T) {
 		Spec: controlplanev1alpha1.RuntimeSpec{
 			Cluster: controlplanev1alpha1.ClusterSpec{
 				ControlPlaneExternalEndpoint: controlplanev1alpha1.ControlPlaneExternalEndpointSpec{
-					APIServer:   controlplanev1alpha1.ComponentEndpoint{Port: 30080},
-					PlaneTunnel: controlplanev1alpha1.ComponentEndpoint{Port: 30081},
+					APIServer:   controlplanev1alpha1.ComponentEndpoint{Host: "api.example.com", Port: 30080},
+					PlaneTunnel: controlplanev1alpha1.ComponentEndpoint{Host: "tunnel.example.com", Port: 30081},
 				},
 			},
 		},

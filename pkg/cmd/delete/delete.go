@@ -8,8 +8,8 @@ import (
 func NewCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "delete",
-		Short: "Delete one of [controlplane]",
-		Long:  "Delete one of [controlplane]",
+		Short: "Delete one of [controlplane, workerJoinToken]",
+		Long:  "Delete one of [controlplane, workerJoinToken]",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := cmd.Help(); err != nil {
 				return err
@@ -18,5 +18,6 @@ func NewCommand() *cobra.Command {
 		},
 	}
 	cmd.AddCommand(controlPlaneCommand())
+	cmd.AddCommand(workerJoinTokenDeleteCommand())
 	return cmd
 }
