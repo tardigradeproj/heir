@@ -24,6 +24,7 @@ builds:
       - CGO_ENABLED=0
     goos:
       - linux
+      - darwin
     goarch:
       - arm64
       - amd64
@@ -119,6 +120,53 @@ archives:
     format_overrides:
       - goos: windows
         formats: [zip]
+
+nfpms:
+  - id: heir
+    package_name: heir
+    ids:
+      - distro
+    vendor: Tardigrade Project
+    homepage: https://tardigradeproj.github.io/docs/
+    maintainer: Edwin Marrima <edwinmarrima@gmail.com>
+    description: >-
+      Heir is an open source Kubernetes distribution designed to make it easy to operate and run Kubernetes clusters at scale. 
+      Unlike traditional distributions that scatter control plane components across dedicated nodes, Heir collapses the entire control plane 
+      into a single stateless pod running inside a Management Kubernetes Cluster.
+    license: Apache-2.0
+    formats:
+      - deb
+      - apk
+    bindir: /usr/bin
+    section: utils
+    priority: optional
+
+homebrew_casks:
+  - name: heir
+    ids:
+      - heir
+    repository:
+      owner: tardigradeproj
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    commit_author:
+      name: tardigrade-bot
+      email: edwinmarrima@gmail.com
+    homepage: https://tardigradeproj.github.io/docs/
+    description: >-
+      Heir is an open source Kubernetes distribution designed to make it easy to operate and run Kubernetes clusters at scale.
+      Unlike traditional distributions that scatter control plane components across dedicated nodes, Heir collapses the entire control plane
+      into a single stateless pod running inside a Management Kubernetes Cluster.
+    license: Apache-2.0
+    binaries:
+      - heir
+    hooks:
+      post:
+        install: |
+          if system_command("/usr/bin/xattr", args: ["-h"]).exit_status == 0
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/heir"]
+          end
 
 dockers_v2:
   - id: controller-manager
