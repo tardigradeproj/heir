@@ -13,10 +13,11 @@ type controlPlaneFlagpole struct {
 func controlPlaneCommand() *cobra.Command {
 	flags := &controlPlaneFlagpole{}
 	cmd := &cobra.Command{
-		Use:   "controlplane <cluster-name>",
-		Short: "Delete a control plane cluster from the management cluster",
-		Long:  "Delete a control plane cluster from the management cluster",
-		Args:  cobra.ExactArgs(1),
+		Use:     "controlplane <cluster-name>",
+		Aliases: []string{"cluster"},
+		Short:   "Delete a control plane cluster from the management cluster",
+		Long:    "Delete a control plane cluster from the management cluster",
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return controlplane.Delete(cmd.Context(),
 				controlplane.WithName(args[0]),

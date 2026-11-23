@@ -3,7 +3,6 @@ package controlplane
 import (
 	"time"
 
-	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -17,8 +16,7 @@ type provisionContext struct {
 	wait       bool
 	timeout    time.Duration
 	server     string
-	client     kubernetes.Interface // if set, skips buildClient (used in tests)
-	ctrlClient client.Client        // if set, skips buildControllerClient (used in tests)
+	ctrlClient client.Client // if set, skips buildControllerClient (used in tests)
 }
 
 func WithName(name string) Option {
