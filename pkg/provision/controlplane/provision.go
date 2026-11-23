@@ -15,6 +15,8 @@ import (
 	k8sruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
 )
@@ -70,6 +72,16 @@ func Provision(ctx context.Context, opts ...Option) error {
 	}
 	fmt.Printf("cluster successfully provisioned. Run '%s' to obtain its kubeconfig\n", hint)
 	return nil
+}
+
+func buildRestConfig(kubeconfig string) (*rest.Config, error) {
+	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+	if kubeconfig != "" {
+		loadingRules.ExplicitPath = kubeconfig
+	}
+	return clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+		loadingRules, &clientcmd.ConfigOverrides{},
+	).ClientConfig()
 }
 
 func buildControllerClient(kubeconfig string) (client.Client, error) {
